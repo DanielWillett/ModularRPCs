@@ -22,7 +22,7 @@ public class SampleClass
     }
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
-    [RpcSend, RpcFireAndForget]
+    [RpcSend]
     internal virtual RpcTask CallRpcOne() => throw new NotImplementedException();
 
     [RpcReceive]

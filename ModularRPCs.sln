@@ -5,7 +5,9 @@ VisualStudioVersion = 17.10.34607.79
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs", "ModularRPCs\ModularRPCs.csproj", "{C075BBB6-B324-470C-BECA-BD5636BE3336}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.Examples", "ModularRPCs.Examples\ModularRPCs.Examples.csproj", "{EA18392C-D207-4E15-A7CA-F5DC4C257531}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.Examples", "ModularRPCs.Examples\ModularRPCs.Examples.csproj", "{EA18392C-D207-4E15-A7CA-F5DC4C257531}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.WebSockets", "ModularRPCs.WebSockets\ModularRPCs.WebSockets.csproj", "{817B2F75-B297-46FB-81F1-F35EB8153C75}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{EA18392C-D207-4E15-A7CA-F5DC4C257531}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EA18392C-D207-4E15-A7CA-F5DC4C257531}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EA18392C-D207-4E15-A7CA-F5DC4C257531}.Release|Any CPU.Build.0 = Release|Any CPU
+		{817B2F75-B297-46FB-81F1-F35EB8153C75}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{817B2F75-B297-46FB-81F1-F35EB8153C75}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{817B2F75-B297-46FB-81F1-F35EB8153C75}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{817B2F75-B297-46FB-81F1-F35EB8153C75}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

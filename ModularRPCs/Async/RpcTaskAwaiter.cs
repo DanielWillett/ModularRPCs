@@ -7,7 +7,7 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
 {
     private Action? _continuation;
     public RpcTask Task { get; }
-    public bool IsCompleted { get; private set; }
+    public bool IsCompleted { get; private protected set; }
     public RpcTaskAwaiter(RpcTask task, bool isCompleted)
     {
         Task = task;

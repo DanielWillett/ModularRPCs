@@ -120,6 +120,9 @@
   <data name="InternalsNotVisibleMemberAccessException" xml:space="preserve">
     <value>The constructor you're trying to use is not accessible or overridable by the proxy class. RPC send methods must be virtual or abstract (therefore non-static). To use internal constructors or methods, it's required to add '[assembly: InternalsVisibleTo("ModularRPCs.Proxy")]' to your AssemblyInfo file.</value>
   </data>
+  <data name="MethodHasNoDeclaringType" xml:space="preserve">
+    <value>Method must have a declaring type.</value>
+  </data>
   <data name="PrivatesNotVisibleMissingMethodException" xml:space="preserve">
     <value>The constructor you're trying to use was not found. Private constructors are not supported with RPC proxies.</value>
   </data>
@@ -137,5 +140,38 @@
   </data>
   <data name="TypeNotReferenceType" xml:space="preserve">
     <value>The given type must be a reference type (not a value type).</value>
+  </data>
+  <data name="ConnectionNotLoopback" xml:space="preserve">
+    <value>Connection must be of type 'LoopbackRpcServerConnection'.</value>
+  </data>
+  <data name="RpcConnectionClosedException" xml:space="preserve">
+    <value>This RPC connection is closed.</value>
+  </data>
+  <data name="LoopbackRemoteConnectionExpectedServersideEndpoint" xml:space="preserve">
+    <value>Endpoint is not valid, expected serverside endpoint.</value>
+  </data>
+  <data name="LoopbackRemoteConnectionExpectedClientsideEndpoint" xml:space="preserve">
+    <value>Endpoint is not valid, expected clientside endpoint.</value>
+  </data>
+  <data name="DidNotPassAnyDataToRpcSendDataAsync" xml:space="preserve">
+    <value>Must pass either stream data or binary data to SendDataAsync.</value>
+  </data>
+  <data name="ContiguousBufferParseException" xml:space="preserve">
+    <value>The ContiguousBuffer failed to separate out a message segment, likely due to bad data.</value>
+  </data>
+  <data name="RpcOverheadParseException" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead, likely due to bad data.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionUnknownRpcDescriptor" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead, unknown RpcDescriptor: {0}.</value>
+  </data>
+  <data name="RpcEndpointNotFoundException" xml:space="preserve">
+    <value>The endpoint data from a message could not be linked to an invocation point.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionStreamRunOut" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the stream ended too early.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionBufferRunOut" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the buffer was too short.</value>
   </data>
 </root>

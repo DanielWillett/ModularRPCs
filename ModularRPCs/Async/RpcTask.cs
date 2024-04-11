@@ -8,22 +8,25 @@ public class RpcTask
     /// </summary>
     public static RpcTask CompletedTask { get; } = new RpcTask();
 
-    private readonly RpcTaskAwaiter _awaiter;
+    private protected RpcTaskAwaiter Awaiter = null!;
     internal Exception? Exception;
     public bool IsFireAndForget { get; }
     internal RpcTask(bool isFireAndForget)
     {
-        _awaiter = new RpcTaskAwaiter(this, false);
+        if (GetType() == typeof(RpcTask))
+            Awaiter = new RpcTaskAwaiter(this, false);
         IsFireAndForget = isFireAndForget;
     }
-    private RpcTask()
+    private protected RpcTask()
     {
-        _awaiter = new RpcTaskAwaiter(this, true);
+        Awaiter = new RpcTaskAwaiter(this, true);
     }
-    public RpcTaskAwaiter GetAwaiter() => _awaiter;
+    public RpcTaskAwaiter GetAwaiter() => Awaiter;
     internal void TriggerComplete(Exception? exception)
     {
         Exception = exception;
-        _awaiter.TriggerComplete();
+        Awaiter.TriggerComplete();
     }
+
+    public static RpcTask<T> FromResult<T>(T value) => new RpcTask<T>(value);
 }

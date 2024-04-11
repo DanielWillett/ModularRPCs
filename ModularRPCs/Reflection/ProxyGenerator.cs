@@ -1,4 +1,7 @@
-﻿using DanielWillett.ReflectionTools;
+﻿using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Async;
+using DanielWillett.ModularRpcs.DependencyInjection;
+using DanielWillett.ReflectionTools;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -7,8 +10,6 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
-using DanielWillett.ModularRpcs.Annotations;
-using DanielWillett.ModularRpcs.Async;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
@@ -18,6 +19,10 @@ namespace DanielWillett.ModularRpcs.Reflection;
 public sealed class ProxyGenerator
 {
     private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
+
+    /// <summary>
+    /// Set using <see cref="LoggingExtensions.SetLogger(ProxyGenerator, ILogger)"/>. 
+    /// </summary>
     internal object? Logger;
 
     /// <summary>
@@ -38,7 +43,7 @@ public sealed class ProxyGenerator
         Assembly thisAssembly = Assembly.GetExecutingAssembly();
         ProxyAssemblyName = new AssemblyName(thisAssembly.GetName().Name + ".Proxy");
         AssemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(ProxyAssemblyName, AssemblyBuilderAccess.RunAndCollect);
-        ModuleBuilder = AssemblyBuilder.DefineDynamicModule(ProxyAssemblyName.Name);
+        ModuleBuilder = AssemblyBuilder.DefineDynamicModule(ProxyAssemblyName.Name!);
     }
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
@@ -88,7 +93,7 @@ public sealed class ProxyGenerator
                 constructorParameters ?? Array.Empty<object>(),
                 culture,
                 activationAttributes
-            );
+            )!;
 
             return newProxiedObject;
         }
@@ -242,7 +247,7 @@ public sealed class ProxyGenerator
             ILGenerator generator = methodBuilder.GetILGenerator();
             generator.EmitWriteLine("Calling " + method.Name);
 
-            MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod;
+            MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
             generator.Emit(OpCodes.Call, getter);
             generator.Emit(OpCodes.Ret);
         }

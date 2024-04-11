@@ -61,6 +61,33 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Connection must be of type &apos;LoopbackRpcServerConnection&apos;..
+        /// </summary>
+        public static string ConnectionNotLoopback {
+            get {
+                return ResourceManager.GetString("ConnectionNotLoopback", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The ContiguousBuffer failed to separate out a message segment, likely due to bad data..
+        /// </summary>
+        public static string ContiguousBufferParseException {
+            get {
+                return ResourceManager.GetString("ContiguousBufferParseException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Must pass either stream data or binary data to SendDataAsync..
+        /// </summary>
+        public static string DidNotPassAnyDataToRpcSendDataAsync {
+            get {
+                return ResourceManager.GetString("DidNotPassAnyDataToRpcSendDataAsync", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use is not accessible or overridable by the proxy class. RPC send methods must be virtual or abstract (therefore non-static). To use internal constructors or methods, it&apos;s required to add &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; to your AssemblyInfo file..
         /// </summary>
         public static string InternalsNotVisibleMemberAccessException {
@@ -70,11 +97,56 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Endpoint is not valid, expected clientside endpoint..
+        /// </summary>
+        public static string LoopbackRemoteConnectionExpectedClientsideEndpoint {
+            get {
+                return ResourceManager.GetString("LoopbackRemoteConnectionExpectedClientsideEndpoint", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Endpoint is not valid, expected serverside endpoint..
+        /// </summary>
+        public static string LoopbackRemoteConnectionExpectedServersideEndpoint {
+            get {
+                return ResourceManager.GetString("LoopbackRemoteConnectionExpectedServersideEndpoint", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Method must have a declaring type..
+        /// </summary>
+        public static string MethodHasNoDeclaringType {
+            get {
+                return ResourceManager.GetString("MethodHasNoDeclaringType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use was not found. Private constructors are not supported with RPC proxies..
         /// </summary>
         public static string PrivatesNotVisibleMissingMethodException {
             get {
                 return ResourceManager.GetString("PrivatesNotVisibleMissingMethodException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to This RPC connection is closed..
+        /// </summary>
+        public static string RpcConnectionClosedException {
+            get {
+                return ResourceManager.GetString("RpcConnectionClosedException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point..
+        /// </summary>
+        public static string RpcEndpointNotFoundException {
+            get {
+                return ResourceManager.GetString("RpcEndpointNotFoundException", resourceCulture);
             }
         }
         
@@ -93,6 +165,42 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcGetResultUsageException {
             get {
                 return ResourceManager.GetString("RpcGetResultUsageException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead, likely due to bad data..
+        /// </summary>
+        public static string RpcOverheadParseException {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the buffer was too short..
+        /// </summary>
+        public static string RpcOverheadParseExceptionBufferRunOut {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionBufferRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the stream ended too early..
+        /// </summary>
+        public static string RpcOverheadParseExceptionStreamRunOut {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionStreamRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead, unknown RpcDescriptor: {0}..
+        /// </summary>
+        public static string RpcOverheadParseExceptionUnknownRpcDescriptor {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionUnknownRpcDescriptor", resourceCulture);
             }
         }
         
