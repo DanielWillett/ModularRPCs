@@ -3,13 +3,20 @@
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask
 {
+    private protected RpcTaskAwaiter Awaiter = null!;
+    internal Exception? Exception;
+
     /// <summary>
     /// An instance of <see cref="RpcTask"/> that instantly completes, skipping any context switching.
     /// </summary>
     public static RpcTask CompletedTask { get; } = new RpcTask();
 
-    private protected RpcTaskAwaiter Awaiter = null!;
-    internal Exception? Exception;
+    /// <summary>
+    /// This property will always throw a <see cref="NotImplementedException"/>.
+    /// </summary>
+    /// <remarks>Mainly used as the default body for RPC callers.</remarks>
+    public static RpcTask NotImplemented => throw new NotImplementedException(Properties.Exceptions.RpcNotImplemented);
+
     public bool IsFireAndForget { get; }
     internal RpcTask(bool isFireAndForget)
     {

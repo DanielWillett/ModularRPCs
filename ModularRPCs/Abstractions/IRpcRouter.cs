@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DanielWillett.ModularRpcs.Protocol;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,16 +20,16 @@ public interface IRpcRouter
     /// <summary>
     /// Intake raw data from a local connection over a stream.
     /// </summary>
-    ValueTask HandleReceivedData(IModularRpcLocalConnection connection, Stream streamData, CancellationToken token = default);
+    ValueTask HandleReceivedData(RpcOverhead overhead, Stream streamData, CancellationToken token = default);
 
     /// <summary>
     /// Intake raw data from a local connection over raw memory.
     /// </summary>
-    ValueTask HandleReceivedData(IModularRpcLocalConnection connection, Memory<byte> byteData, CancellationToken token = default);
+    ValueTask HandleReceivedData(RpcOverhead overhead, ReadOnlySpan<byte> byteData, CancellationToken token = default);
 
     /// <summary>
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, int byteSize);
+    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, bool isStatic, string[] args, int byteSize);
 }

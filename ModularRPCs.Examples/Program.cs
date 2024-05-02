@@ -1,11 +1,24 @@
-﻿using DanielWillett.ModularRpcs.Async;
+﻿using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Examples;
-using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ReflectionTools.IoC;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using System;
 
-SampleClass proxy = ProxyGenerator.Instance.CreateProxy<SampleClass>(nonPublic: true, "test", true);
+IHostBuilder hostBuilder = Host.CreateDefaultBuilder(args);
 
-RpcTask task = proxy.CallRpcOne();
+hostBuilder.ConfigureServices(serviceCollection =>
+{
+    serviceCollection.AddReflectionTools();
+    serviceCollection.AddProxyGenerator();
 
-Console.WriteLine(task.GetAwaiter().IsCompleted);
+    serviceCollection.AddRpcTransient<SampleClass>();
+});
+
+IHost host = hostBuilder.Build();
+
+SampleClass sc = host.Services.GetRequiredService<SampleClass>();
+
+await sc.CallRpcOne();
+
 Console.ReadLine();

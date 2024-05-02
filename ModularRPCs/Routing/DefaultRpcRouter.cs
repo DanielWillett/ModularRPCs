@@ -1,10 +1,10 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Protocol;
 using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Protocol;
 
 namespace DanielWillett.ModularRpcs.Routing;
 public class DefaultRpcRouter : IRpcRouter
@@ -23,7 +23,7 @@ public class DefaultRpcRouter : IRpcRouter
     {
         return CachedDescriptors.TryGetValue(endpointSharedId, out IRpcInvocationPoint? endpoint) ? endpoint : null!;
     }
-    public virtual IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, int byteSize)
+    public virtual IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, bool isStatic, string[] args, int byteSize)
     {
         return knownRpcShortcutId == 0u
             ? ValueFactory(0u)
@@ -31,24 +31,20 @@ public class DefaultRpcRouter : IRpcRouter
 
         IRpcInvocationPoint ValueFactory(uint key)
         {
-            RpcEndpoint endPoint = new RpcEndpoint(key, typeName, methodName, args, null, null);
+            RpcEndpoint endPoint = new RpcEndpoint(key, typeName, methodName, args, isStatic, null, null);
             return endPoint;
         }
     }
-    public ValueTask HandleReceivedData(IModularRpcLocalConnection connection, Stream streamData, CancellationToken token = default)
+    public ValueTask HandleReceivedData(RpcOverhead overhead, Stream streamData, CancellationToken token = default)
     {
-
+        
         return default;
     }
-    public unsafe ValueTask HandleReceivedData(IModularRpcLocalConnection connection, ReadOnlySpan<byte> byteData, CancellationToken token = default)
+    public ValueTask HandleReceivedData(RpcOverhead overhead, ReadOnlySpan<byte> byteData, CancellationToken token = default)
     {
-        RpcOverhead overhead;
-        fixed (byte* ptr = byteData)
-        {
-            overhead = RpcOverhead.ReadFromBytes(connection, ptr, (uint)byteData.Length);
-        }
+        IRpcInvocationPoint invocationPoint = overhead.Rpc;
+
         
-        overhead.CheckSizeHashValid();
         return default;
     }
 }

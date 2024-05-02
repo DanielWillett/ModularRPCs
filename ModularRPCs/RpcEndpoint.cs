@@ -22,6 +22,11 @@ public class RpcEndpoint : IRpcInvocationPoint
     public uint? EndpointId { get; set; }
 
     /// <summary>
+    /// Is the invocation point expecting a target object?
+    /// </summary>
+    public bool IsStatic { get; }
+
+    /// <summary>
     /// The fully declared name of the declaring type.
     /// </summary>
     public string DeclaringTypeName { get; }
@@ -61,8 +66,8 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (Method == null)
             throw new RpcEndpointNotFoundException(this);
 
-        object returnedValue = Method.Invoke(
-            targetObject,
+        object? returnedValue = Method.Invoke(
+            IsStatic ? null : targetObject,
             parameters.Offset == 0 && parameters.Count == parameters.Array!.Length ? parameters.Array : parameters.AsSpan().ToArray()
         );
 
@@ -105,6 +110,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         ParameterInfo[] parameters = method.GetParameters();
         ArgumentTypes = parameters.Length == 0 ? Type.EmptyTypes : new Type[parameters.Length];
         ArgumentTypeNames = parameters.Length == 0 ? Array.Empty<string>() : new string[parameters.Length];
+        IsStatic = method.IsStatic;
         for (int i = 0; i < parameters.Length; ++i)
         {
             Type parameterType = parameters[i].ParameterType;
@@ -119,14 +125,15 @@ public class RpcEndpoint : IRpcInvocationPoint
         CalculateSize();
     }
 
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, Assembly? expectedAssembly, Type? expectedType)
-        : this(declaringTypeName, methodName, argumentTypeNames, expectedAssembly, expectedType)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+        : this(declaringTypeName, methodName, argumentTypeNames, isStatic, expectedAssembly, expectedType)
     {
         EndpointId = knownId;
     }
 
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, Assembly? expectedAssembly, Type? expectedType)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
     {
+        IsStatic = isStatic;
         DeclaringTypeName = declaringTypeName;
         MethodName = methodName;
         bool foundAllTypes = false;
@@ -186,14 +193,16 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         Size = size;
     }
-    internal static unsafe IRpcInvocationPoint FromBytes(IRpcRouter router, byte* bytes, uint maxCt, out int bytesRead)
+    internal static unsafe IRpcInvocationPoint ReadFromBytes(IRpcRouter router, byte* bytes, uint maxCt, out int bytesRead)
     {
+        if (maxCt < 9)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
         byte* originalPtr = bytes;
-
-        if (maxCt < 8)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut);
+        bool isStatic = *bytes > 0;
+        ++bytes;
 
         uint knownRpcShortcutId = isLittleEndian
             ? Unsafe.ReadUnaligned<uint>(bytes)
@@ -212,9 +221,9 @@ public class RpcEndpoint : IRpcInvocationPoint
             : *bytes << 8 | bytes[1];
 
         bytes += sizeof(ushort);
-        int size = 9 + rpcTypeLength + rpcMethodLength;
+        int size = 10 + rpcTypeLength + rpcMethodLength;
         if (maxCt < size)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut);
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
         string typeName = Encoding.UTF8.GetString(bytes, rpcTypeLength);
         bytes += rpcTypeLength;
@@ -229,7 +238,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             size += sizeof(ushort);
 
             if (maxCt < size)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut);
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
             int argCt = isLittleEndian
                 ? *bytes | bytes[1] << 8
@@ -237,7 +246,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             size += argCt * 2;
 
             if (maxCt < size)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut);
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
             args = new string[argCt];
             Span<int> argLens = stackalloc int[argCt];
@@ -253,7 +262,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             }
 
             if (maxCt < size + ttlLen)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut);
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
             for (int i = 0; i < argCt; ++i)
             {
@@ -264,29 +273,31 @@ public class RpcEndpoint : IRpcInvocationPoint
         else args = null!;
 
         bytesRead = checked( (int)(bytes - originalPtr) );
-        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, args, bytesRead);
+        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, isStatic, args, bytesRead);
     }
-    internal static unsafe IRpcInvocationPoint FromStream(IRpcRouter router, Stream stream, out int bytesRead)
+    internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcRouter router, Stream stream, out int bytesRead)
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
 #if NETFRAMEWORK
         byte[] bytes = new byte[64];
 
-        int byteCt = stream.Read(bytes, 0, 8);
+        int byteCt = stream.Read(bytes, 0, 9);
 #else
         Span<byte> bytes = stackalloc byte[64];
 
-        int byteCt = stream.Read(bytes);
+        int byteCt = stream.Read(bytes[..9]);
 #endif
         if (byteCt < 8)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+        bool isStatic = bytes[0] > 0;
 
         uint knownRpcShortcutId = isLittleEndian
-            ? bytes[0] | (uint)bytes[1] << 8 | (uint)bytes[2] << 16 | (uint)bytes[3] << 24
-            : (uint)bytes[0] << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3];
+            ? bytes[1] | (uint)bytes[2] << 8 | (uint)bytes[3] << 16 | (uint)bytes[4] << 24
+            : (uint)bytes[1] << 24 | (uint)bytes[2] << 16 | (uint)bytes[3] << 8 | bytes[4];
 
-        int index = sizeof(uint);
+        int index = sizeof(uint) + 1;
 
         int rpcTypeLength = isLittleEndian
             ? bytes[index] | bytes[index + 1] << 8
@@ -317,7 +328,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 #endif
 
         if (byteCt < rpcTypeLength)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
 #if NETFRAMEWORK
         string typeName = Encoding.UTF8.GetString(bytes, 0, rpcTypeLength);
@@ -333,7 +344,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 #endif
 
         if (byteCt < rpcMethodLength)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
 #if NETFRAMEWORK
         string methodName = Encoding.UTF8.GetString(bytes, 0, rpcMethodLength);
@@ -345,7 +356,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         string[] args;
         int b = stream.ReadByte();
         if (b == -1)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
         ++index;
         if (b != 0)
         {
@@ -356,7 +367,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 #endif
 
             if (byteCt < 2)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
             int argCt = isLittleEndian
                 ? bytes[0] | bytes[1] << 8
@@ -379,7 +390,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 #endif
 
             if (byteCt < argCt * 2)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
             for (int i = 0; i < argCt; ++i)
             {
@@ -408,7 +419,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 #endif
 
             if (byteCt < argCt * 2)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut);
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
             int pos = 0;
             for (int i = 0; i < argCt; ++i)
@@ -424,6 +435,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         else args = null!;
 
         bytesRead = index;
-        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, args, bytesRead);
+        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, isStatic, args, bytesRead);
     }
+    bool IRpcInvocationPoint.CanCache => true;
 }

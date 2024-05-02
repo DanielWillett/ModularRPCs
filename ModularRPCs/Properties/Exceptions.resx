@@ -133,7 +133,7 @@
     <value>GetResult can not be explicitly called by user code.</value>
   </data>
   <data name="TypeNotInheritable" xml:space="preserve">
-    <value>The given type must not be sealed to be used as an RPC proxy.</value>
+    <value>The given type must be a non-sealed, non-abstract class to be used as an RPC proxy.</value>
   </data>
   <data name="TypeNotPublic" xml:space="preserve">
     <value>The given type and its declaring types must be public (or internal, given '[assembly: InternalsVisibleTo("ModularRPCs.Proxy")]' is in your AssemblyInfo file) to be used as an RPC proxy.</value>
@@ -173,5 +173,17 @@
   </data>
   <data name="RpcOverheadParseExceptionBufferRunOut" xml:space="preserve">
     <value>The RpcOverhead failed to parse a proper overhead because the buffer was too short.</value>
+  </data>
+  <data name="InstanceWithThisIdAlreadyExists" xml:space="preserve">
+    <value>An {1} of {0} and this id has already been registered.</value>
+  </data>
+  <data name="InstanceIdDefaultValue" xml:space="preserve">
+    <value>An {1} of {0}'s identifier still had it's default value after the base constructor.</value>
+  </data>
+  <data name="InstanceIdNotSet" xml:space="preserve">
+    <value>An {1} of {0}'s identifier was not set in the base constructor.</value>
+  </data>
+  <data name="RpcNotImplemented" xml:space="preserve">
+    <value>This RPC caller was not inherited by a parent class. Make sure you're getting this service's object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions.</value>
   </data>
 </root>

@@ -88,6 +88,33 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier still had it&apos;s default value after the base constructor..
+        /// </summary>
+        public static string InstanceIdDefaultValue {
+            get {
+                return ResourceManager.GetString("InstanceIdDefaultValue", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier was not set in the base constructor..
+        /// </summary>
+        public static string InstanceIdNotSet {
+            get {
+                return ResourceManager.GetString("InstanceIdNotSet", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to An {1} of {0} and this id has already been registered..
+        /// </summary>
+        public static string InstanceWithThisIdAlreadyExists {
+            get {
+                return ResourceManager.GetString("InstanceWithThisIdAlreadyExists", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use is not accessible or overridable by the proxy class. RPC send methods must be virtual or abstract (therefore non-static). To use internal constructors or methods, it&apos;s required to add &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; to your AssemblyInfo file..
         /// </summary>
         public static string InternalsNotVisibleMemberAccessException {
@@ -169,6 +196,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to This RPC caller was not inherited by a parent class. Make sure you&apos;re getting this service&apos;s object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions..
+        /// </summary>
+        public static string RpcNotImplemented {
+            get {
+                return ResourceManager.GetString("RpcNotImplemented", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead, likely due to bad data..
         /// </summary>
         public static string RpcOverheadParseException {
@@ -205,7 +241,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The given type must not be sealed to be used as an RPC proxy..
+        ///   Looks up a localized string similar to The given type must be a non-sealed, non-abstract class to be used as an RPC proxy..
         /// </summary>
         public static string TypeNotInheritable {
             get {

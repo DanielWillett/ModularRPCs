@@ -28,7 +28,12 @@ public sealed class ContiguousBuffer
     /// Max allowed message size in bytes, defaults to 128 MiB.
     /// </summary>
     public int MaxMessageSize { get; set; } = 134217728;
-    
+
+    /// <summary>
+    /// Number of bytes needed to trigger manual garbage collection after message cleanup, defaults to 16 KB.
+    /// </summary>
+    public int GCTriggerSizeThreshold { get; set; } = 16384;
+
     /// <summary>
     /// The buffer to read data to before calling <see cref="ProcessBuffer"/>.
     /// </summary>
@@ -97,7 +102,7 @@ public sealed class ContiguousBuffer
                                 goto reset;
                             }
                             
-                            PendingOverhead = RpcOverhead.ReadFromBytes(Connection, bytes, amtReceived);
+                            PendingOverhead = RpcOverhead.ReadFromBytes(Connection.Remote, bytes, amtReceived);
                             if (!PendingOverhead.CheckSizeHashValid())
                             {
                                 string msg = $"Mismatch in size hash of \"{PendingOverhead}\"!";
@@ -177,7 +182,7 @@ public sealed class ContiguousBuffer
                             System.Buffer.MemoryCopy(bytes, ptr, remaining, remaining);
                         BufferProgressUpdated?.Invoke(expectedSize, expectedSize);
                         callback(new Memory<byte>(_pendingData, 0, checked((int)expectedSize)), PendingOverhead);
-                        hadMuchData = _pendingData is { Length: > 16384 };
+                        hadMuchData = _pendingData.Length > GCTriggerSizeThreshold;
                         _pendingData = null;
                         PendingOverhead = default;
                         _pendingLength = 0;
@@ -189,7 +194,7 @@ public sealed class ContiguousBuffer
                     }
 
                     reset:
-                    hadMuchData = _pendingData is { Length: > 16384 };
+                    hadMuchData = _pendingData != null && _pendingData.Length > GCTriggerSizeThreshold;
                     _pendingData = null;
                     PendingOverhead = default;
                     _pendingLength = 0;

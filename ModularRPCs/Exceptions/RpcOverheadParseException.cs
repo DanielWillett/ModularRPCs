@@ -5,7 +5,7 @@ using DanielWillett.ModularRpcs.Protocol;
 namespace DanielWillett.ModularRpcs.Exceptions;
 
 /// <summary>
-/// Thrown by a <see cref="RpcOverhead.ReadFromBytes"/> when it fails to parse a proper overhead, likely due to bad data.
+/// Thrown by a <see cref="RpcOverhead.ReadFromBytes"/> or <see cref="RpcOverhead.ReadFromStream"/> when it fails to parse a proper overhead, likely due to bad data.
 /// </summary>
 [Serializable]
 public class RpcOverheadParseException : RpcException

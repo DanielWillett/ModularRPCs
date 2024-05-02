@@ -1,5 +1,6 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Protocol;
 using System;
 using System.IO;
 using System.Threading;
@@ -8,7 +9,7 @@ using System.Threading.Tasks;
 namespace DanielWillett.ModularRpcs.Loopback;
 public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection, IModularRpcServersideConnection
 {
-    public LoopbackRpcServersideLocalConnection Local { get; internal set; } = null!;
+    public LoopbackRpcServersideLocalConnection Local { get; internal set; }
     public LoopbackRpcClientsideRemoteConnection Client { get; internal set; } = null!;
     public LoopbackEndPoint EndPoint { get; }
     public bool IsClosed { get; internal set; }
@@ -23,15 +24,30 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
 
     IModularRpcRemoteEndPoint IModularRpcRemoteConnection.EndPoint => EndPoint;
     IModularRpcLocalConnection IModularRpcRemoteConnection.Local => Local;
-    ValueTask IModularRpcRemoteConnection.SendDataAsync(Stream? streamData, ArraySegment<byte> rawData, CancellationToken token)
+    unsafe ValueTask IModularRpcRemoteConnection.SendDataAsync(ReadOnlySpan<byte> rawData, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
 
-        if (rawData.Count <= 0 && streamData == null)
+        if (rawData.Length <= 0)
             throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
 
-        return Client.Local.Router.HandleReceivedData(Client.Local, streamData, rawData, token);
+        RpcOverhead overhead;
+        fixed (byte* ptr = rawData)
+        {
+            overhead = RpcOverhead.ReadFromBytes(Client, ptr, (uint)rawData.Length);
+        }
+
+        return Client.Local.Router.HandleReceivedData(overhead, rawData, token);
+    }
+    ValueTask IModularRpcRemoteConnection.SendDataAsync(Stream streamData, CancellationToken token)
+    {
+        if (IsClosed)
+            throw new RpcConnectionClosedException();
+
+        RpcOverhead overhead = RpcOverhead.ReadFromStream(Client, streamData);
+
+        return Client.Local.Router.HandleReceivedData(overhead, streamData, token);
     }
 
     public ValueTask DisposeAsync() => CloseAsync();

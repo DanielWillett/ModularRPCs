@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading;
-using DanielWillett.ModularRpcs.Annotations;
-using DanielWillett.ModularRpcs.Reflection;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -39,7 +39,7 @@ public static class ModularRpcExtensions
     /// Adds the given <see cref="ILogger{ProxyGenerator}"/> to the <see cref="ProxyGenerator"/> singleton.
     /// </summary>
     /// <exception cref="InvalidOperationException">There is no service of type <see cref="ILoggerFactory"/>.</exception>
-    public static void UseLoggingForProxyGenerator(ILogger logger)
+    public static void UseLoggingForProxyGenerator(ILogger? logger)
     {
         object? oldLogger = Interlocked.Exchange(ref ProxyGenerator.Instance.Logger, logger);
         if (oldLogger is not IDisposable disp)
@@ -51,7 +51,7 @@ public static class ModularRpcExtensions
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, $"Error disposing old logger after adding new {logger.GetType().Name} logger.");
+            logger?.LogError(ex, $"Error disposing old logger after adding new {logger.GetType().Name} logger.");
         }
     }
 

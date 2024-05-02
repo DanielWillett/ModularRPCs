@@ -21,9 +21,12 @@ public interface IModularRpcRemoteConnection : IModularRpcConnection
     IModularRpcRemoteEndPoint EndPoint { get; }
 
     /// <summary>
-    /// Called by the <see cref="IModularRpcRemoteConnection"/> when it receives data.
+    /// Send data in the form of raw binary data to the remote end.
     /// </summary>
-    /// <remarks>Will either supply a stream or raw data.</remarks>
-    /// <exception cref="InvalidOperationException">Didn't pass raw binary data or a valid stream.</exception>
-    ValueTask SendDataAsync(Stream? streamData, ArraySegment<byte> rawData, CancellationToken token = default);
+    ValueTask SendDataAsync(ReadOnlySpan<byte> rawData, CancellationToken token);
+
+    /// <summary>
+    /// Send data in the form of a stream to the remote end.
+    /// </summary>
+    ValueTask SendDataAsync(Stream streamData, CancellationToken token);
 }
