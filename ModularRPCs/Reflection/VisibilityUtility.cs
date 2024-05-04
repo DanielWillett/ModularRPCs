@@ -13,12 +13,33 @@ internal static class VisibilityUtility
             .Any(static x => x.AssemblyName.Equals(ProxyGenerator.Instance.ProxyAssemblyName.Name));
     }
     public static bool IsMethodOverridable(MethodBase method)
-        => method is { DeclaringType: not null, IsStatic: false, IsFinal: false }
-           && IsMethodOverridable(method, AssemblyGivesInternalAccess(method.DeclaringType.Assembly));
+    {
+        if (method.IsStatic || method.DeclaringType == null || method.IsFinal || method is { IsConstructor: false, IsVirtual: false, IsAbstract: false })
+            return false;
+
+        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+            return true;
+
+        if (AssemblyGivesInternalAccess(method.DeclaringType.Assembly))
+        {
+            if (method.IsPrivate)
+                return false;
+        }
+        else
+        {
+            if (method is not { IsAssembly: false, IsFamilyAndAssembly: false, IsPrivate: false })
+                return false;
+        }
+
+        return true;
+    }
     public static bool IsMethodOverridable(MethodBase method, bool assemblyGivesInternalAccess)
     {
         if (method.IsStatic || method.DeclaringType == null || method.IsFinal || method is { IsConstructor: false, IsVirtual: false, IsAbstract: false })
             return false;
+
+        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+            return true;
 
         if (assemblyGivesInternalAccess)
         {
@@ -36,6 +57,9 @@ internal static class VisibilityUtility
     public static bool IsTypeVisible(Type type) => IsTypeVisible(type, AssemblyGivesInternalAccess(type.Assembly));
     public static bool IsTypeVisible(Type type, bool assemblyGivesInternalAccess)
     {
+        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+            return true;
+
         Type? nestingType = type;
         for (; nestingType != null; nestingType = nestingType.DeclaringType)
         {

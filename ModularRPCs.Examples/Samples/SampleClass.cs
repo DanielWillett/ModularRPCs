@@ -7,30 +7,26 @@ using DanielWillett.ModularRpcs.Invocation;
 using DanielWillett.ModularRpcs.Protocol;
 // ReSharper disable LocalizableElement
 
-namespace DanielWillett.ModularRpcs.Examples;
+namespace DanielWillett.ModularRpcs.Examples.Samples;
 
 [RpcClass]
 public class SampleClass : IRpcObject<int>
 {
     private static int _identifier;
     public int Identifier { get; set; }
-    public bool HasIdentifier { get; set; }
     public SampleClass()
     {
         Identifier = Interlocked.Increment(ref _identifier);
-        HasIdentifier = true;
         Console.WriteLine("Called base ctor");
     }
     public SampleClass(string test1)
     {
         Identifier = Interlocked.Increment(ref _identifier);
-        HasIdentifier = true;
         Console.WriteLine($"Called base ctor ({test1})");
     }
     public SampleClass(string test1, bool test2)
     {
         Identifier = Interlocked.Increment(ref _identifier);
-        HasIdentifier = true;
         Console.WriteLine($"Called base ctor ({test1}, {test2})");
     }
 

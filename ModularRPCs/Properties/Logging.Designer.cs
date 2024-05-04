@@ -61,7 +61,25 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The constructor with arguments {0} in type &apos;{1}&apos; is not accessible by the proxy class. To use internal constructors, consider adding &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; to your AssemblyInfo file..
+        ///   Looks up a localized string similar to Unable to find a backing field for the identifier of type &apos;{0}&apos;. This is not an error. Consider annotating the backing field with the RpcIdentifierBackingFieldAttribute or the property with the RpcDontUseBackingFieldAttribute..
+        /// </summary>
+        internal static string BackingFieldNotFound {
+            get {
+                return ResourceManager.GetString("BackingFieldNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The backing field in type &apos;{0}&apos; annoted with the RpcIdentifierBackingFieldAttribute is not of a valid type, is ignored, or isn&apos;t accessible from the parent class..
+        /// </summary>
+        internal static string BackingFieldNotValid {
+            get {
+                return ResourceManager.GetString("BackingFieldNotValid", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The constructor with arguments {0} in type &apos;{1}&apos; is not accessible by the proxy class..
         /// </summary>
         internal static string ConstructorNotVisibileToOverridingClasses {
             get {
@@ -70,7 +88,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The method &apos;{0}&apos; in type &apos;{1}&apos; is not accessible by the proxy class. To use internal methods, consider adding &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; to your AssemblyInfo file..
+        ///   Looks up a localized string similar to The method &apos;{0}&apos; in type &apos;{1}&apos; is not accessible or overridable by the proxy class..
         /// </summary>
         internal static string MethodNotVisibileToOverridingClasses {
             get {

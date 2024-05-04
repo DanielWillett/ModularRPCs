@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Logging;
 using System;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ReflectionTools;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -20,10 +21,10 @@ public static class LoggingExtensions
     }
 
     /// <summary>
-    /// Tells a <see cref="ContiguousBuffer"/> to use the <see cref="Console"/> to log messages.
+    /// Tells a <see cref="ContiguousBuffer"/> to use the logger set at <see cref="Accessor.Logger"/> to log messages.
     /// </summary>
     /// <remarks>This is the default behavior.</remarks>
-    public static void SetConsoleLogger(this ContiguousBuffer buffer)
+    public static void SetAccessorLogger(this ContiguousBuffer buffer)
     {
         buffer.Logger = null;
     }
@@ -37,10 +38,10 @@ public static class LoggingExtensions
     }
 
     /// <summary>
-    /// Tells the <see cref="ProxyGenerator"/> to use the <see cref="Console"/> to log messages.
+    /// Tells the <see cref="ProxyGenerator"/> to use the logger set at <see cref="Accessor.Logger"/> to log messages.
     /// </summary>
     /// <remarks>This is the default behavior.</remarks>
-    public static void SetConsoleLogger(this ProxyGenerator proxyGenerator)
+    public static void SetAccessorLogger(this ProxyGenerator proxyGenerator)
     {
         proxyGenerator.Logger = null;
     }

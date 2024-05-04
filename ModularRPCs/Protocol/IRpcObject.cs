@@ -1,6 +1,5 @@
 ﻿namespace DanielWillett.ModularRpcs.Protocol;
-public interface IRpcObject<T>
+public interface IRpcObject<out T>
 {
-    T Identifier { get; set; }
-    bool HasIdentifier { get; set; }
+    T Identifier { get; }
 }

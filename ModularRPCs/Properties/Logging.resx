@@ -117,10 +117,16 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="BackingFieldNotFound" xml:space="preserve">
+    <value>Unable to find a backing field for the identifier of type '{0}'. This is not an error. Consider annotating the backing field with the RpcIdentifierBackingFieldAttribute or the property with the RpcDontUseBackingFieldAttribute.</value>
+  </data>
+  <data name="BackingFieldNotValid" xml:space="preserve">
+    <value>The backing field in type '{0}' annoted with the RpcIdentifierBackingFieldAttribute is not of a valid type, is ignored, or isn't accessible from the parent class.</value>
+  </data>
   <data name="ConstructorNotVisibileToOverridingClasses" xml:space="preserve">
-    <value>The constructor with arguments {0} in type '{1}' is not accessible by the proxy class. To use internal constructors, consider adding '[assembly: InternalsVisibleTo("ModularRPCs.Proxy")]' to your AssemblyInfo file.</value>
+    <value>The constructor with arguments {0} in type '{1}' is not accessible by the proxy class.</value>
   </data>
   <data name="MethodNotVisibileToOverridingClasses" xml:space="preserve">
-    <value>The method '{0}' in type '{1}' is not accessible by the proxy class. To use internal methods, consider adding '[assembly: InternalsVisibleTo("ModularRPCs.Proxy")]' to your AssemblyInfo file.</value>
+    <value>The method '{0}' in type '{1}' is not accessible or overridable by the proxy class.</value>
   </data>
 </root>

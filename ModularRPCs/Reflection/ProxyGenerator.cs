@@ -9,6 +9,7 @@ using DanielWillett.ReflectionTools.Formatting;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -23,7 +24,18 @@ namespace DanielWillett.ModularRpcs.Reflection;
 public sealed class ProxyGenerator
 {
     private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
+    private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
+
+    private readonly string[] _identifierFieldNamesToSearch =
+    [
+        "_identifier",
+        "m_identifier",
+        "identifier",
+        "_id",
+        "id",
+        "m_id",
+    ];
 
     /// <summary>
     /// Set using <see cref="LoggingExtensions.SetLogger(ProxyGenerator, ILogger)"/>. 
@@ -34,6 +46,12 @@ public sealed class ProxyGenerator
     /// Name of the private field used to store instances in a proxy class that implemnets <see cref="IRpcObject{T}"/>.
     /// </summary>
     public string InstancesFieldName => "_instances<RPC_Proxy>";
+
+    /// <summary>
+    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>bool(T, out Self)</c>.
+    /// </summary>
+    public string GetInstanceMethodName => "GetInstance<RPC_Proxy>";
+
     internal AssemblyBuilder AssemblyBuilder { get; }
     internal ModuleBuilder ModuleBuilder { get; }
 
@@ -55,7 +73,7 @@ public sealed class ProxyGenerator
         AssemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(ProxyAssemblyName, AssemblyBuilderAccess.RunAndCollect);
         ModuleBuilder = AssemblyBuilder.DefineDynamicModule(ProxyAssemblyName.Name!);
         _identifierErrorConstructor = typeof(RpcObjectInitializationException).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [ typeof(string) ], null)
-                                      ?? throw new MemberAccessException($"Failed to find RpcObjectInitializationException(string).");
+                                      ?? throw new MemberAccessException("Failed to find RpcObjectInitializationException(string).");
     }
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
@@ -167,28 +185,56 @@ public sealed class ProxyGenerator
 
         TypeBuilder typeBuilder = ModuleBuilder.DefineType(type.Name + "<RPC_Proxy>",
             TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
+        Assembly asm = type.Assembly;
+        
+        // most builds of mono don't work with that attribute
+        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+        {
+            lock (_accessIgnoredAssemblies)
+            {
+                if (!_accessIgnoredAssemblies.Contains(asm))
+                {
+                    CustomAttributeBuilder attr = new CustomAttributeBuilder(
+                        typeof(IgnoresAccessChecksToAttribute).GetConstructor([typeof(string)])!,
+                        [asm.GetName().Name]
+                    );
+
+                    AssemblyBuilder.SetCustomAttribute(attr);
+                    _accessIgnoredAssemblies.Add(asm);
+                }
+            }
+        }
+
         Type? interfaceType = type.GetInterfaces().FirstOrDefault(intx => intx.IsGenericType && intx.GetGenericTypeDefinition() == typeof(IRpcObject<>));
         Type? idType = interfaceType?.GenericTypeArguments[0];
+        Type? elementType = idType;
         Type dictType;
         MethodInfo dictTryAddMethod;
         FieldBuilder dictField;
+        bool isNullable = false;
         if (idType != null)
         {
-            dictType = typeof(ConcurrentDictionary<,>).MakeGenericType(idType, type);
+            isNullable = idType is { IsValueType: true, IsGenericType: true } && idType.GetGenericTypeDefinition() == typeof(Nullable<>);
+
+            if (isNullable)
+                elementType = idType.GetGenericArguments()[0];
+
+            dictType = typeof(ConcurrentDictionary<,>).MakeGenericType(elementType!, type);
 
             dictTryAddMethod = dictType.GetMethod(nameof(ConcurrentDictionary<object, object>.TryAdd), BindingFlags.Instance | BindingFlags.Public)
                                           ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(
                                               new MethodDefinition(nameof(ConcurrentDictionary<object, object>.TryAdd))
                                                   .Returning<bool>()
                                                   .DeclaredIn(dictType, isStatic: false)
-                                                  .WithParameter(idType, "key")
+                                                  .WithParameter(elementType!, "key")
                                                   .WithParameter(type, "value")
                                               )}.");
 
+            // define identifier static concurrent dictionary
             dictField = typeBuilder.DefineField(
                 InstancesFieldName,
                 dictType,
-                FieldAttributes.Private | FieldAttributes.InitOnly
+                FieldAttributes.Private | FieldAttributes.InitOnly | FieldAttributes.Static
             );
         }
         else
@@ -204,12 +250,12 @@ public sealed class ProxyGenerator
             if (baseCtor.IsPrivate)
                 continue;
 
-            if (!VisibilityUtility.IsMethodOverridable(baseCtor, typeGivesInternalAccess))
+            if (!VisibilityUtility.IsMethodOverridable(baseCtor))
             {
                 if (Logger != null)
                     LogWarning(string.Format(Properties.Logging.ConstructorNotVisibileToOverridingClasses, Accessor.Formatter.Format(baseCtor), type.FullName));
-                else
-                    Console.WriteLine(Properties.Logging.ConstructorNotVisibileToOverridingClasses, Accessor.Formatter.Format(baseCtor), type.FullName);
+                else if (Accessor.LogWarningMessages)
+                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.ConstructorNotVisibileToOverridingClasses, Accessor.Formatter.Format(baseCtor), type.FullName));
                 continue;
             }
 
@@ -227,13 +273,14 @@ public sealed class ProxyGenerator
 
             ConstructorBuilder builder = typeBuilder.DefineConstructor(baseCtor.Attributes & ~MethodAttributes.HasSecurity, baseCtor.CallingConvention, types, reqMods, optMods);
 
-            IOpCodeEmitter il = builder.GetILGenerator().AsEmitter(debuggable: debugPrint);
+            IOpCodeEmitter il = builder.AsEmitter(debuggable: debugPrint);
             il.Emit(OpCodes.Ldarg_0);
 
             for (int i = 0; i < types.Length; ++i)
                 EmitUtility.EmitArgument(il, i + 1, false);
 
             il.Emit(OpCodes.Call, baseCtor);
+            
             if (idType != null)
             {
                 MethodInfo identifierGetter = interfaceType!
@@ -246,6 +293,95 @@ public sealed class ProxyGenerator
                                                   )}.");
 
                 identifierGetter = Accessor.GetImplementedMethod(type, identifierGetter) ?? identifierGetter;
+                string expectedPropertyName = identifierGetter.Name.Replace("get_", string.Empty);
+                PropertyInfo? identifierProperty = type.GetProperty(expectedPropertyName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (identifierProperty == null || identifierProperty.GetGetMethod(true) != identifierGetter)
+                {
+                    PropertyInfo[] properties = type.GetProperties();
+                    identifierProperty = properties.FirstOrDefault(prop => prop.GetGetMethod(true) == identifierGetter);
+                }
+
+                if (identifierProperty != null)
+                    expectedPropertyName = identifierProperty.Name;
+
+                FieldInfo? identifierBackingField = null;
+
+                bool backingFieldIsExplicit = false;
+
+                // try to identify the backing field for the property, if it exists.
+                // this is not necessary but can reduce data copying by referencing the address of the field instead of getting from property
+                if ((identifierProperty == null || !identifierProperty.IsDefinedSafe<RpcDontUseBackingFieldAttribute>())
+                    && identifierGetter.DeclaringType is { IsInterface: false })
+                {
+                    FieldInfo[] fields = identifierGetter.DeclaringType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+                    identifierBackingField = fields.FirstOrDefault(field => field.IsDefinedSafe<RpcIdentifierBackingFieldAttribute>());
+                    backingFieldIsExplicit = true;
+                    if (identifierBackingField != null && (identifierBackingField.IsStatic || identifierBackingField.FieldType != idType || identifierBackingField.IsIgnored()))
+                    {
+                        if (Logger != null)
+                            LogWarning(string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
+                        else if (Accessor.LogWarningMessages)
+                            Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
+                    }
+
+                    if (identifierBackingField == null)
+                    {
+                        backingFieldIsExplicit = false;
+
+                        // auto-property
+                        identifierBackingField = identifierGetter.DeclaringType.GetField("<" + expectedPropertyName + ">k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance);
+
+                        if (identifierBackingField == null || identifierBackingField.FieldType != idType || identifierBackingField.IsIgnored())
+                        {
+                            // explicitly implemented auto-property
+                            string explName = "<DanielWillett.ModularRpcs.Protocol.IRpcObject<" + (isNullable ? elementType! : idType) + (isNullable ? "?" : string.Empty) + ">.Identifier>k__BackingField";
+                            identifierBackingField = identifierGetter.DeclaringType.GetField(explName, BindingFlags.NonPublic | BindingFlags.Instance);
+
+                            if (identifierBackingField == null || identifierBackingField.FieldType != idType || identifierBackingField.IsIgnored())
+                            {
+                                // predefined field names
+                                identifierBackingField = null;
+                                for (int i = 0; i < _identifierFieldNamesToSearch.Length; ++i)
+                                {
+                                    identifierBackingField = identifierGetter.DeclaringType.GetField("_identifier", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.IgnoreCase);
+
+                                    if (identifierBackingField != null && identifierBackingField.FieldType == idType && !identifierBackingField.IsIgnored())
+                                        break;
+
+                                    identifierBackingField = null;
+                                }
+                            }
+                        }
+                    }
+
+                    if (identifierBackingField == null)
+                    {
+                        if (Logger != null)
+                            LogDebug(string.Format(Properties.Logging.BackingFieldNotFound, Accessor.Formatter.Format(type)));
+                        else if (Accessor.LogDebugMessages)
+                            Accessor.Logger?.LogDebug(nameof(ProxyGenerator), string.Format(Properties.Logging.BackingFieldNotFound, Accessor.Formatter.Format(type)));
+                    }
+                }
+
+                if (identifierBackingField != null && identifierBackingField.IsDefinedSafe<RpcDontUseBackingFieldAttribute>())
+                    identifierBackingField = null;
+
+                if (identifierBackingField != null && Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+                {
+                    MemberVisibility vis = identifierBackingField.GetVisibility();
+                    if (!typeGivesInternalAccess && vis != MemberVisibility.Public
+                        || typeGivesInternalAccess && vis is MemberVisibility.Private or MemberVisibility.Protected)
+                    {
+                        identifierBackingField = null;
+                        if (backingFieldIsExplicit)
+                        {
+                            if (Logger != null)
+                                LogWarning(string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
+                            else if (Accessor.LogWarningMessages)
+                                Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
+                        }
+                    }
+                }
 
                 LocalBuilder identifier = il.DeclareLocal(idType);
 
@@ -253,92 +389,157 @@ public sealed class ProxyGenerator
                 Label ifDidntAdd = il.DefineLabel();
                 Label? ifDefault = null;
                 il.Emit(OpCodes.Ldarg_0);
-                il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
+                bool isAddr = false;
+                LocalBuilder id2 = identifier;
+                MethodInfo? getValueMethod = null;
                 if (idType.IsValueType)
                 {
-                    if (idType.IsPrimitive && (idType == typeof(long)
-                                               || idType == typeof(ulong)
-                                               || idType == typeof(int)
-                                               || idType == typeof(uint)
-                                               || idType == typeof(short)
-                                               || idType == typeof(ushort)
-                                               || idType == typeof(sbyte)
-                                               || idType == typeof(byte)
-                                               || idType == typeof(char)
-                                               || idType == typeof(float)
-                                               || idType == typeof(double)
-                                               || idType == typeof(nint)
-                                               || idType == typeof(nuint)))
+                    if (isNullable)
                     {
+                        MethodInfo getHasValue = idType.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?
+                            .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.HasValue))
+                                .DeclaredIn(idType, isStatic: false)
+                                .WithPropertyType<bool>()
+                                .WithNoSetter())
+                            }.");
+
+                        getValueMethod = idType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?
+                            .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.Value))
+                                .DeclaredIn(idType, isStatic: false)
+                                .WithPropertyType(elementType!)
+                                .WithNoSetter())
+                            }.");
+
+                        if (identifierBackingField != null)
+                        {
+                            id2 = il.DeclareLocal(idType.MakeByRefType());
+                            isAddr = true;
+
+                            il.Emit(OpCodes.Ldflda, identifierBackingField);
+                            il.Emit(OpCodes.Dup);
+                            il.Emit(OpCodes.Stloc_S, id2);
+                        }
+                        else
+                        {
+                            il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
+                            il.Emit(OpCodes.Stloc_S, id2);
+                            il.Emit(OpCodes.Ldloca_S, id2);
+                        }
+
+                        il.Emit(OpCodes.Call, getHasValue);
+                        il.Emit(OpCodes.Brtrue_S, ifNotDefault);
+                    }
+                    else if (idType.IsPrimitive && (idType == typeof(long)
+                                                    || idType == typeof(ulong)
+                                                    || idType == typeof(int)
+                                                    || idType == typeof(uint)
+                                                    || idType == typeof(short)
+                                                    || idType == typeof(ushort)
+                                                    || idType == typeof(sbyte)
+                                                    || idType == typeof(byte)
+                                                    || idType == typeof(char)
+                                                    || idType == typeof(float)
+                                                    || idType == typeof(double)
+                                                    || idType == typeof(nint)
+                                                    || idType == typeof(nuint)))
+                    {
+                        if (identifierBackingField != null)
+                            il.Emit(OpCodes.Ldfld, identifierBackingField);
+                        else
+                            il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
                         il.Emit(OpCodes.Dup);
                         il.Emit(OpCodes.Stloc_S, identifier);
                         il.Emit(OpCodes.Brtrue, ifNotDefault);
                     }
                     else
                     {
-                        LocalBuilder lclCheck = il.DeclareLocal(idType);
+                        if (identifierBackingField != null)
+                        {
+                            id2 = il.DeclareLocal(idType.MakeByRefType());
+                            isAddr = true;
 
-                        il.Emit(OpCodes.Stloc_S, identifier);
+                            il.Emit(OpCodes.Ldflda, identifierBackingField);
+                            il.Emit(OpCodes.Dup);
+                            il.Emit(OpCodes.Stloc_S, id2);
+                        }
+                        else
+                        {
+                            il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
+                            il.Emit(OpCodes.Stloc_S, id2);
+                            il.Emit(OpCodes.Ldloca_S, id2);
+                        }
+
+                        // check if value == default
+                        LocalBuilder lclCheck = il.DeclareLocal(idType);
                         il.Emit(OpCodes.Ldloca_S, lclCheck);
                         il.Emit(OpCodes.Initobj, idType);
+                        il.Emit(isAddr ? OpCodes.Ldloc_S : OpCodes.Ldloca_S, id2);
+
                         il.Emit(OpCodes.Ldloca_S, identifier);
-                        Type equatableType = typeof(IEquatable<>).MakeGenericType(idType);
-                        if (equatableType.IsAssignableFrom(idType))
+                        MethodInfo? refEqual = idType.GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ idType.MakeByRefType() ], null);
+                        if (refEqual != null && !refEqual.IsIgnored())
                         {
-                            MethodInfo equal = equatableType.GetMethod(nameof(IEquatable<int>.Equals), BindingFlags.Public | BindingFlags.Instance)
-                                                ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IEquatable<int>.Equals))
-                                                    .DeclaredIn(equatableType, isStatic: false)
-                                                    .WithParameter(idType, "other")
-                                                    .Returning<bool>())
-                                                }.");
-                            equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
-                            il.Emit(OpCodes.Ldloc_S, lclCheck);
-                            il.Emit(equal.GetCallRuntime(), equal);
+                            il.Emit(OpCodes.Ldloca_S, lclCheck);
+                            il.Emit(OpCodes.Call, refEqual);
                             il.Emit(OpCodes.Brfalse, ifNotDefault);
                         }
                         else
                         {
-                            Type comparableType = typeof(IComparable<>).MakeGenericType(idType);
+                            Type equatableType = typeof(IEquatable<>).MakeGenericType(idType);
                             if (equatableType.IsAssignableFrom(idType))
                             {
-                                MethodInfo equal = comparableType.GetMethod(nameof(IComparable<int>.CompareTo), BindingFlags.Public | BindingFlags.Instance)
-                                                   ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IComparable<int>.CompareTo))
-                                                       .DeclaredIn(comparableType, isStatic: false)
-                                                       .WithParameter(idType, "other")
-                                                       .Returning<int>())
-                                                   }.");
+                                MethodInfo equal = equatableType.GetMethod(nameof(IEquatable<int>.Equals), BindingFlags.Public | BindingFlags.Instance)
+                                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IEquatable<int>.Equals))
+                                                        .DeclaredIn(equatableType, isStatic: false)
+                                                        .WithParameter(idType, "other")
+                                                        .Returning<bool>())
+                                                    }.");
+
                                 equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
                                 il.Emit(OpCodes.Ldloc_S, lclCheck);
                                 il.Emit(equal.GetCallRuntime(), equal);
-                                il.Emit(OpCodes.Brtrue, ifNotDefault);
+                                il.Emit(OpCodes.Brfalse, ifNotDefault);
                             }
                             else
                             {
-                                il.Emit(OpCodes.Ldloca_S, identifier);
-                                MethodInfo? refEqual = idType.GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ idType.MakeByRefType() ], null);
-                                if (refEqual != null)
+                                Type comparableType = typeof(IComparable<>).MakeGenericType(idType);
+                                if (equatableType.IsAssignableFrom(idType))
                                 {
-                                    il.Emit(OpCodes.Ldloca_S, lclCheck);
-                                    il.Emit(OpCodes.Call, refEqual);
+                                    MethodInfo equal = comparableType.GetMethod(nameof(IComparable<int>.CompareTo), BindingFlags.Public | BindingFlags.Instance)
+                                                       ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IComparable<int>.CompareTo))
+                                                           .DeclaredIn(comparableType, isStatic: false)
+                                                           .WithParameter(idType, "other")
+                                                           .Returning<int>())
+                                                       }.");
+
+                                    equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
+                                    il.Emit(OpCodes.Ldloc_S, lclCheck);
+                                    il.Emit(equal.GetCallRuntime(), equal);
+                                    il.Emit(OpCodes.Brtrue, ifNotDefault);
                                 }
                                 else
                                 {
-                                    MethodInfo equal = typeof(object).GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(object) ], null)
+                                    MethodInfo equal = typeof(object).GetMethod(nameof(Equals), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [typeof(object)], null)
                                                        ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(Equals))
                                                            .DeclaredIn(typeof(object), isStatic: false)
                                                            .WithParameter<object?>("obj")
                                                            .Returning<bool>())
                                                        }.");
+
                                     il.Emit(OpCodes.Ldloc_S, lclCheck);
                                     il.Emit(OpCodes.Callvirt, equal);
+                                    il.Emit(OpCodes.Brfalse, ifNotDefault);
                                 }
-                                il.Emit(OpCodes.Brfalse, ifNotDefault);
                             }
                         }
                     }
                 }
                 else if (idType == typeof(string))
                 {
+                    if (identifierBackingField != null)
+                        il.Emit(OpCodes.Ldfld, identifierBackingField);
+                    else
+                        il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
                     ifDefault = il.DefineLabel();
                     il.Emit(OpCodes.Dup);
                     il.Emit(OpCodes.Stloc_S, identifier);
@@ -358,6 +559,10 @@ public sealed class ProxyGenerator
                 }
                 else
                 {
+                    if (identifierBackingField != null)
+                        il.Emit(OpCodes.Ldfld, identifierBackingField);
+                    else
+                        il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
                     il.Emit(OpCodes.Dup);
                     il.Emit(OpCodes.Stloc_S, identifier);
                     il.Emit(OpCodes.Ldnull);
@@ -375,8 +580,19 @@ public sealed class ProxyGenerator
 
                 il.MarkLabel(ifNotDefault);
                 il.Emit(OpCodes.Ldsfld, dictField);
+                
+                if (isNullable)
+                {
+                    il.Emit(isAddr ? OpCodes.Ldloc_S : OpCodes.Ldloca_S, id2);
+                    il.Emit(OpCodes.Call, getValueMethod!);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldloc_S, id2);
+                    if (isAddr)
+                        il.Emit(OpCodes.Ldind_Ref);
+                }
 
-                il.Emit(OpCodes.Ldloc_S, identifier);
                 il.Emit(OpCodes.Ldarg_0);
                 il.Emit(OpCodes.Castclass, type);
 
@@ -415,26 +631,26 @@ public sealed class ProxyGenerator
                                         .DeclaredIn(dictType, isStatic: false)
                                         .Returning<bool>()
                                         .WithParameter(idType, "key")
-                                        .WithParameter(type.MakeByRefType(), "value", ByRefTypeMode.Out))
-                                    }.");
+                                        .WithParameter(type.MakeByRefType(), "value", ByRefTypeMode.Out))}.");
 
             ConstructorBuilder typeInitializer = typeBuilder.DefineTypeInitializer();
-            IOpCodeEmitter il = typeInitializer.GetILGenerator().AsEmitter(debuggable: debugPrint);
+            IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: debugPrint);
             il.Emit(OpCodes.Newobj, dictCtor);
             il.Emit(OpCodes.Stsfld, dictField);
             il.Emit(OpCodes.Ret);
 
             MethodBuilder tryFetchMethod = typeBuilder.DefineMethod(
-                "GetInstance<RPC_Proxy>",
+                GetInstanceMethodName,
                 MethodAttributes.Public | MethodAttributes.Static, CallingConventions.Standard,
                 typeof(bool),
-                [idType, typeBuilder.MakeByRefType()]
+                [ elementType, type.MakeByRefType() ]
             );
 
             tryFetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
             tryFetchMethod.DefineParameter(2, ParameterAttributes.Out, "object");
 
-            il = tryFetchMethod.GetILGenerator().AsEmitter(debuggable: debugPrint);
+            il = tryFetchMethod.AsEmitter(debuggable: debugPrint);
+
             il.Emit(OpCodes.Ldsfld, dictField);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg_1);
@@ -465,12 +681,12 @@ public sealed class ProxyGenerator
             if (!method.IsDefinedSafe<RpcSendAttribute>() || method.DeclaringType == typeof(object))
                 continue;
 
-            if (!VisibilityUtility.IsMethodOverridable(method, typeGivesInternalAccess))
+            if (!VisibilityUtility.IsMethodOverridable(method))
             {
                 if (Logger != null)
                     LogWarning(string.Format(Properties.Logging.MethodNotVisibileToOverridingClasses, Accessor.Formatter.Format(method), type.FullName));
-                else
-                    Console.WriteLine(Properties.Logging.MethodNotVisibileToOverridingClasses, Accessor.Formatter.Format(method), type.FullName);
+                else if (Accessor.LogWarningMessages)
+                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.MethodNotVisibileToOverridingClasses, Accessor.Formatter.Format(method), type.FullName));
                 continue;
             }
 
@@ -514,6 +730,7 @@ public sealed class ProxyGenerator
 
         try
         {
+            // ReSharper disable once RedundantSuppressNullableWarningExpression
             return builder.CreateType()!;
         }
         catch (TypeLoadException ex)
@@ -528,5 +745,13 @@ public sealed class ProxyGenerator
         // separated it like this to avoid having a strict reliance on Microsoft.Extensions.Logging.Abstractions.dll
         if (Logger is ILogger logger)
             logger.LogWarning(text);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogDebug(string text)
+    {
+        // separated it like this to avoid having a strict reliance on Microsoft.Extensions.Logging.Abstractions.dll
+        if (Logger is ILogger logger)
+            logger.LogDebug(text);
     }
 }

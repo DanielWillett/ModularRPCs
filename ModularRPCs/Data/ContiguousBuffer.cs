@@ -7,6 +7,7 @@ using System;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using DanielWillett.ReflectionTools;
 
 namespace DanielWillett.ModularRpcs.Data;
 
@@ -250,14 +251,14 @@ public sealed class ContiguousBuffer
         if (Logger != null)
             LogWarningExt(text);
         else
-            Console.WriteLine(text);
+            Accessor.Logger?.LogWarning(nameof(ContiguousBuffer), text);
     }
     private void LogError(string text)
     {
         if (Logger != null)
             LogErrorExt(text);
         else
-            Console.WriteLine(text);
+            Accessor.Logger?.LogError(nameof(ContiguousBuffer), null, text);
     }
 
     // separated it like this to avoid having a strict reliance on Microsoft.Extensions.Logging.Abstractions.dll
