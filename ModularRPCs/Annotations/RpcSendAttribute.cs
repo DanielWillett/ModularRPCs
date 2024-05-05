@@ -5,7 +5,7 @@ using JetBrains.Annotations;
 namespace DanielWillett.ModularRpcs.Annotations;
 
 /// <summary>
-/// Marks a virtual or abstract RPC method as an RPC caller. It should return either <see langword="void"/>, <see cref="RpcTask"/>, or <see cref="RpcTask"/>.
+/// Marks a virtual or abstract RPC method as an RPC caller. It should return either <see langword="void"/>, <see cref="RpcTask"/>, or <see cref="RpcTask{T}"/>.
 /// <code>
 /// [RpcSend]
 /// protected virtual RpcTask CallRpc() { }

@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Reflection;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -25,6 +26,11 @@ public class RpcEndpoint : IRpcInvocationPoint
     /// Is the invocation point expecting a target object?
     /// </summary>
     public bool IsStatic { get; }
+
+    /// <summary>
+    /// The identifier, if any, to identify the instance with.
+    /// </summary>
+    public object? Identifier { get; }
 
     /// <summary>
     /// The fully declared name of the declaring type.
@@ -61,52 +67,12 @@ public class RpcEndpoint : IRpcInvocationPoint
     /// </summary>
     public int Size { get; private set; }
 
-    public ValueTask Invoke(object? targetObject, ArraySegment<object> parameters)
-    {
-        if (Method == null)
-            throw new RpcEndpointNotFoundException(this);
-
-        object? returnedValue = Method.Invoke(
-            IsStatic ? null : targetObject,
-            parameters.Offset == 0 && parameters.Count == parameters.Array!.Length ? parameters.Array : parameters.AsSpan().ToArray()
-        );
-
-        switch (returnedValue)
-        {
-            case null when Method.ReturnType == typeof(void):
-                return default;
-            case Task task:
-                return new ValueTask(task);
-            case ValueTask vt:
-                return vt;
-        }
-
-        Type returnedType = returnedValue?.GetType() ?? Method.ReturnType;
-        if (returnedType.IsGenericType && returnedType.GetGenericTypeDefinition() == typeof(ValueTask<>))
-        {
-            MethodInfo? asTaskMethod = returnedType.GetMethod("AsTask", BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.Any, Type.EmptyTypes, null);
-            if (asTaskMethod == null || asTaskMethod.Invoke(returnedValue, Array.Empty<object>()) is not Task task)
-                return default;
-
-            return new ValueTask(task);
-        }
-
-        _fromResultMethod ??= typeof(Task).GetMethod("FromResult", BindingFlags.Static | BindingFlags.Instance);
-        if (_fromResultMethod == null
-            || !_fromResultMethod.IsGenericMethodDefinition
-            || _fromResultMethod.MakeGenericMethod(returnedType).Invoke(null, [ returnedValue ]) is not Task newTask)
-        {
-            return default;
-        }
-
-        return new ValueTask(newTask);
-    }
-
-    internal RpcEndpoint(MethodInfo method)
+    internal RpcEndpoint(MethodInfo method, object? identifier)
     {
         if (method.DeclaringType == null)
             throw new ArgumentException(Properties.Exceptions.MethodHasNoDeclaringType, nameof(method));
 
+        Identifier = identifier;
         ParameterInfo[] parameters = method.GetParameters();
         ArgumentTypes = parameters.Length == 0 ? Type.EmptyTypes : new Type[parameters.Length];
         ArgumentTypeNames = parameters.Length == 0 ? Array.Empty<string>() : new string[parameters.Length];
@@ -125,17 +91,18 @@ public class RpcEndpoint : IRpcInvocationPoint
         CalculateSize();
     }
 
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : this(declaringTypeName, methodName, argumentTypeNames, isStatic, expectedAssembly, expectedType)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, object? identifier, Assembly? expectedAssembly = null, Type? expectedType = null)
+        : this(declaringTypeName, methodName, argumentTypeNames, isStatic, identifier, expectedAssembly, expectedType)
     {
         EndpointId = knownId;
     }
 
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, object? identifier, Assembly? expectedAssembly = null, Type? expectedType = null)
     {
         IsStatic = isStatic;
         DeclaringTypeName = declaringTypeName;
         MethodName = methodName;
+        Identifier = identifier;
         bool foundAllTypes = false;
         if (argumentTypeNames != null)
         {
@@ -179,6 +146,80 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         CalculateSize();
     }
+
+    public ValueTask Invoke(ArraySegment<object> parameters)
+    {
+        if (Method == null)
+            throw new RpcEndpointNotFoundException(this);
+
+        object? targetObject = null;
+        if (!IsStatic)
+        {
+            targetObject = GetTargetObject();
+        }
+
+        object? returnedValue = Method.Invoke(
+            targetObject,
+            parameters.Offset == 0 && parameters.Count == parameters.Array!.Length ? parameters.Array : parameters.AsSpan().ToArray()
+        );
+
+        switch (returnedValue)
+        {
+            case null when Method.ReturnType == typeof(void):
+                return default;
+            case Task task:
+                return new ValueTask(task);
+            case ValueTask vt:
+                return vt;
+        }
+
+        Type returnedType = returnedValue?.GetType() ?? Method.ReturnType;
+        if (returnedType.IsGenericType && returnedType.GetGenericTypeDefinition() == typeof(ValueTask<>))
+        {
+            MethodInfo? asTaskMethod = returnedType.GetMethod("AsTask", BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.Any, Type.EmptyTypes, null);
+            if (asTaskMethod == null || asTaskMethod.Invoke(returnedValue, Array.Empty<object>()) is not Task task)
+                return default;
+
+            return new ValueTask(task);
+        }
+
+        _fromResultMethod ??= typeof(Task).GetMethod("FromResult", BindingFlags.Static | BindingFlags.Instance);
+        if (_fromResultMethod == null
+            || !_fromResultMethod.IsGenericMethodDefinition
+            || _fromResultMethod.MakeGenericMethod(returnedType).Invoke(null, [ returnedValue ]) is not Task newTask)
+        {
+            return default;
+        }
+
+        return new ValueTask(newTask);
+    }
+
+    private object? GetTargetObject()
+    {
+        if (Identifier == null || IsStatic)
+            return null;
+
+        if (DeclaringType == null)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound) { ErrorCode = 4 };
+
+        WeakReference? weakRef = ProxyGenerator.Instance.GetObjectByIdentifier(DeclaringType, Identifier);
+        object? target;
+
+        try
+        {
+            target = weakRef?.Target;
+        }
+        catch (InvalidOperationException)
+        {
+            target = null;
+        }
+
+        if (target == null)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionIdentifierNotExists) { ErrorCode = 5 };
+
+        return target;
+    }
+
     private void CalculateSize()
     {
         int size = sizeof(uint) + sizeof(ushort) + sizeof(ushort) + 1;

@@ -1,4 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+﻿// todo remove this
+#define DEBUG
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Exceptions;
@@ -15,6 +17,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
@@ -24,6 +27,8 @@ namespace DanielWillett.ModularRpcs.Reflection;
 public sealed class ProxyGenerator
 {
     private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
+    private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
+    private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
 
@@ -48,9 +53,31 @@ public sealed class ProxyGenerator
     public string InstancesFieldName => "_instances<RPC_Proxy>";
 
     /// <summary>
-    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>bool(T, out Self)</c>.
+    /// Name of the private field used to store the original identifier of a <see cref="IRpcObject{T}"/>.
+    /// </summary>
+    public string IdentifierFieldName => "_identifier<RPC_Proxy>";
+
+    /// <summary>
+    /// Name of the private field used to store if the key of this <see cref="IRpcObject{T}"/> has been removed from the the dictionary,
+    /// thus the finalizer doesn't need to be called.
+    /// </summary>
+    public string SuppressFinalizeFieldName => "_suppressFinalize<RPC_Proxy>";
+
+    /// <summary>
+    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>bool(T, out WeakReference)</c>.
+    /// </summary>
+    public string TryGetInstanceMethodName => "TryGetInstance<RPC_Proxy>";
+
+    /// <summary>
+    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>WeakReference(object)</c>.
     /// </summary>
     public string GetInstanceMethodName => "GetInstance<RPC_Proxy>";
+
+    /// <summary>
+    /// Name of the instance method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>bool Release()</c>.
+    /// Virtual or abstract methods in parent classes will be overridden and base-called.
+    /// </summary>
+    public string ReleaseMethodName => "Release";
 
     internal AssemblyBuilder AssemblyBuilder { get; }
     internal ModuleBuilder ModuleBuilder { get; }
@@ -123,6 +150,8 @@ public sealed class ProxyGenerator
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     public object CreateProxy(Type type, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes)
     {
+        if (type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            type = type.BaseType!;
         Type newType = _proxies.GetOrAdd(type, CreateProxyType);
 
         try
@@ -177,8 +206,101 @@ public sealed class ProxyGenerator
     /// <exception cref="ArgumentException"/>
     public Type GetProxyType(Type type)
     {
+        if (type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            type = type.BaseType!;
+
         return _proxies.GetOrAdd(type, CreateProxyType);
     }
+
+    /// <summary>
+    /// Gets a weak reference to the object represented by the identifier.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"/>
+    /// <exception cref="ArgumentException"><paramref name="instanceType"/> does not implement <see cref="IRpcObject{T}"/>.</exception>
+    /// <exception cref="InvalidCastException">The identifier is not the correct type.</exception>
+    /// <returns>A weak reference to the object, or <see langword="null"/> if it's not found.</returns>
+    public WeakReference? GetObjectByIdentifier(Type instanceType, object identifier)
+    {
+        if (identifier == null)
+            throw new ArgumentNullException(nameof(identifier));
+        if (instanceType == null)
+            throw new ArgumentNullException(nameof(instanceType));
+
+        if (!instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            instanceType = GetProxyType(instanceType);
+
+        if (!_getObjectFunctions.ContainsKey(instanceType))
+        {
+            Type? intxType = instanceType.GetInterfaces().FirstOrDefault(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRpcObject<>));
+            if (intxType == null)
+                throw new ArgumentException(Properties.Exceptions.ObjectNotIdentifyableType, nameof(instanceType));
+
+            Type idType = intxType.GetGenericArguments()[0];
+            if (!idType.IsInstanceOfType(identifier))
+            {
+                throw new InvalidCastException(string.Format(
+                    Properties.Exceptions.GetObjectByIdentifierIdentityTypeNotCorrectType,
+                    Accessor.ExceptionFormatter.Format(idType),
+                    Accessor.ExceptionFormatter.Format(identifier.GetType()))
+                );
+            }
+        }
+
+        return _getObjectFunctions.GetOrAdd(
+            instanceType,
+            type =>
+            {
+                MethodInfo getInstanceMethod = type.GetMethod(GetInstanceMethodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                                                ?? throw new ArgumentException(Properties.Exceptions.ObjectNotIdentifyableType, nameof(instanceType));
+
+                return (Func<object, WeakReference>)getInstanceMethod.CreateDelegate(typeof(Func<object, WeakReference>));
+            }
+        )(identifier);
+    }
+
+    /// <summary>
+    /// Try's to release an object by it's identifier.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"/>
+    /// <exception cref="ArgumentException"><paramref name="instanceType"/> does not implement <see cref="IRpcObject{T}"/>.</exception>
+    /// <returns><see langword="true"/> if the object was found and released, otherwise <see langword="false"/>.</returns>
+    public bool ReleaseObject<T>(T obj) where T : class
+    {
+        return ReleaseObject(typeof(T), obj);
+    }
+
+    /// <summary>
+    /// Try's to release an object by it's identifier.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"/>
+    /// <exception cref="ArgumentException"><paramref name="instanceType"/> does not implement <see cref="IRpcObject{T}"/>.</exception>
+    /// <returns><see langword="true"/> if the object was found and released, otherwise <see langword="false"/>.</returns>
+    public bool ReleaseObject(Type instanceType, object obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
+
+        if (!instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            instanceType = GetProxyType(instanceType);
+
+        if (!_releaseObjectFunctions.ContainsKey(instanceType))
+        {
+            if (!instanceType.GetInterfaces().Any(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRpcObject<>)))
+                throw new ArgumentException(Properties.Exceptions.ObjectNotIdentifyableType, nameof(instanceType));
+        }
+
+        return _releaseObjectFunctions.GetOrAdd(
+            instanceType,
+            type =>
+            {
+                MethodInfo getInstanceMethod = type.GetMethod(ReleaseMethodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                                               ?? throw new ArgumentException(Properties.Exceptions.ObjectNotIdentifyableType, nameof(instanceType));
+
+                return Accessor.GenerateInstanceCaller<Func<object, bool>>(getInstanceMethod, throwOnError: true, allowUnsafeTypeBinding: true)!;
+            }
+        )(obj);
+    }
+
     private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess)
     {
         const bool debugPrint = true;
@@ -188,7 +310,7 @@ public sealed class ProxyGenerator
         Assembly asm = type.Assembly;
         
         // most builds of mono don't work with that attribute
-        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+        if (!Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
         {
             lock (_accessIgnoredAssemblies)
             {
@@ -196,7 +318,7 @@ public sealed class ProxyGenerator
                 {
                     CustomAttributeBuilder attr = new CustomAttributeBuilder(
                         typeof(IgnoresAccessChecksToAttribute).GetConstructor([typeof(string)])!,
-                        [asm.GetName().Name]
+                        [ asm.GetName().Name ]
                     );
 
                     AssemblyBuilder.SetCustomAttribute(attr);
@@ -211,6 +333,8 @@ public sealed class ProxyGenerator
         Type dictType;
         MethodInfo dictTryAddMethod;
         FieldBuilder dictField;
+        FieldBuilder idField;
+        FieldBuilder suppressFinalizeField;
         bool isNullable = false;
         if (idType != null)
         {
@@ -219,7 +343,7 @@ public sealed class ProxyGenerator
             if (isNullable)
                 elementType = idType.GetGenericArguments()[0];
 
-            dictType = typeof(ConcurrentDictionary<,>).MakeGenericType(elementType!, type);
+            dictType = typeof(ConcurrentDictionary<,>).MakeGenericType(elementType!, typeof(WeakReference));
 
             dictTryAddMethod = dictType.GetMethod(nameof(ConcurrentDictionary<object, object>.TryAdd), BindingFlags.Instance | BindingFlags.Public)
                                           ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(
@@ -227,8 +351,22 @@ public sealed class ProxyGenerator
                                                   .Returning<bool>()
                                                   .DeclaredIn(dictType, isStatic: false)
                                                   .WithParameter(elementType!, "key")
-                                                  .WithParameter(type, "value")
+                                                  .WithParameter(typeof(WeakReference), "value")
                                               )}.");
+
+            // define original identifier field
+            idField = typeBuilder.DefineField(
+                IdentifierFieldName,
+                isNullable ? elementType! : idType,
+                FieldAttributes.Private | FieldAttributes.InitOnly
+            );
+
+            // define field to track if the object has been removed already
+            suppressFinalizeField = typeBuilder.DefineField(
+                SuppressFinalizeFieldName,
+                typeof(int),
+                FieldAttributes.Private | FieldAttributes.InitOnly
+            );
 
             // define identifier static concurrent dictionary
             dictField = typeBuilder.DefineField(
@@ -242,9 +380,30 @@ public sealed class ProxyGenerator
             dictType = null!;
             dictTryAddMethod = null!;
             dictField = null!;
+            idField = null!;
+            suppressFinalizeField = null!;
         }
 
-        // create constructors for all base constructors
+        MethodInfo? getHasValueMethod = null;
+        MethodInfo? getValueMethod = null;
+
+        if (isNullable)
+        {
+            getHasValueMethod = idType!.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?
+                .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.HasValue))
+                    .DeclaredIn(idType, isStatic: false)
+                    .WithPropertyType<bool>()
+                    .WithNoSetter())}.");
+
+            getValueMethod = idType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?
+                .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.Value))
+                    .DeclaredIn(idType, isStatic: false)
+                    .WithPropertyType(elementType!)
+                    .WithNoSetter())}.");
+        }
+
+        // create pass-through constructors for all base constructors.
+        // for IRpcObject<T> types the identifier will be validated and the object added to the underlying dictionary.
         foreach (ConstructorInfo baseCtor in type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
         {
             if (baseCtor.IsPrivate)
@@ -366,7 +525,7 @@ public sealed class ProxyGenerator
                 if (identifierBackingField != null && identifierBackingField.IsDefinedSafe<RpcDontUseBackingFieldAttribute>())
                     identifierBackingField = null;
 
-                if (identifierBackingField != null && Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+                if (identifierBackingField != null && Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
                 {
                     MemberVisibility vis = identifierBackingField.GetVisibility();
                     if (!typeGivesInternalAccess && vis != MemberVisibility.Public
@@ -391,25 +550,10 @@ public sealed class ProxyGenerator
                 il.Emit(OpCodes.Ldarg_0);
                 bool isAddr = false;
                 LocalBuilder id2 = identifier;
-                MethodInfo? getValueMethod = null;
                 if (idType.IsValueType)
                 {
                     if (isNullable)
                     {
-                        MethodInfo getHasValue = idType.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?
-                            .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.HasValue))
-                                .DeclaredIn(idType, isStatic: false)
-                                .WithPropertyType<bool>()
-                                .WithNoSetter())
-                            }.");
-
-                        getValueMethod = idType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?
-                            .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.Value))
-                                .DeclaredIn(idType, isStatic: false)
-                                .WithPropertyType(elementType!)
-                                .WithNoSetter())
-                            }.");
-
                         if (identifierBackingField != null)
                         {
                             id2 = il.DeclareLocal(idType.MakeByRefType());
@@ -426,7 +570,7 @@ public sealed class ProxyGenerator
                             il.Emit(OpCodes.Ldloca_S, id2);
                         }
 
-                        il.Emit(OpCodes.Call, getHasValue);
+                        il.Emit(OpCodes.Call, getHasValueMethod!);
                         il.Emit(OpCodes.Brtrue_S, ifNotDefault);
                     }
                     else if (idType.IsPrimitive && (idType == typeof(long)
@@ -594,11 +738,30 @@ public sealed class ProxyGenerator
                 }
 
                 il.Emit(OpCodes.Ldarg_0);
-                il.Emit(OpCodes.Castclass, type);
+                il.Emit(OpCodes.Newobj, typeof(WeakReference).GetConstructor([ typeof(object) ])
+                                        ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(typeof(WeakReference))
+                    .WithParameter(typeof(object), "target"))
+                }"));
 
                 il.Emit(OpCodes.Call, dictTryAddMethod);
 
                 il.Emit(OpCodes.Brfalse, ifDidntAdd);
+
+                il.Emit(OpCodes.Ldarg_0);
+
+                if (isNullable)
+                {
+                    il.Emit(isAddr ? OpCodes.Ldloc_S : OpCodes.Ldloca_S, id2);
+                    il.Emit(OpCodes.Call, getValueMethod!);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldloc_S, id2);
+                    if (isAddr)
+                        il.Emit(OpCodes.Ldind_Ref);
+                }
+
+                il.Emit(OpCodes.Stfld, idField);
 #if DEBUG
                 il.EmitWriteLine($"Added instance of {Accessor.Formatter.Format(type)} to dictionary.");
 #endif
@@ -627,23 +790,183 @@ public sealed class ProxyGenerator
                                        }.");
 
             MethodInfo dictTryGetValueMethod = dictType.GetMethod(nameof(ConcurrentDictionary<object, object>.TryGetValue), BindingFlags.Instance | BindingFlags.Public)
-                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(ConcurrentDictionary<object, object>.TryGetValue))
-                                        .DeclaredIn(dictType, isStatic: false)
-                                        .Returning<bool>()
-                                        .WithParameter(idType, "key")
-                                        .WithParameter(type.MakeByRefType(), "value", ByRefTypeMode.Out))}.");
+                                               ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(ConcurrentDictionary<object, object>.TryGetValue))
+                                                   .DeclaredIn(dictType, isStatic: false)
+                                                   .Returning<bool>()
+                                                   .WithParameter(idType, "key")
+                                                   .WithParameter(type.MakeByRefType(), "value", ByRefTypeMode.Out))
+                                               }.");
 
+            MethodInfo dictTryRemoveMethod = dictType.GetMethod(nameof(ConcurrentDictionary<object, object>.TryRemove), BindingFlags.Instance | BindingFlags.Public, null, [ elementType, typeof(WeakReference).MakeByRefType() ], null)
+                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(ConcurrentDictionary<object, object>.TryRemove))
+                                                 .DeclaredIn(dictType, isStatic: false)
+                                                 .Returning<bool>()
+                                                 .WithParameter(idType, "key")
+                                                 .WithParameter(type.MakeByRefType(), "value", ByRefTypeMode.Out))
+                                             }.");
+
+            MethodInfo compareExchange = typeof(Interlocked).GetMethod(nameof(Interlocked.Exchange), BindingFlags.Static | BindingFlags.Public, null, [typeof(int).MakeByRefType(), typeof(int)], null)
+                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(Interlocked.Exchange))
+                                             .DeclaredIn(typeof(Interlocked), isStatic: true)
+                                             .Returning<int>()
+                                             .WithParameter(typeof(int), "location1", ByRefTypeMode.Ref)
+                                             .WithParameter(typeof(int), "value"))
+                                         }.");
+
+            // static constructor to initalize the dictionary
             ConstructorBuilder typeInitializer = typeBuilder.DefineTypeInitializer();
             IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: debugPrint);
             il.Emit(OpCodes.Newobj, dictCtor);
             il.Emit(OpCodes.Stsfld, dictField);
             il.Emit(OpCodes.Ret);
 
+            // look for finalizer of base type if it exists.
+            MethodInfo? baseFinalizerMethod = null;
+            for (Type? baseType = type; baseType != null && baseType != typeof(object); baseType = baseType.BaseType)
+            {
+                baseFinalizerMethod = type.GetMethod("Finalize", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+                if (baseFinalizerMethod != null)
+                    break;
+            }
+
+            // look for Release method of base type if it exists.
+            MethodInfo? baseReleaseMethod = null;
+            for (Type? baseType = type; baseType != null && baseType != typeof(object); baseType = baseType.BaseType)
+            {
+                baseReleaseMethod = type.GetMethod(ReleaseMethodName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+
+                if (baseReleaseMethod == null)
+                    continue;
+
+                if (!(baseReleaseMethod.IsVirtual || baseReleaseMethod.IsAbstract) || baseReleaseMethod.IsIgnored())
+                    baseReleaseMethod = null;
+                else break;
+            }
+
+            if (baseReleaseMethod is { IsPublic: true })
+            {
+                if (Logger != null)
+                    LogWarning(string.Format(Properties.Logging.BaseReleaseMethodCantBePublic, Accessor.Formatter.Format(baseReleaseMethod.DeclaringType!)));
+                else if (Accessor.LogWarningMessages)
+                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.BaseReleaseMethodCantBePublic, Accessor.Formatter.Format(baseReleaseMethod.DeclaringType!)));
+                baseReleaseMethod = null;
+            }
+
+            // define a finalizer to remove this object from the dictionary
+            MethodBuilder finalizerMethod = typeBuilder.DefineMethod("Finalize",
+                MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Family,
+                CallingConventions.Standard,
+                typeof(void),
+                null, null, null, null, null
+            );
+
+            il = finalizerMethod.AsEmitter(debuggable: debugPrint);
+
+            LocalBuilder lcl = il.DeclareLocal(typeof(WeakReference));
+            Label retLbl = il.DefineLabel();
+
+            if (baseFinalizerMethod != null)
+                il.BeginExceptionBlock();
+
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, suppressFinalizeField);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Call, compareExchange);
+            il.Emit(OpCodes.Brtrue_S, retLbl);
+
+            if (baseReleaseMethod is { IsAbstract: false })
+            {
+                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Call, baseReleaseMethod);
+                if (baseReleaseMethod.ReturnType != typeof(void))
+                    il.Emit(OpCodes.Pop);
+            }
+
+            il.Emit(OpCodes.Ldsfld, dictField);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldfld, idField);
+            il.Emit(OpCodes.Ldloca_S, lcl);
+            il.Emit(OpCodes.Call, dictTryRemoveMethod);
+#if DEBUG
+            Label brtrue = il.DefineLabel();
+            il.Emit(OpCodes.Brfalse_S, brtrue);
+            il.EmitWriteLine($"Removed {Accessor.Formatter.Format(type)} from finalizer.");
+            il.Emit(OpCodes.Br_S, retLbl);
+            il.MarkLabel(brtrue);
+            il.EmitWriteLine($"Didn't remove {Accessor.Formatter.Format(type)} from finalizer.");
+#else
+            il.Emit(OpCodes.Pop);
+#endif
+            if (baseFinalizerMethod != null)
+            {
+                il.MarkLabel(retLbl);
+                il.BeginFinallyBlock();
+                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Call, baseFinalizerMethod);
+                il.EndExceptionBlock();
+                il.Emit(OpCodes.Ret);
+            }
+            else
+            {
+                il.MarkLabel(retLbl);
+                il.Emit(OpCodes.Ret);
+            }
+
+            MethodBuilder releaseMethod = typeBuilder.DefineMethod(ReleaseMethodName,
+                baseReleaseMethod != null
+                    ? MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final | MethodAttributes.Public
+                    : MethodAttributes.Public,
+                CallingConventions.Standard,
+                typeof(bool),
+                null, null, Type.EmptyTypes, null, null
+            );
+
+            il = releaseMethod.AsEmitter(debuggable: debugPrint);
+
+            lcl = il.DeclareLocal(typeof(WeakReference));
+            Label alreadyDoneLabel = il.DefineLabel();
+            retLbl = il.DefineLabel();
+
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, suppressFinalizeField);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Call, compareExchange);
+            il.Emit(OpCodes.Brtrue_S, alreadyDoneLabel);
+
+            if (baseReleaseMethod is { IsAbstract: false })
+            {
+                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Call, baseReleaseMethod);
+                if (baseReleaseMethod.ReturnType != typeof(void))
+                    il.Emit(OpCodes.Pop);
+            }
+
+            il.Emit(OpCodes.Ldsfld, dictField);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldfld, idField);
+            il.Emit(OpCodes.Ldloca_S, lcl);
+            il.Emit(OpCodes.Call, dictTryRemoveMethod);
+#if DEBUG
+            brtrue = il.DefineLabel();
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Brfalse_S, brtrue);
+            il.EmitWriteLine($"Removed {Accessor.Formatter.Format(type)} from Release.");
+            il.Emit(OpCodes.Br_S, retLbl);
+            il.MarkLabel(brtrue);
+            il.EmitWriteLine($"Didn't remove {Accessor.Formatter.Format(type)} from Release.");
+#endif
+            il.Emit(OpCodes.Br_S, retLbl);
+
+            il.MarkLabel(alreadyDoneLabel);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.MarkLabel(retLbl);
+            il.Emit(OpCodes.Ret);
+
             MethodBuilder tryFetchMethod = typeBuilder.DefineMethod(
-                GetInstanceMethodName,
+                TryGetInstanceMethodName,
                 MethodAttributes.Public | MethodAttributes.Static, CallingConventions.Standard,
                 typeof(bool),
-                [ elementType, type.MakeByRefType() ]
+                [ elementType, typeof(WeakReference).MakeByRefType() ]
             );
 
             tryFetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
@@ -655,6 +978,27 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg_1);
             il.Emit(OpCodes.Call, dictTryGetValueMethod);
+            il.Emit(OpCodes.Ret);
+
+            MethodBuilder fetchMethod = typeBuilder.DefineMethod(
+                GetInstanceMethodName,
+                MethodAttributes.Public | MethodAttributes.Static, CallingConventions.Standard,
+                typeof(WeakReference),
+                [ typeof(object) ]
+            );
+
+            fetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
+
+            il = fetchMethod.AsEmitter(debuggable: debugPrint);
+
+            lcl = il.DeclareLocal(typeof(WeakReference));
+
+            il.Emit(OpCodes.Ldsfld, dictField);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldloca_S, lcl);
+            il.Emit(OpCodes.Call, dictTryGetValueMethod);
+            il.Emit(OpCodes.Pop);
+            il.Emit(OpCodes.Ldloc_S, lcl);
             il.Emit(OpCodes.Ret);
         }
 

@@ -88,6 +88,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given identifier type is not valid. Expected: &apos;{0}&apos;, actual: &apos;{1}&apos;..
+        /// </summary>
+        public static string GetObjectByIdentifierIdentityTypeNotCorrectType {
+            get {
+                return ResourceManager.GetString("GetObjectByIdentifierIdentityTypeNotCorrectType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier still had it&apos;s default value after the base constructor..
         /// </summary>
         public static string InstanceIdDefaultValue {
@@ -147,6 +156,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string MethodHasNoDeclaringType {
             get {
                 return ResourceManager.GetString("MethodHasNoDeclaringType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The given type is not able to have an identifier..
+        /// </summary>
+        public static string ObjectNotIdentifyableType {
+            get {
+                return ResourceManager.GetString("ObjectNotIdentifyableType", resourceCulture);
             }
         }
         
@@ -219,6 +237,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcOverheadParseExceptionBufferRunOut {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionBufferRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the declaring type was not available on the receving end..
+        /// </summary>
+        public static string RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the identifier &apos;{0}&apos; has not been created locally..
+        /// </summary>
+        public static string RpcOverheadParseExceptionIdentifierNotExists {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionIdentifierNotExists", resourceCulture);
             }
         }
         

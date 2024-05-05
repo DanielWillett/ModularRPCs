@@ -17,7 +17,7 @@ internal static class VisibilityUtility
         if (method.IsStatic || method.DeclaringType == null || method.IsFinal || method is { IsConstructor: false, IsVirtual: false, IsAbstract: false })
             return false;
 
-        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+        if (!Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
             return true;
 
         if (AssemblyGivesInternalAccess(method.DeclaringType.Assembly))
@@ -38,7 +38,7 @@ internal static class VisibilityUtility
         if (method.IsStatic || method.DeclaringType == null || method.IsFinal || method is { IsConstructor: false, IsVirtual: false, IsAbstract: false })
             return false;
 
-        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+        if (!Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
             return true;
 
         if (assemblyGivesInternalAccess)
@@ -57,7 +57,7 @@ internal static class VisibilityUtility
     public static bool IsTypeVisible(Type type) => IsTypeVisible(type, AssemblyGivesInternalAccess(type.Assembly));
     public static bool IsTypeVisible(Type type, bool assemblyGivesInternalAccess)
     {
-        if (!Compatability.IncompatableWithIgnoresAccessChecksToAttribute)
+        if (!Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
             return true;
 
         Type? nestingType = type;

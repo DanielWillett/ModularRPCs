@@ -8,5 +8,5 @@ public interface IRpcInvocationPoint
     bool CanCache { get; }
     int Size { get; }
     bool IsStatic { get; }
-    ValueTask Invoke(object? targetObject, ArraySegment<object> parameters);
+    ValueTask Invoke(ArraySegment<object> parameters);
 }

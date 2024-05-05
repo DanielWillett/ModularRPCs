@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Protocol;
 
@@ -13,6 +9,13 @@ public class SampleKeysNullable : IRpcObject<int?>
     public SampleKeysNullable()
     {
 
+    }
+    public virtual bool Release()
+    {
+        Console.WriteLine("base release method called.");
+
+        // return value is technically not used
+        return false;
     }
 }
 public class SampleKeysNullableOtherField : IRpcObject<int?>

@@ -37,7 +37,6 @@ public class DefaultRpcRouter : IRpcRouter
     }
     public ValueTask HandleReceivedData(RpcOverhead overhead, Stream streamData, CancellationToken token = default)
     {
-        
         return default;
     }
     public ValueTask HandleReceivedData(RpcOverhead overhead, ReadOnlySpan<byte> byteData, CancellationToken token = default)

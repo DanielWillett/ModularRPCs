@@ -79,6 +79,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The base release method in type &apos;{0}&apos; must be a virtual protected method. Use the IgnoreAttribute to ignore the base method and suppress this message..
+        /// </summary>
+        internal static string BaseReleaseMethodCantBePublic {
+            get {
+                return ResourceManager.GetString("BaseReleaseMethodCantBePublic", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The constructor with arguments {0} in type &apos;{1}&apos; is not accessible by the proxy class..
         /// </summary>
         internal static string ConstructorNotVisibileToOverridingClasses {

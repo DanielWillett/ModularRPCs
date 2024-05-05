@@ -186,4 +186,16 @@
   <data name="RpcNotImplemented" xml:space="preserve">
     <value>This RPC caller was not inherited by a parent class. Make sure you're getting this service's object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions.</value>
   </data>
+  <data name="GetObjectByIdentifierIdentityTypeNotCorrectType" xml:space="preserve">
+    <value>The given identifier type is not valid. Expected: '{0}', actual: '{1}'.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the declaring type was not available on the receving end.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionIdentifierNotExists" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the identifier '{0}' has not been created locally.</value>
+  </data>
+  <data name="ObjectNotIdentifyableType" xml:space="preserve">
+    <value>The given type is not able to have an identifier.</value>
+  </data>
 </root>

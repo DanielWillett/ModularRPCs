@@ -1,10 +1,10 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Annotations;
+﻿using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Invocation;
 using DanielWillett.ModularRpcs.Protocol;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
 // ReSharper disable LocalizableElement
 
 namespace DanielWillett.ModularRpcs.Examples.Samples;
@@ -40,5 +40,15 @@ public class SampleClass : IRpcObject<int>
         Console.WriteLine("Start");
         await Task.Delay(TimeSpan.FromSeconds(5d));
         Console.WriteLine("Done");
+    }
+    protected virtual bool Release()
+    {
+        Console.WriteLine("base release called");
+        return false;
+    }
+
+    ~SampleClass()
+    {
+        Console.WriteLine("test");
     }
 }

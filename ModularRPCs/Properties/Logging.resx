@@ -123,6 +123,9 @@
   <data name="BackingFieldNotValid" xml:space="preserve">
     <value>The backing field in type '{0}' annoted with the RpcIdentifierBackingFieldAttribute is not of a valid type, is ignored, or isn't accessible from the parent class.</value>
   </data>
+  <data name="BaseReleaseMethodCantBePublic" xml:space="preserve">
+    <value>The base release method in type '{0}' must be a virtual protected method. Use the IgnoreAttribute to ignore the base method and suppress this message.</value>
+  </data>
   <data name="ConstructorNotVisibileToOverridingClasses" xml:space="preserve">
     <value>The constructor with arguments {0} in type '{1}' is not accessible by the proxy class.</value>
   </data>

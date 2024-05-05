@@ -1,40 +1,71 @@
 ﻿using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Examples.Samples;
+using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.IoC;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
-using DanielWillett.ReflectionTools;
+using System.Threading;
+using DanielWillett.ModularRpcs.Reflection;
 
-IHostBuilder hostBuilder = Host.CreateDefaultBuilder(args);
-
-hostBuilder.ConfigureServices(serviceCollection =>
+public class Program
 {
-    serviceCollection.AddReflectionTools();
-    serviceCollection.AddProxyGenerator();
+    public static void Main(string[] args)
+    {
+        Run(args);
 
-    serviceCollection.AddRpcTransient<SampleKeysNullable>();
-    serviceCollection.AddRpcTransient<SampleKeysNullableOtherField>();
-    serviceCollection.AddRpcTransient<SampleKeysNullableNoField>();
-    serviceCollection.AddRpcTransient<SampleKeysString>();
-});
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
 
-Accessor.LogILTraceMessages = true;
-Accessor.LogDebugMessages = true;
-Accessor.LogInfoMessages = true;
-Accessor.LogWarningMessages = true;
-Accessor.LogErrorMessages = true;
+        Thread.Sleep(10000);
 
-IHost host = hostBuilder.Build();
+        Console.ReadLine();
+    }
 
-SampleKeysNullable sc1 = host.Services.GetRequiredService<SampleKeysNullable>();
-SampleKeysNullableNoField sc2 = host.Services.GetRequiredService<SampleKeysNullableNoField>();
-SampleKeysString sc3 = host.Services.GetRequiredService<SampleKeysString>();
-SampleKeysNullableOtherField sc4 = host.Services.GetRequiredService<SampleKeysNullableOtherField>();
+    public static void Run(string[] args)
+    {
+        IHostBuilder hostBuilder = Host.CreateDefaultBuilder(args);
 
-_ = sc1;
-_ = sc2;
-_ = sc3;
-_ = sc4;
+        Accessor.LogILTraceMessages = true;
+        Accessor.LogDebugMessages = true;
+        Accessor.LogInfoMessages = true;
+        Accessor.LogWarningMessages = true;
+        Accessor.LogErrorMessages = true;
 
-Console.ReadLine();
+        hostBuilder.ConfigureServices(serviceCollection =>
+        {
+            serviceCollection.AddReflectionTools();
+            serviceCollection.AddProxyGenerator();
+
+            serviceCollection.AddRpcTransient<SampleClass>();
+            //serviceCollection.AddRpcTransient<SampleKeysNullable>();
+            //serviceCollection.AddRpcTransient<SampleKeysNullableOtherField>();
+            //serviceCollection.AddRpcTransient<SampleKeysNullableNoField>();
+            //serviceCollection.AddRpcTransient<SampleKeysString>();
+        });
+
+        IHost host = hostBuilder.Build();
+
+        SampleClass sc0 = host.Services.GetRequiredService<SampleClass>();
+        //SampleKeysNullable sc1 = host.Services.GetRequiredService<SampleKeysNullable>();
+        //SampleKeysNullableNoField sc2 = host.Services.GetRequiredService<SampleKeysNullableNoField>();
+        //SampleKeysString sc3 = host.Services.GetRequiredService<SampleKeysString>();
+        //SampleKeysNullableOtherField sc4 = host.Services.GetRequiredService<SampleKeysNullableOtherField>();
+
+        //SampleKeysString? testCs3 = (SampleKeysString?)ProxyGenerator.Instance.GetObjectByIdentifier(typeof(SampleKeysString), "test")?.Target;
+        //
+        //if (!ReferenceEquals(testCs3, sc3))
+        //    throw new Exception("bad");
+        //
+        //bool didRelease = sc1.Release();
+        //Console.WriteLine($"released: {didRelease}.");
+        //didRelease = sc1.Release();
+        //Console.WriteLine($"released: {didRelease}.");
+
+        bool didRelease = RpcObjectExtensions.Release(sc0);
+        Console.WriteLine($"released: {didRelease}.");
+        didRelease = RpcObjectExtensions.Release(sc0);
+        Console.WriteLine($"released: {didRelease}.");
+        host.Dispose();
+    }
+}
