@@ -259,11 +259,38 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the type code &apos;{0}&apos; is not a known type code..
+        /// </summary>
+        public static string RpcOverheadParseExceptionInvalidTypeCode {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionInvalidTypeCode", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the stream ended too early..
         /// </summary>
         public static string RpcOverheadParseExceptionStreamRunOut {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionStreamRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the string identifier had a length well over the max, likely due to corrupted data..
+        /// </summary>
+        public static string RpcOverheadParseExceptionStringLengthOverflow {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionStringLengthOverflow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the identifier type &apos;{0}&apos; couldn&apos;t be found..
+        /// </summary>
+        public static string RpcOverheadParseExceptionUnknownIdentifierType {
+            get {
+                return ResourceManager.GetString("RpcOverheadParseExceptionUnknownIdentifierType", resourceCulture);
             }
         }
         

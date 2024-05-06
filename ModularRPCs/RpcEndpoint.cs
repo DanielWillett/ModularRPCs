@@ -1,12 +1,12 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Reflection;
 using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Reflection;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -16,6 +16,7 @@ namespace DanielWillett.ModularRpcs;
 public class RpcEndpoint : IRpcInvocationPoint
 {
     private static MethodInfo? _fromResultMethod;
+    private int _sizeWithoutIdentifier;
 
     /// <summary>
     /// Unique ID corresponding to this endpoint set by the server.
@@ -67,7 +68,26 @@ public class RpcEndpoint : IRpcInvocationPoint
     /// </summary>
     public int Size { get; private set; }
 
-    internal RpcEndpoint(MethodInfo method, object? identifier)
+    protected RpcEndpoint(IRpcRouter router, RpcEndpoint other, object? identifier)
+    {
+        Identifier = identifier;
+
+        EndpointId = other.EndpointId;
+        IsStatic = other.IsStatic;
+        DeclaringTypeName = other.DeclaringTypeName;
+        MethodName = other.MethodName;
+        ArgumentTypeNames = other.ArgumentTypeNames;
+        ArgumentTypes = other.ArgumentTypes;
+        Method = other.Method;
+        DeclaringType = other.DeclaringType;
+        Size = _sizeWithoutIdentifier = other._sizeWithoutIdentifier;
+        if (identifier != null)
+        {
+            Size += router.CalculateIdentifierSize(identifier);
+        }
+    }
+
+    internal RpcEndpoint(IRpcRouter router, MethodInfo method, object? identifier)
     {
         if (method.DeclaringType == null)
             throw new ArgumentException(Properties.Exceptions.MethodHasNoDeclaringType, nameof(method));
@@ -89,20 +109,23 @@ public class RpcEndpoint : IRpcInvocationPoint
         DeclaringType = method.DeclaringType;
         DeclaringTypeName = method.DeclaringType.AssemblyQualifiedName!;
         CalculateSize();
+        if (identifier != null)
+        {
+            Size += router.CalculateIdentifierSize(identifier);
+        }
     }
 
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, object? identifier, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : this(declaringTypeName, methodName, argumentTypeNames, isStatic, identifier, expectedAssembly, expectedType)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+        : this(declaringTypeName, methodName, argumentTypeNames, isStatic, expectedAssembly, expectedType)
     {
         EndpointId = knownId;
     }
 
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, object? identifier, Assembly? expectedAssembly = null, Type? expectedType = null)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
     {
         IsStatic = isStatic;
         DeclaringTypeName = declaringTypeName;
         MethodName = methodName;
-        Identifier = identifier;
         bool foundAllTypes = false;
         if (argumentTypeNames != null)
         {
@@ -194,7 +217,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         return new ValueTask(newTask);
     }
 
-    private object? GetTargetObject()
+    protected virtual object? GetTargetObject()
     {
         if (Identifier == null || IsStatic)
             return null;
@@ -232,8 +255,10 @@ public class RpcEndpoint : IRpcInvocationPoint
                 size += Encoding.UTF8.GetByteCount(ArgumentTypeNames[i]);
         }
 
+        _sizeWithoutIdentifier = size;
         Size = size;
     }
+
     internal static unsafe IRpcInvocationPoint ReadFromBytes(IRpcRouter router, byte* bytes, uint maxCt, out int bytesRead)
     {
         if (maxCt < 9)
@@ -242,7 +267,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
         byte* originalPtr = bytes;
-        bool isStatic = *bytes > 0;
+        EndpointFlags flags1 = (EndpointFlags)(*bytes);
         ++bytes;
 
         uint knownRpcShortcutId = isLittleEndian
@@ -284,6 +309,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             int argCt = isLittleEndian
                 ? *bytes | bytes[1] << 8
                 : *bytes << 8 | bytes[1];
+            bytes += 2;
             size += argCt * 2;
 
             if (maxCt < size)
@@ -302,7 +328,8 @@ public class RpcEndpoint : IRpcInvocationPoint
                 bytes += sizeof(ushort);
             }
 
-            if (maxCt < size + ttlLen)
+            size += ttlLen;
+            if (maxCt < size)
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
             for (int i = 0; i < argCt; ++i)
@@ -313,9 +340,18 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
         else args = null!;
 
+        object? identifier = null;
+        if ((flags1 & EndpointFlags.HasIdentifier) != 0)
+        {
+            identifier = router.ReadIdentifierFromBytes(bytes, (uint)(maxCt - size), out int bytesReadIdentifier);
+            // size += bytesReadIdentifier;
+            bytes += bytesReadIdentifier;
+        }
+
         bytesRead = checked( (int)(bytes - originalPtr) );
-        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, isStatic, args, bytesRead);
+        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, (flags1 & EndpointFlags.IsStatic) != 0, args, bytesRead, identifier);
     }
+
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcRouter router, Stream stream, out int bytesRead)
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
@@ -332,7 +368,9 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (byteCt < 8)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-        bool isStatic = bytes[0] > 0;
+        EndpointFlags flags1 = (EndpointFlags)bytes[0];
+        bool isStatic = (flags1 & EndpointFlags.IsStatic) != 0;
+        bool hasIdentifier = (flags1 & EndpointFlags.HasIdentifier) != 0;
 
         uint knownRpcShortcutId = isLittleEndian
             ? bytes[1] | (uint)bytes[2] << 8 | (uint)bytes[3] << 16 | (uint)bytes[4] << 24
@@ -475,8 +513,26 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
         else args = null!;
 
+        object? identifier = null;
+        if (hasIdentifier)
+        {
+            identifier = router.ReadIdentifierFromStream(stream, out int bytesReadIdentifier);
+            index += bytesReadIdentifier;
+        }
+
         bytesRead = index;
-        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, isStatic, args, bytesRead);
+        return router.ResolveEndpoint(knownRpcShortcutId, typeName, methodName, isStatic, args, bytesRead, identifier);
     }
     bool IRpcInvocationPoint.CanCache => true;
+    public virtual IRpcInvocationPoint CloneWithIdentifier(IRpcRouter router, object? identifier)
+    {
+        return new RpcEndpoint(router, this, identifier);
+    }
+
+    [Flags]
+    protected internal enum EndpointFlags
+    {
+        IsStatic = 1,
+        HasIdentifier = 1 << 1
+    }
 }

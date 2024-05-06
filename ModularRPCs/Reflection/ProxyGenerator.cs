@@ -31,6 +31,12 @@ public sealed class ProxyGenerator
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
+#if DEBUG
+    private const bool DebugPrint = true;
+#else
+    private const bool DebugPrint = false;
+#endif
+
 
     private readonly string[] _identifierFieldNamesToSearch =
     [
@@ -303,8 +309,6 @@ public sealed class ProxyGenerator
 
     private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess)
     {
-        const bool debugPrint = true;
-
         TypeBuilder typeBuilder = ModuleBuilder.DefineType(type.Name + "<RPC_Proxy>",
             TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
         Assembly asm = type.Assembly;
@@ -432,7 +436,7 @@ public sealed class ProxyGenerator
 
             ConstructorBuilder builder = typeBuilder.DefineConstructor(baseCtor.Attributes & ~MethodAttributes.HasSecurity, baseCtor.CallingConvention, types, reqMods, optMods);
 
-            IOpCodeEmitter il = builder.AsEmitter(debuggable: debugPrint);
+            IOpCodeEmitter il = builder.AsEmitter(debuggable: DebugPrint);
             il.Emit(OpCodes.Ldarg_0);
 
             for (int i = 0; i < types.Length; ++i)
@@ -815,7 +819,7 @@ public sealed class ProxyGenerator
 
             // static constructor to initalize the dictionary
             ConstructorBuilder typeInitializer = typeBuilder.DefineTypeInitializer();
-            IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: debugPrint);
+            IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: DebugPrint);
             il.Emit(OpCodes.Newobj, dictCtor);
             il.Emit(OpCodes.Stsfld, dictField);
             il.Emit(OpCodes.Ret);
@@ -860,7 +864,7 @@ public sealed class ProxyGenerator
                 null, null, null, null, null
             );
 
-            il = finalizerMethod.AsEmitter(debuggable: debugPrint);
+            il = finalizerMethod.AsEmitter(debuggable: DebugPrint);
 
             LocalBuilder lcl = il.DeclareLocal(typeof(WeakReference));
             Label retLbl = il.DefineLabel();
@@ -921,7 +925,7 @@ public sealed class ProxyGenerator
                 null, null, Type.EmptyTypes, null, null
             );
 
-            il = releaseMethod.AsEmitter(debuggable: debugPrint);
+            il = releaseMethod.AsEmitter(debuggable: DebugPrint);
 
             lcl = il.DeclareLocal(typeof(WeakReference));
             Label alreadyDoneLabel = il.DefineLabel();
@@ -972,7 +976,7 @@ public sealed class ProxyGenerator
             tryFetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
             tryFetchMethod.DefineParameter(2, ParameterAttributes.Out, "object");
 
-            il = tryFetchMethod.AsEmitter(debuggable: debugPrint);
+            il = tryFetchMethod.AsEmitter(debuggable: DebugPrint);
 
             il.Emit(OpCodes.Ldsfld, dictField);
             il.Emit(OpCodes.Ldarg_0);
@@ -989,7 +993,7 @@ public sealed class ProxyGenerator
 
             fetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
 
-            il = fetchMethod.AsEmitter(debuggable: debugPrint);
+            il = fetchMethod.AsEmitter(debuggable: DebugPrint);
 
             lcl = il.DeclareLocal(typeof(WeakReference));
 
@@ -1062,10 +1066,12 @@ public sealed class ProxyGenerator
                 method.ReturnParameter?.GetOptionalCustomModifiers(),
                 types, reqMods, optMods);
 
-            ILGenerator generator = methodBuilder.GetILGenerator();
+            IOpCodeEmitter generator = methodBuilder.AsEmitter(debuggable: DebugPrint);
 #if DEBUG
             generator.EmitWriteLine("Calling " + Accessor.Formatter.Format(method));
 #endif
+            //generator.Emit(OpCodes.Ldtoken, method);
+
 
             MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
             generator.Emit(OpCodes.Call, getter);

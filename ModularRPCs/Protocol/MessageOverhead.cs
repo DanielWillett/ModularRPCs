@@ -129,6 +129,17 @@ public class RpcOverhead
                 string err = string.Format(Properties.Exceptions.RpcOverheadParseExceptionUnknownRpcDescriptor, endpointId);
                 throw new RpcOverheadParseException(err) { ErrorCode = 3 };
             }
+
+            object? identifier = null;
+            if ((flags & ModularRpcFlags.EndpointCodeIncludesIdentifier) != 0)
+            {
+                identifier = sendingConnection.Local.Router.ReadIdentifierFromStream(stream, out int bytesReadIdentifier);
+                index += bytesReadIdentifier;
+            }
+            if (!ReferenceEquals(endPoint.Identifier, identifier))
+            {
+                endPoint = endPoint.CloneWithIdentifier(sendingConnection.Local.Router, identifier);
+            }
         }
         else
         {
@@ -185,6 +196,17 @@ public class RpcOverhead
             {
                 string err = string.Format(Properties.Exceptions.RpcOverheadParseExceptionUnknownRpcDescriptor, endpointId);
                 throw new RpcOverheadParseException(err) { ErrorCode = 3 };
+            }
+
+            object? identifier = null;
+            if ((flags & ModularRpcFlags.EndpointCodeIncludesIdentifier) != 0)
+            {
+                identifier = sendingConnection.Local.Router.ReadIdentifierFromBytes(bytes, (uint)(maxCt - index), out int bytesReadIdentifier);
+                index += bytesReadIdentifier;
+            }
+            if (!ReferenceEquals(endPoint.Identifier, identifier))
+            {
+                endPoint = endPoint.CloneWithIdentifier(sendingConnection.Local.Router, identifier);
             }
         }
         else

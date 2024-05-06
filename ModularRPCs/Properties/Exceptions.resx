@@ -198,4 +198,13 @@
   <data name="ObjectNotIdentifyableType" xml:space="preserve">
     <value>The given type is not able to have an identifier.</value>
   </data>
+  <data name="RpcOverheadParseExceptionStringLengthOverflow" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the string identifier had a length well over the max, likely due to corrupted data.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionInvalidTypeCode" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the type code '{0}' is not a known type code.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionUnknownIdentifierType" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the identifier type '{0}' couldn't be found.</value>
+  </data>
 </root>
