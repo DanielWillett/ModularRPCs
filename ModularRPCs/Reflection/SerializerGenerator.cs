@@ -239,7 +239,7 @@ internal sealed class SerializerGenerator
 
         if (type == typeof(nint) || type == typeof(nuint))
         {
-            return IntPtr.Size;
+            return 8;
         }
 
         throw new ArgumentException("Not a primitve type.");
@@ -269,17 +269,29 @@ internal sealed class SerializerGenerator
                               .WithFieldType<Delegate>()
                           )}");
 
+        MethodInfo getCanPreCalcPrimitives = typeof(IRpcSerializer).GetProperty(nameof(IRpcSerializer.PreCalculatePrimitiveSizes), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(IRpcSerializer.PreCalculatePrimitiveSizes))
+                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                 .WithPropertyType<bool>()
+                                                 .WithNoSetter()
+                                             )}");
+
         Type[] paramsArray = GetTypeParams(genTypes, 1, 0, false);
         paramsArray[0] = typeof(IRpcSerializer);
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
         DynamicMethod getSize = new DynamicMethod("GetSize", attr, conv, typeof(int), paramsArray, _proxyGenerator.ModuleBuilder, true);
 
-        DefineParams(getSize, genTypes, 1, true);
+        DefineParams(getSize, genTypes, 1);
         getSize.DefineParameter(1, ParameterAttributes.None, "serializer");
         IOpCodeEmitter il = getSize.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
 
+        LocalBuilder preCalcLcl = il.DeclareLocal(typeof(bool));
         LocalBuilder sizeLcl = il.DeclareLocal(typeof(int));
+
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Callvirt, getCanPreCalcPrimitives);
+        il.Emit(OpCodes.Stloc, preCalcLcl);
         int ttl = 0;
         for (int i = 0; i < genTypes.Length; i++)
         {
@@ -288,13 +300,23 @@ internal sealed class SerializerGenerator
         }
 
         il.Emit(OpCodes.Ldc_I4, ttl);
+        il.Emit(OpCodes.Ldloc, preCalcLcl);
+        il.Emit(OpCodes.Mul);
         il.Emit(OpCodes.Stloc_S, sizeLcl);
 
+        Label? skipLbl = null;
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
+            if (skipLbl.HasValue)
+                il.MarkLabel(skipLbl.Value);
             if (IsPrimitiveLikeType(genType))
-                continue;
+            {
+                skipLbl = il.DefineLabel();
+                il.Emit(OpCodes.Ldloc, preCalcLcl);
+                il.Emit(OpCodes.Brtrue, skipLbl.Value);
+            }
+            else skipLbl = null;
 
             il.Emit(OpCodes.Ldloc_S, sizeLcl);
             il.Emit(OpCodes.Ldarg_0);
@@ -307,7 +329,36 @@ internal sealed class SerializerGenerator
             }
             else
             {
-                il.Emit(OpCodes.Ldind_Ref);
+                if (genType == typeof(long))
+                    il.Emit(OpCodes.Ldind_I8);
+                else if (genType == typeof(int))
+                    il.Emit(OpCodes.Ldind_I4);
+                else if (genType == typeof(uint))
+                    il.Emit(OpCodes.Ldind_U4);
+                else if (genType == typeof(short))
+                    il.Emit(OpCodes.Ldind_I2);
+                else if (genType == typeof(ushort))
+                    il.Emit(OpCodes.Ldind_U2);
+                else if (genType == typeof(sbyte))
+                    il.Emit(OpCodes.Ldind_I1);
+                else if (genType == typeof(byte))
+                    il.Emit(OpCodes.Ldind_U1);
+                else if (genType == typeof(float))
+                    il.Emit(OpCodes.Ldind_R4);
+                else if (genType == typeof(double))
+                    il.Emit(OpCodes.Ldind_R8);
+                else if (genType == typeof(nint))
+                    il.Emit(OpCodes.Ldind_I);
+                else if (genType == typeof(nuint))
+                {
+                    il.Emit(OpCodes.Ldind_I);
+                    il.Emit(OpCodes.Conv_U);
+                }
+                else if (genType.IsValueType)
+                    il.Emit(OpCodes.Ldobj, genType);
+                else
+                    il.Emit(OpCodes.Ldind_Ref);
+
                 il.Emit(OpCodes.Callvirt, getSizeTypeMethod.MakeGenericMethod(genType));
             }
 
@@ -315,19 +366,20 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Stloc_S, sizeLcl);
         }
 
+        if (skipLbl.HasValue)
+            il.MarkLabel(skipLbl.Value);
+
         il.Emit(OpCodes.Ldloc_S, sizeLcl);
         il.Emit(OpCodes.Ret);
 
         field.SetValue(null, getSize.CreateDelegate(field.FieldType));
     }
-    private static void DefineParams(object methodBuilder, Type[] genTypes, int countBefore, bool nonPrim, bool valueTypesByRef = true)
+    private static void DefineParams(object methodBuilder, Type[] genTypes, int countBefore, bool valueTypesByRef = true)
     {
         int pInd = countBefore;
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
-            if (nonPrim && IsPrimitiveLikeType(genType))
-                continue;
 
             string name = "arg" + i.ToString(CultureInfo.InvariantCulture);
 

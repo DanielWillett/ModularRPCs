@@ -1,8 +1,8 @@
-﻿using System;
+﻿using DanielWillett.ModularRpcs.Exceptions;
+using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
-using DanielWillett.ModularRpcs.Exceptions;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class StringParser(Encoding encoding) : BinaryTypeParser<string>
@@ -11,10 +11,10 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 
     /*
      * Header format:
-     * [ 1 byte - flags                                                                                        ] [ byte count ] [ char count ] [ data... ]
-     * |XXXXCCBB            mask   meaning                                                                     |  - variable sizes, see flags
-     * |    11   char count 0b1100 0 = same as byte ct, 1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length |
-     * |      11 byte count 0b0011 0 = empty string,    1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length |
+     * [ 1 byte - flags                                                                                         ] [ byte count ] [ char count ] [ data...            ]
+     * | 0000AABB            mask   meaning                                                                     | | variable sizes, see flags | | length: byte count |
+     * |     11   char count 0b1100 0 = same as byte ct, 1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length | |                           | |                    |
+     * |       11 byte count 0b0011 0 = empty string,    1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length | |                           | |                    |
      */
     public override bool IsVariableSize => true;
     public override int MinimumSize => 1;

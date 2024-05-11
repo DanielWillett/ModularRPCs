@@ -250,7 +250,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Unable to find an IBinaryTypeParser for the type..
+        ///   Looks up a localized string similar to Unable to find an IBinaryTypeParser for the type.
         /// </summary>
         public static string RpcInvalidParameterExceptionNoParserFound {
             get {

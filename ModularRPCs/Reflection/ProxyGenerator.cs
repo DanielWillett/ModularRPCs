@@ -1070,8 +1070,18 @@ public sealed class ProxyGenerator
         if (type.IsValueType)
             throw new ArgumentException(Properties.Exceptions.TypeNotReferenceType, nameof(type));
 
-        if (type.IsSealed || type.IsAbstract)
+        if (type.IsSealed)
             throw new ArgumentException(Properties.Exceptions.TypeNotInheritable, nameof(type));
+        MethodInfo[] methods = type.GetMethods(BindingFlags.FlattenHierarchy | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        if (type.IsAbstract)
+        {
+            // check that there are no abstract methods that aren't send methods.
+            foreach (MethodInfo method in methods)
+            {
+                if (method.IsAbstract && method.DeclaringType == type && !method.IsDefinedSafe<RpcSendAttribute>())
+                    throw new ArgumentException(Properties.Exceptions.TypeNotInheritable, nameof(type));
+            }
+        }
 
         bool typeGivesInternalAccess = VisibilityUtility.AssemblyGivesInternalAccess(type.Assembly);
 
@@ -1080,11 +1090,14 @@ public sealed class ProxyGenerator
 
         TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, out FieldBuilder proxyContextField);
 
-        MethodInfo[] methods = type.GetMethods(BindingFlags.FlattenHierarchy | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         foreach (MethodInfo method in methods)
         {
             if (!method.IsDefinedSafe<RpcSendAttribute>() || method.DeclaringType == typeof(object))
+            {
+                if (method.IsAbstract && method.DeclaringType == type)
+                    throw new ArgumentException(Properties.Exceptions.TypeNotInheritable, nameof(type));
                 continue;
+            }
 
             if (!VisibilityUtility.IsMethodOverridable(method))
             {
@@ -1163,7 +1176,7 @@ public sealed class ProxyGenerator
             generator.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
             for (int i = 0; i < genericArguments.Length; ++i)
             {
-                generator.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i);
+                generator.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i + 1);
             }
 
             Type delegateType = getSizeMethod.FieldType;

@@ -27,50 +27,6 @@ public class Program
 
         Console.ReadLine();
     }
-    public static void Run2()
-    {
-        Type type = ProxyGenerator.Instance.SerializerGenerator.GetSerializerType(4).MakeGenericType(typeof(int), typeof(string), typeof(Guid), typeof(SpinWait));
-        RuntimeHelpers.RunClassConstructor(type.TypeHandle);
-        MethodInfo method = type.GetField("GetSizeMethod", BindingFlags.Public | BindingFlags.Static).GetValue(null) as MethodInfo;
-        IRpcSerializer serializer = new Serializer();
-        int size = (int)method.Invoke(null, [ serializer, "test", new SpinWait() ]);
-        Console.WriteLine(size);
-    }
-    class Serializer : IRpcSerializer
-    {
-        public int GetSize<T>(T value) => 2;
-
-        public int GetSize(TypedReference value) => 2;
-
-        public unsafe void WriteObject<T>(T value, byte* bytes, uint maxSize)
-        {
-            throw new NotImplementedException();
-        }
-
-        public unsafe void WriteObject(object value, byte* bytes, uint maxSize)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void WriteObject<T>(T value, Stream stream)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void WriteObject(object value, Stream stream)
-        {
-            throw new NotImplementedException();
-        }
-
-        public unsafe T ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead) => throw new NotImplementedException();
-
-        public unsafe object ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead) => throw new NotImplementedException();
-
-        public T ReadObject<T>(Stream stream, out int bytesRead) => throw new NotImplementedException();
-
-        public object ReadObject(Type objectType, Stream stream, out int bytesRead) => throw new NotImplementedException();
-    }
-
     public static void Run(string[] args)
     {
         Accessor.LogILTraceMessages = true;
@@ -79,12 +35,14 @@ public class Program
         Accessor.LogWarningMessages = true;
         Accessor.LogErrorMessages = true;
 
-        IRpcRouter router = new DefaultRpcRouter(new Serializer());
+        IRpcRouter router = new DefaultRpcRouter(new DefaultSerializer());
         
         SampleClass sc0 = ProxyGenerator.Instance.CreateProxy<SampleClass>(router);
 
-        int i = 3;
-        SpinLock sl = default;
+        nint i = 3;
+        nint val = 5;
+        string str = "test";
+        DateTime dt = DateTime.UtcNow;
         //Type serializerType = ProxyGenerator.Instance.SerializerGenerator.GetSerializerType(3).MakeGenericType(typeof(int), typeof(SpinLock), typeof(string));
         //
         //RuntimeHelpers.RunClassConstructor(serializerType.TypeHandle);
@@ -96,7 +54,7 @@ public class Program
         //
         //int size = (int)actualMethod.Invoke(method, [ new Serializer(), 3, default(SpinLock), "test" ]);
 
-        RpcTask task = sc0.CallRpcOne(ref i, ref sl, "test");
+        RpcTask task = sc0.CallRpcOne(i, ref val);
 
         bool didRelease = sc0.Release();
         Console.WriteLine($"released: {didRelease}.");

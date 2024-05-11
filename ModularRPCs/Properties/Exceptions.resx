@@ -235,7 +235,7 @@
     <value>Parameter of type {0} is not serializable. {1}.</value>
   </data>
   <data name="RpcInvalidParameterExceptionNoParserFound" xml:space="preserve">
-    <value>Unable to find an IBinaryTypeParser for the type.</value>
+    <value>Unable to find an IBinaryTypeParser for the type</value>
   </data>
   <data name="RpcOverheadParseExceptionBufferRunOutNativeIntOverflow" xml:space="preserve">
     <value>The RpcOverhead failed to parse a proper overhead because the native int value was too long for this system while reading from the binary type parser: '{0}'.</value>

@@ -4,6 +4,11 @@ using System.IO;
 namespace DanielWillett.ModularRpcs.Serialization;
 public interface IRpcSerializer
 {
+    /// <summary>
+    /// Should <see cref="GetSize"/> be called for all primitive-like types?
+    /// </summary>
+    /// <remarks>Primitive types also include some fixed-size system types like DateTime[Offset], TimeSpan, Guid, etc.</remarks>
+    bool PreCalculatePrimitiveSizes { get; }
     int GetSize<T>(T value);
     int GetSize(TypedReference value);
     unsafe void WriteObject<T>(T value, byte* bytes, uint maxSize);

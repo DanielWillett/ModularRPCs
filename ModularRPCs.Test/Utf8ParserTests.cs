@@ -1,6 +1,6 @@
-﻿using System;
-using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
+using System;
 using System.IO;
 using System.Text;
 
@@ -71,17 +71,49 @@ public class Utf8ParserTests
     }
 
     [Test]
-    [TestCase("test1")]
-    [TestCase("hello")]
+    [TestCase(Utf8ParserTestCases.TestCase7BitSmall1)]
+    [TestCase(Utf8ParserTestCases.TestCase7BitSmall2)]
     public void TestShort7BitStringStream(string value)
     {
         TestStringStream(value);
     }
 
     [Test]
-    [TestCase("test1")]
-    [TestCase("hello")]
+    [TestCase(Utf8ParserTestCases.TestCase7BitSmall1)]
+    [TestCase(Utf8ParserTestCases.TestCase7BitSmall2)]
     public void TestShort7BitStringBytes(string value)
+    {
+        TestStringBytes(value);
+    }
+
+    [Test]
+    [TestCase(Utf8ParserTestCases.TestCase7BitMed1)]
+    [TestCase(Utf8ParserTestCases.TestCase7BitMed2)]
+    public void TestMed7BitStringStream(string value)
+    {
+        TestStringStream(value);
+    }
+
+    [Test]
+    [TestCase(Utf8ParserTestCases.TestCase7BitMed1)]
+    [TestCase(Utf8ParserTestCases.TestCase7BitMed2)]
+    public void TestMed7BitStringBytes(string value)
+    {
+        TestStringBytes(value);
+    }
+
+    [Test]
+    [TestCase(Utf8ParserTestCases.TestCase7BitLong1)]
+    [TestCase(Utf8ParserTestCases.TestCase7BitLong2)]
+    public void TestLong7BitStringStream(string value)
+    {
+        TestStringStream(value);
+    }
+
+    [Test]
+    [TestCase(Utf8ParserTestCases.TestCase7BitLong1)]
+    [TestCase(Utf8ParserTestCases.TestCase7BitLong2)]
+    public void TestLong7BitStringBytes(string value)
     {
         TestStringBytes(value);
     }

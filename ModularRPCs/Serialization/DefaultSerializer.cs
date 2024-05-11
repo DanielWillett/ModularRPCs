@@ -1,10 +1,12 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using DanielWillett.ReflectionTools;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using DanielWillett.ModularRpcs.Serialization.Parsers;
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_0_OR_GREATER
+using System.Collections;
+#endif
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
 using System.Buffers;
 #endif
@@ -50,9 +52,12 @@ public class DefaultSerializer : IRpcSerializer
         { typeof(long), sizeof(long) },
         { typeof(float), sizeof(float) },
         { typeof(double), sizeof(double) },
-        { typeof(nuint), 8 }, // native ints are always read/written as int64s
-        { typeof(nint), 8 }
+        { typeof(nuint), sizeof(ulong) }, // native ints are always read/written in 64 bit
+        { typeof(nint), sizeof(long) }
     };
+
+    /// <inheritdoc />
+    public bool PreCalculatePrimitiveSizes { get; }
 
     /// <summary>
     /// Create a serializer and register custom parsers.
@@ -64,6 +69,7 @@ public class DefaultSerializer : IRpcSerializer
         IDictionary<Type, IBinaryTypeParser> dict = new Dictionary<Type, IBinaryTypeParser>();
         registerParsers(dict);
         _parsers = new Dictionary<Type, IBinaryTypeParser>(dict);
+        PreCalculatePrimitiveSizes = !IntlAnyCustomPrimitiveParsers();
     }
 
     /// <summary>
@@ -75,11 +81,28 @@ public class DefaultSerializer : IRpcSerializer
     {
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_0_OR_GREATER
         _parsers = new Dictionary<Type, IBinaryTypeParser>(parsers);
+        PreCaluclatePrimitiveSizes = !IntlAnyCustomPrimitiveParsers();
 #else
         _parsers = new Dictionary<Type, IBinaryTypeParser>(parsers is ICollection c ? c.Count : 4);
+        PreCalculatePrimitiveSizes = true;
         foreach (KeyValuePair<Type, IBinaryTypeParser> parsePair in parsers)
+        {
             _parsers.Add(parsePair.Key, parsePair.Value);
+            if (_primitiveParsers.TryGetValue(parsePair.Key, out IBinaryTypeParser defaultParser) && !defaultParser.IsVariableSize)
+                PreCalculatePrimitiveSizes = false;
+        }
 #endif
+    }
+
+    private bool IntlAnyCustomPrimitiveParsers()
+    {
+        foreach (KeyValuePair<Type, IBinaryTypeParser> parser in _parsers)
+        {
+            if (_primitiveParsers.TryGetValue(parser.Key, out IBinaryTypeParser defaultParser) && !defaultParser.IsVariableSize)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -88,6 +111,7 @@ public class DefaultSerializer : IRpcSerializer
     public DefaultSerializer()
     {
         _parsers = new Dictionary<Type, IBinaryTypeParser>();
+        PreCalculatePrimitiveSizes = true;
     }
     private static void ThrowNoParserFound(Type type)
     {
