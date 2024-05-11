@@ -1,13 +1,19 @@
-﻿using DanielWillett.ModularRpcs.DependencyInjection;
+﻿using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Examples.Samples;
 using DanielWillett.ModularRpcs.Protocol;
-using DanielWillett.ReflectionTools;
-using DanielWillett.ReflectionTools.IoC;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using System;
-using System.Threading;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ReflectionTools;
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using DanielWillett.ModularRpcs.Routing;
+
+// ReSharper disable LocalizableElement
 
 public class Program
 {
@@ -15,57 +21,124 @@ public class Program
     {
         Run(args);
 
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, true, true);
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 
         Thread.Sleep(10000);
 
         Console.ReadLine();
     }
+    public static void Run2()
+    {
+        Type type = ProxyGenerator.Instance.SerializerGenerator.GetSerializerType(4).MakeGenericType(typeof(int), typeof(string), typeof(Guid), typeof(SpinWait));
+        RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+        MethodInfo method = type.GetField("GetSizeMethod", BindingFlags.Public | BindingFlags.Static).GetValue(null) as MethodInfo;
+        IRpcSerializer serializer = new Serializer();
+        int size = (int)method.Invoke(null, [ serializer, "test", new SpinWait() ]);
+        Console.WriteLine(size);
+    }
+    class Serializer : IRpcSerializer
+    {
+        public int GetSize<T>(T value) => 2;
+
+        public int GetSize(TypedReference value) => 2;
+
+        public unsafe void WriteObject<T>(T value, byte* bytes, uint maxSize)
+        {
+            throw new NotImplementedException();
+        }
+
+        public unsafe void WriteObject(object value, byte* bytes, uint maxSize)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void WriteObject<T>(T value, Stream stream)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void WriteObject(object value, Stream stream)
+        {
+            throw new NotImplementedException();
+        }
+
+        public unsafe T ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead) => throw new NotImplementedException();
+
+        public unsafe object ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead) => throw new NotImplementedException();
+
+        public T ReadObject<T>(Stream stream, out int bytesRead) => throw new NotImplementedException();
+
+        public object ReadObject(Type objectType, Stream stream, out int bytesRead) => throw new NotImplementedException();
+    }
 
     public static void Run(string[] args)
     {
-        IHostBuilder hostBuilder = Host.CreateDefaultBuilder(args);
-
         Accessor.LogILTraceMessages = true;
         Accessor.LogDebugMessages = true;
         Accessor.LogInfoMessages = true;
         Accessor.LogWarningMessages = true;
         Accessor.LogErrorMessages = true;
 
-        hostBuilder.ConfigureServices(serviceCollection =>
-        {
-            serviceCollection.AddReflectionTools();
-            serviceCollection.AddProxyGenerator();
+        IRpcRouter router = new DefaultRpcRouter(new Serializer());
+        
+        SampleClass sc0 = ProxyGenerator.Instance.CreateProxy<SampleClass>(router);
 
-            serviceCollection.AddRpcTransient<SampleClass>();
-            //serviceCollection.AddRpcTransient<SampleKeysNullable>();
-            //serviceCollection.AddRpcTransient<SampleKeysNullableOtherField>();
-            //serviceCollection.AddRpcTransient<SampleKeysNullableNoField>();
-            //serviceCollection.AddRpcTransient<SampleKeysString>();
-        });
-
-        IHost host = hostBuilder.Build();
-
-        SampleClass sc0 = host.Services.GetRequiredService<SampleClass>();
-        //SampleKeysNullable sc1 = host.Services.GetRequiredService<SampleKeysNullable>();
-        //SampleKeysNullableNoField sc2 = host.Services.GetRequiredService<SampleKeysNullableNoField>();
-        //SampleKeysString sc3 = host.Services.GetRequiredService<SampleKeysString>();
-        //SampleKeysNullableOtherField sc4 = host.Services.GetRequiredService<SampleKeysNullableOtherField>();
-
-        //SampleKeysString? testCs3 = (SampleKeysString?)ProxyGenerator.Instance.GetObjectByIdentifier(typeof(SampleKeysString), "test")?.Target;
+        int i = 3;
+        SpinLock sl = default;
+        //Type serializerType = ProxyGenerator.Instance.SerializerGenerator.GetSerializerType(3).MakeGenericType(typeof(int), typeof(SpinLock), typeof(string));
         //
-        //if (!ReferenceEquals(testCs3, sc3))
-        //    throw new Exception("bad");
+        //RuntimeHelpers.RunClassConstructor(serializerType.TypeHandle);
         //
-        //bool didRelease = sc1.Release();
-        //Console.WriteLine($"released: {didRelease}.");
-        //didRelease = sc1.Release();
-        //Console.WriteLine($"released: {didRelease}.");
+        //FieldInfo field = serializerType.GetFields(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static).FirstOrDefault();
+        //Delegate method = (Delegate)field.GetValue(null);
+        //MethodInfo actualMethod = method.Method;
+        //actualMethod = (DynamicMethod)actualMethod.GetType().GetField("m_owner", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(actualMethod);
+        //
+        //int size = (int)actualMethod.Invoke(method, [ new Serializer(), 3, default(SpinLock), "test" ]);
 
-        bool didRelease = RpcObjectExtensions.Release(sc0);
+        RpcTask task = sc0.CallRpcOne(ref i, ref sl, "test");
+
+        bool didRelease = sc0.Release();
         Console.WriteLine($"released: {didRelease}.");
-        didRelease = RpcObjectExtensions.Release(sc0);
+
+        didRelease = sc0.Release();
         Console.WriteLine($"released: {didRelease}.");
-        host.Dispose();
     }
+
+    //public static void Run(string[] args)
+    //{
+    //    IHostBuilder hostBuilder = Host.CreateDefaultBuilder(args);
+    //
+    //    Accessor.LogILTraceMessages = true;
+    //    Accessor.LogDebugMessages = true;
+    //    Accessor.LogInfoMessages = true;
+    //    Accessor.LogWarningMessages = true;
+    //    Accessor.LogErrorMessages = true;
+    //
+    //    hostBuilder.ConfigureServices(serviceCollection =>
+    //    {
+    //        serviceCollection.AddReflectionTools();
+    //        serviceCollection.AddProxyGenerator();
+    //
+    //        serviceCollection.AddRpcTransient<SampleClass>();
+    //        //serviceCollection.AddRpcTransient<SampleKeysNullable>();
+    //        //serviceCollection.AddRpcTransient<SampleKeysNullableOtherField>();
+    //        //serviceCollection.AddRpcTransient<SampleKeysNullableNoField>();
+    //        //serviceCollection.AddRpcTransient<SampleKeysString>();
+    //    });
+    //
+    //    IHost host = hostBuilder.Build();
+    //
+    //    SampleClass sc0 = host.Services.GetRequiredService<SampleClass>();
+    //
+    //    int i = 3;
+    //    SpinLock sl = default;
+    //    RpcTask task = sc0.CallRpcOne(ref i, ref sl, "test");
+    //
+    //    bool didRelease = RpcObjectExtensions.Release(sc0);
+    //    Console.WriteLine($"released: {didRelease}.");
+    //    didRelease = RpcObjectExtensions.Release(sc0);
+    //    Console.WriteLine($"released: {didRelease}.");
+    //    host.Dispose();
+    //}
 }

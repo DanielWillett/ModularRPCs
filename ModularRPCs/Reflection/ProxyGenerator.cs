@@ -5,6 +5,8 @@ using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
 using DanielWillett.ReflectionTools.Formatting;
@@ -32,11 +34,12 @@ public sealed class ProxyGenerator
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
 #if DEBUG
-    private const bool DebugPrint = true;
+    internal const bool DebugPrint = true;
+    internal const bool BreakpointPrint = false;
 #else
-    private const bool DebugPrint = false;
+    internal const bool DebugPrint = false;
+    internal const bool BreakpointPrint = false;
 #endif
-
 
     private readonly string[] _identifierFieldNamesToSearch =
     [
@@ -70,6 +73,11 @@ public sealed class ProxyGenerator
     public string SuppressFinalizeFieldName => "_suppressFinalize<RPC_Proxy>";
 
     /// <summary>
+    /// Name of the private field used to store implementations of various interfaces used internally, such as <see cref="IRpcRouter"/>.
+    /// </summary>
+    public string ProxyContextFieldName => "_proxyContext<RPC_Proxy>";
+
+    /// <summary>
     /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>bool(T, out WeakReference)</c>.
     /// </summary>
     public string TryGetInstanceMethodName => "TryGetInstance<RPC_Proxy>";
@@ -85,6 +93,7 @@ public sealed class ProxyGenerator
     /// </summary>
     public string ReleaseMethodName => "Release";
 
+    internal SerializerGenerator SerializerGenerator { get; }
     internal AssemblyBuilder AssemblyBuilder { get; }
     internal ModuleBuilder ModuleBuilder { get; }
 
@@ -101,60 +110,73 @@ public sealed class ProxyGenerator
     static ProxyGenerator() { }
     private ProxyGenerator()
     {
+        SerializerGenerator = new SerializerGenerator(this);
         Assembly thisAssembly = Assembly.GetExecutingAssembly();
         ProxyAssemblyName = new AssemblyName(thisAssembly.GetName().Name + ".Proxy");
         AssemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(ProxyAssemblyName, AssemblyBuilderAccess.RunAndCollect);
         ModuleBuilder = AssemblyBuilder.DefineDynamicModule(ProxyAssemblyName.Name!);
         _identifierErrorConstructor = typeof(RpcObjectInitializationException).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [ typeof(string) ], null)
                                       ?? throw new MemberAccessException("Failed to find RpcObjectInitializationException(string).");
+
+        if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
+            return;
+
+        _accessIgnoredAssemblies.Add(thisAssembly);
+        CustomAttributeBuilder attr = new CustomAttributeBuilder(
+            typeof(IgnoresAccessChecksToAttribute).GetConstructor([ typeof(string) ])!,
+            [ thisAssembly.GetName().Name ]
+        );
+
+        AssemblyBuilder.SetCustomAttribute(attr);
+        _accessIgnoredAssemblies.Add(thisAssembly);
     }
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
-    public TRpcClass CreateProxy<TRpcClass>() where TRpcClass : class
-        => CreateProxy<TRpcClass>(false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
+    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router) where TRpcClass : class
+        => CreateProxy<TRpcClass>(router, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
-    public TRpcClass CreateProxy<TRpcClass>(bool nonPublic) where TRpcClass : class
-        => CreateProxy<TRpcClass>(nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
+    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic) where TRpcClass : class
+        => CreateProxy<TRpcClass>(router, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
-    public TRpcClass CreateProxy<TRpcClass>(params object[] constructorParameters) where TRpcClass : class
-        => CreateProxy<TRpcClass>(false, null, constructorParameters, CultureInfo.CurrentCulture, null);
+    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, params object[] constructorParameters) where TRpcClass : class
+        => CreateProxy<TRpcClass>(router, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
-    public TRpcClass CreateProxy<TRpcClass>(bool nonPublic, params object[] constructorParameters) where TRpcClass : class
-        => CreateProxy<TRpcClass>(nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
+    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, params object[] constructorParameters) where TRpcClass : class
+        => CreateProxy<TRpcClass>(router, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
-    public TRpcClass CreateProxy<TRpcClass>(bool nonPublic, Binder? binder, object[] constructorParameters) where TRpcClass : class
-        => CreateProxy<TRpcClass>(nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
+    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder, object[] constructorParameters) where TRpcClass : class
+        => CreateProxy<TRpcClass>(router, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
-    public TRpcClass CreateProxy<TRpcClass>(bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes) where TRpcClass : class
-        => (TRpcClass)CreateProxy(typeof(TRpcClass), nonPublic, binder, constructorParameters, culture, activationAttributes);
+    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes) where TRpcClass : class
+        => (TRpcClass)CreateProxy(router, typeof(TRpcClass), nonPublic, binder, constructorParameters, culture, activationAttributes);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
-    public object CreateProxy(Type type)
-        => CreateProxy(type, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
+    public object CreateProxy(IRpcRouter router, Type type)
+        => CreateProxy(router, type, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
-    public object CreateProxy(Type type, bool nonPublic)
-        => CreateProxy(type, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
+    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic)
+        => CreateProxy(router, type, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
-    public object CreateProxy(Type type, params object[] constructorParameters)
-        => CreateProxy(type, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
+    public object CreateProxy(IRpcRouter router, Type type, params object[] constructorParameters)
+        => CreateProxy(router, type, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
-    public object CreateProxy(Type type, bool nonPublic, params object[] constructorParameters)
-        => CreateProxy(type, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
+    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, params object[] constructorParameters)
+        => CreateProxy(router, type, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
-    public object CreateProxy(Type type, bool nonPublic, Binder? binder, object[] constructorParameters)
-        => CreateProxy(type, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
+    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder, object[] constructorParameters)
+        => CreateProxy(router, type, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
-    public object CreateProxy(Type type, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes)
+    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes)
     {
         if (type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
@@ -162,6 +184,18 @@ public sealed class ProxyGenerator
 
         try
         {
+            if (constructorParameters == null || constructorParameters.Length == 0)
+            {
+                constructorParameters = [ router ];
+            }
+            else
+            {
+                object[] oldParams = constructorParameters;
+                constructorParameters = new object[oldParams.Length + 1];
+                constructorParameters[0] = router;
+                Array.Copy(oldParams, 0, constructorParameters, 0, oldParams.Length);
+            }
+
             object newProxiedObject = Activator.CreateInstance(
                 newType,
                 BindingFlags.CreateInstance | BindingFlags.Instance | (nonPublic ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public),
@@ -307,7 +341,7 @@ public sealed class ProxyGenerator
         )(obj);
     }
 
-    private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess)
+    private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess, out FieldBuilder proxyContextField)
     {
         TypeBuilder typeBuilder = ModuleBuilder.DefineType(type.Name + "<RPC_Proxy>",
             TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
@@ -339,6 +373,7 @@ public sealed class ProxyGenerator
         FieldBuilder dictField;
         FieldBuilder idField;
         FieldBuilder suppressFinalizeField;
+        proxyContextField = typeBuilder.DefineField(ProxyContextFieldName, typeof(ProxyContext), FieldAttributes.Private);
         bool isNullable = false;
         if (idType != null)
         {
@@ -403,8 +438,17 @@ public sealed class ProxyGenerator
                 .GetMethod ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(Nullable<int>.Value))
                     .DeclaredIn(idType, isStatic: false)
                     .WithPropertyType(elementType!)
-                    .WithNoSetter())}.");
+                    .WithNoSetter())
+                }.");
         }
+
+        MethodInfo getProxyContextMethod = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.GetDefaultProxyContext), BindingFlags.Public | BindingFlags.Instance) 
+                                           ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcRouter.GetDefaultProxyContext))
+                                               .DeclaredIn<IRpcRouter>(isStatic: false)
+                                               .WithParameter<Type>("proxyType")
+                                               .WithParameter<ProxyContext>("context", ByRefTypeMode.Out)
+                                               .ReturningVoid()
+                                            )}.");
 
         // create pass-through constructors for all base constructors.
         // for IRpcObject<T> types the identifier will be validated and the object added to the underlying dictionary.
@@ -423,23 +467,34 @@ public sealed class ProxyGenerator
             }
 
             ParameterInfo[] parameters = baseCtor.GetParameters();
-            Type[] types = new Type[parameters.Length];
-            Type[][] reqMods = new Type[parameters.Length][];
-            Type[][] optMods = new Type[parameters.Length][];
+            Type[] types = new Type[parameters.Length + 1];
+            Type?[][] reqMods = new Type[parameters.Length + 1][];
+            Type?[][] optMods = new Type[parameters.Length + 1][];
+            types[0] = typeof(IRpcRouter);
             for (int i = 0; i < parameters.Length; ++i)
             {
+                int index = i + 1;
                 ParameterInfo p = parameters[i];
-                types[i] = p.ParameterType;
-                reqMods[i] = p.GetRequiredCustomModifiers();
-                optMods[i] = p.GetOptionalCustomModifiers();
+                types[index] = p.ParameterType;
+                reqMods[index] = p.GetRequiredCustomModifiers();
+                optMods[index] = p.GetOptionalCustomModifiers();
             }
 
             ConstructorBuilder builder = typeBuilder.DefineConstructor(baseCtor.Attributes & ~MethodAttributes.HasSecurity, baseCtor.CallingConvention, types, reqMods, optMods);
 
-            IOpCodeEmitter il = builder.AsEmitter(debuggable: DebugPrint);
+            IOpCodeEmitter il = builder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+
+            // get proxy context
+            il.Emit(OpCodes.Ldarg_1);
+            il.Emit(OpCodes.Ldtoken, type);
+            il.Emit(OpCodes.Call, Accessor.GetMethod(Type.GetTypeFromHandle)!);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, proxyContextField);
+            il.Emit(OpCodes.Callvirt, getProxyContextMethod);
+
             il.Emit(OpCodes.Ldarg_0);
 
-            for (int i = 0; i < types.Length; ++i)
+            for (int i = 1; i < types.Length; ++i)
                 EmitUtility.EmitArgument(il, i + 1, false);
 
             il.Emit(OpCodes.Call, baseCtor);
@@ -575,7 +630,7 @@ public sealed class ProxyGenerator
                         }
 
                         il.Emit(OpCodes.Call, getHasValueMethod!);
-                        il.Emit(OpCodes.Brtrue_S, ifNotDefault);
+                        il.Emit(OpCodes.Brtrue, ifNotDefault);
                     }
                     else if (idType.IsPrimitive && (idType == typeof(long)
                                                     || idType == typeof(ulong)
@@ -819,7 +874,7 @@ public sealed class ProxyGenerator
 
             // static constructor to initalize the dictionary
             ConstructorBuilder typeInitializer = typeBuilder.DefineTypeInitializer();
-            IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: DebugPrint);
+            IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
             il.Emit(OpCodes.Newobj, dictCtor);
             il.Emit(OpCodes.Stsfld, dictField);
             il.Emit(OpCodes.Ret);
@@ -864,7 +919,7 @@ public sealed class ProxyGenerator
                 null, null, null, null, null
             );
 
-            il = finalizerMethod.AsEmitter(debuggable: DebugPrint);
+            il = finalizerMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
             LocalBuilder lcl = il.DeclareLocal(typeof(WeakReference));
             Label retLbl = il.DefineLabel();
@@ -876,7 +931,7 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldflda, suppressFinalizeField);
             il.Emit(OpCodes.Ldc_I4_1);
             il.Emit(OpCodes.Call, compareExchange);
-            il.Emit(OpCodes.Brtrue_S, retLbl);
+            il.Emit(OpCodes.Brtrue, retLbl);
 
             if (baseReleaseMethod is { IsAbstract: false })
             {
@@ -893,9 +948,9 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Call, dictTryRemoveMethod);
 #if DEBUG
             Label brtrue = il.DefineLabel();
-            il.Emit(OpCodes.Brfalse_S, brtrue);
+            il.Emit(OpCodes.Brfalse, brtrue);
             il.EmitWriteLine($"Removed {Accessor.Formatter.Format(type)} from finalizer.");
-            il.Emit(OpCodes.Br_S, retLbl);
+            il.Emit(OpCodes.Br, retLbl);
             il.MarkLabel(brtrue);
             il.EmitWriteLine($"Didn't remove {Accessor.Formatter.Format(type)} from finalizer.");
 #else
@@ -925,7 +980,7 @@ public sealed class ProxyGenerator
                 null, null, Type.EmptyTypes, null, null
             );
 
-            il = releaseMethod.AsEmitter(debuggable: DebugPrint);
+            il = releaseMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
             lcl = il.DeclareLocal(typeof(WeakReference));
             Label alreadyDoneLabel = il.DefineLabel();
@@ -935,7 +990,7 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldflda, suppressFinalizeField);
             il.Emit(OpCodes.Ldc_I4_1);
             il.Emit(OpCodes.Call, compareExchange);
-            il.Emit(OpCodes.Brtrue_S, alreadyDoneLabel);
+            il.Emit(OpCodes.Brtrue, alreadyDoneLabel);
 
             if (baseReleaseMethod is { IsAbstract: false })
             {
@@ -953,13 +1008,13 @@ public sealed class ProxyGenerator
 #if DEBUG
             brtrue = il.DefineLabel();
             il.Emit(OpCodes.Dup);
-            il.Emit(OpCodes.Brfalse_S, brtrue);
+            il.Emit(OpCodes.Brfalse, brtrue);
             il.EmitWriteLine($"Removed {Accessor.Formatter.Format(type)} from Release.");
-            il.Emit(OpCodes.Br_S, retLbl);
+            il.Emit(OpCodes.Br, retLbl);
             il.MarkLabel(brtrue);
             il.EmitWriteLine($"Didn't remove {Accessor.Formatter.Format(type)} from Release.");
 #endif
-            il.Emit(OpCodes.Br_S, retLbl);
+            il.Emit(OpCodes.Br, retLbl);
 
             il.MarkLabel(alreadyDoneLabel);
             il.Emit(OpCodes.Ldc_I4_0);
@@ -976,7 +1031,7 @@ public sealed class ProxyGenerator
             tryFetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
             tryFetchMethod.DefineParameter(2, ParameterAttributes.Out, "object");
 
-            il = tryFetchMethod.AsEmitter(debuggable: DebugPrint);
+            il = tryFetchMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
             il.Emit(OpCodes.Ldsfld, dictField);
             il.Emit(OpCodes.Ldarg_0);
@@ -993,7 +1048,7 @@ public sealed class ProxyGenerator
 
             fetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
 
-            il = fetchMethod.AsEmitter(debuggable: DebugPrint);
+            il = fetchMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
             lcl = il.DeclareLocal(typeof(WeakReference));
 
@@ -1008,6 +1063,8 @@ public sealed class ProxyGenerator
 
         return typeBuilder;
     }
+
+    private ProxyContext ctx;
     private Type CreateProxyType(Type type)
     {
         if (type.IsValueType)
@@ -1021,7 +1078,7 @@ public sealed class ProxyGenerator
         if (!VisibilityUtility.IsTypeVisible(type, typeGivesInternalAccess))
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type));
 
-        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess);
+        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, out FieldBuilder proxyContextField);
 
         MethodInfo[] methods = type.GetMethods(BindingFlags.FlattenHierarchy | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         foreach (MethodInfo method in methods)
@@ -1058,6 +1115,33 @@ public sealed class ProxyGenerator
                 | MethodAttributes.FamANDAssem
                 | MethodAttributes.FamORAssem);
 
+            Type serializerCache = SerializerGenerator.GetSerializerType(parameters.Length);
+            Type[] genericArguments = new Type[parameters.Length];
+            for (int i = 0; i < parameters.Length; ++i)
+            {
+                ParameterInfo param = parameters[i];
+                if (param.ParameterType.IsByRef)
+                {
+                    if (param.IsOut)
+                        throw new RpcInvalidParameterException(i, param, method, Properties.Exceptions.RpcInvalidParameterExceptionOutMessage);
+
+                    try
+                    {
+                        genericArguments[i] = param.ParameterType.GetElementType() ?? param.ParameterType;
+                        continue;
+                    }
+                    catch (NotSupportedException) { }
+                }
+                genericArguments[i] = param.ParameterType;
+            }
+
+            serializerCache = serializerCache.MakeGenericType(genericArguments);
+            FieldInfo getSizeMethod = serializerCache.GetField(SerializerGenerator.GetSizeMethodField)
+                                       ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(SerializerGenerator.GetSizeMethodField)
+                                           .DeclaredIn(serializerCache, isStatic: true)
+                                           .Returning<int>()
+                                       )}.");
+
             MethodBuilder methodBuilder = builder.DefineMethod(method.Name,
                 privacyAttributes | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final,
                 method.CallingConvention,
@@ -1066,12 +1150,39 @@ public sealed class ProxyGenerator
                 method.ReturnParameter?.GetOptionalCustomModifiers(),
                 types, reqMods, optMods);
 
-            IOpCodeEmitter generator = methodBuilder.AsEmitter(debuggable: DebugPrint);
+            IOpCodeEmitter generator = methodBuilder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 #if DEBUG
             generator.EmitWriteLine("Calling " + Accessor.Formatter.Format(method));
 #endif
-            //generator.Emit(OpCodes.Ldtoken, method);
+            LocalBuilder lclSize = generator.DeclareLocal(typeof(int));
 
+            // invoke the delegate
+            generator.Emit(OpCodes.Ldsfld, getSizeMethod);
+            generator.Emit(OpCodes.Ldarg_0);
+            generator.Emit(OpCodes.Ldflda, proxyContextField);
+            generator.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
+            for (int i = 0; i < genericArguments.Length; ++i)
+            {
+                generator.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i);
+            }
+
+            Type delegateType = getSizeMethod.FieldType;
+            MethodInfo invokeMethod = delegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+                                      ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
+                                          .DeclaredIn(delegateType, isStatic: true)
+                                          .Returning<int>()
+                                      )}.");
+            Type[] paramArray = new Type[genericArguments.Length + 1];
+            paramArray[0] = typeof(IRpcSerializer);
+            for (int i = 1; i < paramArray.Length; ++i)
+            {
+                Type parameterType = parameters[i - 1].ParameterType;
+                paramArray[i] = parameterType.IsByRef ? parameterType : parameterType.MakeByRefType();
+            }
+
+            generator.Emit(OpCodes.Callvirt, invokeMethod);
+            generator.Emit(OpCodes.Stloc, lclSize);
+            generator.EmitWriteLine(lclSize);
 
             MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
             generator.Emit(OpCodes.Call, getter);
@@ -1081,12 +1192,17 @@ public sealed class ProxyGenerator
         try
         {
             // ReSharper disable once RedundantSuppressNullableWarningExpression
+#if NETSTANDARD2_0
+            return builder.CreateTypeInfo()!;
+#else
             return builder.CreateType()!;
+#endif
         }
         catch (TypeLoadException ex)
         {
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type), ex);
         }
+
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

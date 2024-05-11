@@ -1,4 +1,5 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Routing;
 using System.Threading;
 using System.Threading.Tasks;
 

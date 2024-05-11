@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Routing;
 using System;
 using System.IO;
 using System.Threading;

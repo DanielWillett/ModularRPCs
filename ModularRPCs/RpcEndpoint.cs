@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Routing;
 using System;
 using System.IO;
 using System.Reflection;
@@ -356,7 +357,7 @@ public class RpcEndpoint : IRpcInvocationPoint
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = new byte[64];
 
         int byteCt = stream.Read(bytes, 0, 9);
@@ -393,14 +394,14 @@ public class RpcEndpoint : IRpcInvocationPoint
         int maxSize = Math.Max(rpcTypeLength, rpcMethodLength);
         if (maxSize > 64)
         {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             bytes = new byte[maxSize];
 #else
             bytes = stackalloc byte[maxSize];
 #endif
         }
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byteCt = stream.Read(bytes, 0, rpcTypeLength);
 #else
         byteCt = stream.Read(bytes[..rpcTypeLength]);
@@ -409,14 +410,14 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (byteCt < rpcTypeLength)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         string typeName = Encoding.UTF8.GetString(bytes, 0, rpcTypeLength);
 #else
         string typeName = Encoding.UTF8.GetString(bytes[..rpcTypeLength]);
 #endif
         index += rpcTypeLength;
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byteCt = stream.Read(bytes, 0, rpcMethodLength);
 #else
         byteCt = stream.Read(bytes[..rpcMethodLength]);
@@ -425,7 +426,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (byteCt < rpcMethodLength)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         string methodName = Encoding.UTF8.GetString(bytes, 0, rpcMethodLength);
 #else
         string methodName = Encoding.UTF8.GetString(bytes[..rpcMethodLength]);
@@ -439,7 +440,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         ++index;
         if (b != 0)
         {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byteCt = stream.Read(bytes, 0, 2);
 #else
             byteCt = stream.Read(bytes[..2]);
@@ -456,13 +457,13 @@ public class RpcEndpoint : IRpcInvocationPoint
             int ttlLen = 0;
             if (argCt * 2 > bytes.Length)
             {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 bytes = new byte[argCt * 2];
 #else
                 bytes = argCt > 256 ? new byte[argCt * 2] : stackalloc byte[argCt * 2];
 #endif
             }
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byteCt = stream.Read(bytes, 0, argCt * 2);
 #else
             byteCt = stream.Read(bytes[..(argCt * 2)]);
@@ -484,14 +485,14 @@ public class RpcEndpoint : IRpcInvocationPoint
 
             if (ttlLen > bytes.Length)
             {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 bytes = new byte[ttlLen];
 #else
                 bytes = ttlLen > 512 ? new byte[ttlLen] : stackalloc byte[ttlLen];
 #endif
             }
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byteCt = stream.Read(bytes, 0, ttlLen);
 #else
             byteCt = stream.Read(bytes[..(argCt * 2)]);
@@ -503,7 +504,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             int pos = 0;
             for (int i = 0; i < argCt; ++i)
             {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 args[i] = Encoding.UTF8.GetString(bytes, pos, argLens[i]);
 #else
                 args[i] = Encoding.UTF8.GetString(bytes.Slice(pos, argLens[i]));

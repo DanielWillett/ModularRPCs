@@ -1,11 +1,13 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Reflection;
 
-namespace DanielWillett.ModularRpcs.Abstractions;
+namespace DanielWillett.ModularRpcs.Routing;
 
 /// <summary>
 /// Handles reading and dispatching RPCs.
@@ -62,4 +64,9 @@ public interface IRpcRouter
     /// </summary>
     /// <exception cref="ArgumentException">The given identifier can not be serialized or deserialized.</exception>
     int CalculateIdentifierSize(object identifier);
+
+    /// <summary>
+    /// Get the default interface implementations for a proxy class.
+    /// </summary>
+    void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
 }

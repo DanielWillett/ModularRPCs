@@ -4,6 +4,8 @@ using System.IO;
 namespace DanielWillett.ModularRpcs.Serialization;
 public interface IRpcSerializer
 {
+    int GetSize<T>(T value);
+    int GetSize(TypedReference value);
     unsafe void WriteObject<T>(T value, byte* bytes, uint maxSize);
     unsafe void WriteObject(object value, byte* bytes, uint maxSize);
     void WriteObject<T>(T value, Stream stream);

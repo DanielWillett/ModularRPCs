@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Routing;
 
 namespace DanielWillett.ModularRpcs.Abstractions;
 public interface IRpcInvocationPoint

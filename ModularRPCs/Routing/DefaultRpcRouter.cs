@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Reflection;
 
 namespace DanielWillett.ModularRpcs.Routing;
 public class DefaultRpcRouter : IRpcRouter
@@ -338,14 +339,14 @@ public class DefaultRpcRouter : IRpcRouter
             TypeCode typeCode = (TypeCode)b;
 
             int byteCt;
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byte[] bytes;
 #else
             scoped Span<byte> bytes;
 #endif
             if (typeCode == TypeCode.String)
             {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 bytes = new byte[32];
 #else
                 bytes = stackalloc byte[64];
@@ -353,7 +354,7 @@ public class DefaultRpcRouter : IRpcRouter
                 int strLen;
                 if ((flags & IdentifierFlags.StrLen32) == IdentifierFlags.StrLen32)
                 {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                     byteCt = stream.Read(bytes, 0, sizeof(uint));
 #else
                     byteCt = stream.Read(bytes[..sizeof(uint)]);
@@ -374,7 +375,7 @@ public class DefaultRpcRouter : IRpcRouter
                 }
                 else if ((flags & IdentifierFlags.StrLen16) != 0)
                 {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                     byteCt = stream.Read(bytes, 0, sizeof(ushort));
 #else
                     byteCt = stream.Read(bytes[..sizeof(ushort)]);
@@ -399,14 +400,14 @@ public class DefaultRpcRouter : IRpcRouter
 
                 if (strLen > bytes.Length)
                 {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                     bytes = new byte[strLen];
 #else
                     bytes = stackalloc byte[strLen];
 #endif
                 }
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 byteCt = stream.Read(bytes, 0, strLen);
 #else
                 byteCt = stream.Read(bytes[..strLen]);
@@ -417,7 +418,7 @@ public class DefaultRpcRouter : IRpcRouter
                 if (byteCt < strLen)
                     throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 string value = Encoding.UTF8.GetString(bytes, 0, strLen);
 #else
                 string value = Encoding.UTF8.GetString(bytes[..strLen]);
@@ -433,7 +434,7 @@ public class DefaultRpcRouter : IRpcRouter
             size += tcsz;
             if (size != 1)
             {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 bytes = new byte[tcsz];
                 byteCt = stream.Read(bytes, 0, tcsz);
 #else
@@ -581,7 +582,7 @@ public class DefaultRpcRouter : IRpcRouter
             int sz = (flags & IdentifierFlags.IsTypeNameOnly) == 0 ? sizeof(uint) : 0;
             sz += (flags & IdentifierFlags.IsKnownTypeOnly) == 0 ? sizeof(ushort) : 0;
             int arrSize = (flags & IdentifierFlags.IsTypeNameOnly) == 0 ? sz + 32 : sz;
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byte[] bytes = new byte[arrSize];
             int byteCt = stream.Read(bytes, 0, sz);
 #else
@@ -611,21 +612,21 @@ public class DefaultRpcRouter : IRpcRouter
 
                 if (strLen > bytes.Length)
                 {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                     bytes = new byte[strLen];
 #else
                     bytes = stackalloc byte[strLen];
 #endif
                 }
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 byteCt = stream.Read(bytes, 0, strLen);
 #else
                 byteCt = stream.Read(bytes[..strLen]);
 #endif
                 if (byteCt < strLen)
                     throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
                 typeName = Encoding.UTF8.GetString(bytes, 0, strLen);
 #else
                 typeName = Encoding.UTF8.GetString(bytes[..strLen]);
@@ -660,6 +661,13 @@ public class DefaultRpcRouter : IRpcRouter
         return type;
     }
     public int CalculateIdentifierSize(object identifier) => throw new NotImplementedException();
+    public void GetDefaultProxyContext(Type proxyType, out ProxyContext context)
+    {
+        context = default;
+        context.DefaultSerializer = _serializer;
+        context.Router = this;
+    }
+
     public ValueTask HandleReceivedData(RpcOverhead overhead, Stream streamData, CancellationToken token = default)
     {
         return default;

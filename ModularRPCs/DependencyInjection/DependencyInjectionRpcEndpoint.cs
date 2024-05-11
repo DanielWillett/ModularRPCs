@@ -2,6 +2,7 @@
 using System.Reflection;
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;

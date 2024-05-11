@@ -207,4 +207,37 @@
   <data name="RpcOverheadParseExceptionUnknownIdentifierType" xml:space="preserve">
     <value>The RpcOverhead failed to parse a proper overhead because the identifier type '{0}' couldn't be found.</value>
   </data>
+  <data name="RpcOverflowException" xml:space="preserve">
+    <value>The buffer overflowed while writing an RPC's arguments.</value>
+  </data>
+  <data name="RpcOverflowExceptionIBinaryTypeParser" xml:space="preserve">
+    <value>The buffer overflowed while writing from the binary type parser: '{0}'.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the buffer was too short while reading from the binary type parser: '{0}'.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the stream ended too early while reading from the binary type parser: '{0}'.</value>
+  </data>
+  <data name="BinaryTypeParserNotVariableSizeGetSizeNotImplemented" xml:space="preserve">
+    <value>This BinaryTypeParser has IsVariableSize set to true but didn't override GetSize.</value>
+  </data>
+  <data name="RpcInvalidParameterException" xml:space="preserve">
+    <value>A parameter in an RPC is not serializable.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionInfo" xml:space="preserve">
+    <value>Parameter #{0}, {1} in {2} is not serializable. {3}.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionOutMessage" xml:space="preserve">
+    <value>Out parameters are not supported</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionInfoNoParamInfo" xml:space="preserve">
+    <value>Parameter of type {0} is not serializable. {1}.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionNoParserFound" xml:space="preserve">
+    <value>Unable to find an IBinaryTypeParser for the type.</value>
+  </data>
+  <data name="RpcOverheadParseExceptionBufferRunOutNativeIntOverflow" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a proper overhead because the native int value was too long for this system while reading from the binary type parser: '{0}'.</value>
+  </data>
 </root>

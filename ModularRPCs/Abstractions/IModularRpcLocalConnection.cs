@@ -1,4 +1,6 @@
-﻿namespace DanielWillett.ModularRpcs.Abstractions;
+﻿using DanielWillett.ModularRpcs.Routing;
+
+namespace DanielWillett.ModularRpcs.Abstractions;
 
 /// <summary>
 /// Represents the local side of a connection.

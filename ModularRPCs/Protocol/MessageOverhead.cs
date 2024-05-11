@@ -44,9 +44,14 @@ public class RpcOverhead
     /// The local size of the connection representing this client or server that the RPC is meant for.
     /// </summary>
     public IModularRpcLocalConnection ReceivingConnection { get; }
-    internal RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, uint messageSize, ulong messageId, byte subMsgId)
-        : this(sendingConnection, rpc, messageSize, messageSize, messageId, subMsgId, CalculateOverheadSize(rpc)) { }
-    private RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, uint messageSize, uint size2Check, ulong messageId, byte subMsgId, int overheadSize)
+
+    /// <summary>
+    /// Arguments read from the data.
+    /// </summary>
+    public object[] Arguments { get; }
+    internal RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, uint messageSize, ulong messageId, object[] arguments, byte subMsgId)
+        : this(sendingConnection, rpc, messageSize, messageSize, messageId, subMsgId, arguments, CalculateOverheadSize(rpc)) { }
+    private RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, uint messageSize, uint size2Check, ulong messageId, byte subMsgId, object[] arguments, int overheadSize)
     {
         MessageId = messageId;
         SubMessageId = subMsgId;
@@ -56,6 +61,7 @@ public class RpcOverhead
         Rpc = rpc;
         _size2Check = size2Check;
         OverheadSize = overheadSize;
+        Arguments = arguments;
     }
     private static int CalculateOverheadSize(IRpcInvocationPoint rpc)
     {
@@ -70,7 +76,7 @@ public class RpcOverhead
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = new byte[19];
 
         int byteCt = stream.Read(bytes, 0, 19);
@@ -110,7 +116,7 @@ public class RpcOverhead
         IRpcInvocationPoint? endPoint;
         if ((flags & ModularRpcFlags.HasFullEndpoint) == 0)
         {
-#if NETFRAMEWORK
+#if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byteCt = stream.Read(bytes, 0, 4);
 #else
             byteCt = stream.Read(bytes[..4]);
@@ -147,7 +153,11 @@ public class RpcOverhead
             index += bytesRead;
         }
 
-        return new RpcOverhead(sendingConnection, endPoint, size, size2, messageId, subMsgId, index);
+        object[] arguments = Array.Empty<object>();
+
+
+
+        return new RpcOverhead(sendingConnection, endPoint, size, size2, messageId, subMsgId, arguments, index);
     }
     internal static unsafe RpcOverhead ReadFromBytes(IModularRpcRemoteConnection sendingConnection, byte* bytes, uint maxCt)
     {
@@ -215,6 +225,8 @@ public class RpcOverhead
             index += bytesRead;
         }
 
-        return new RpcOverhead(sendingConnection, endPoint, size, size2, messageId, subMsgId, index);
+        object[] arguments = Array.Empty<object>();
+
+        return new RpcOverhead(sendingConnection, endPoint, size, size2, messageId, subMsgId, arguments, index);
     }
 }

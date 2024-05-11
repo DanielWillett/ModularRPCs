@@ -32,10 +32,10 @@ public class SampleClass : IRpcObject<int>
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
     [RpcSend]
-    internal virtual RpcTask CallRpcOne() => RpcTask.NotImplemented;
+    internal virtual RpcTask CallRpcOne(ref int value, ref SpinLock sl, string str) => RpcTask.NotImplemented;
 
     [RpcReceive]
-    private async Task RpcOne(RpcInvocationContext ctx)
+    private async Task RpcOne(RpcInvocationContext ctx, int value, SpinLock sl, string str)
     {
         Console.WriteLine("Start");
         await Task.Delay(TimeSpan.FromSeconds(5d));
