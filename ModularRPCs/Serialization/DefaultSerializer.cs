@@ -31,11 +31,19 @@ public class DefaultSerializer : IRpcSerializer
         { typeof(int), new Int32Parser() },
         { typeof(ulong), new UInt64Parser() },
         { typeof(long), new Int64Parser() },
-        { typeof(float), new SingleParser() },
-        { typeof(double), new DoubleParser() },
         { typeof(nuint), new UIntPtrParser() },
         { typeof(nint), new IntPtrParser() },
-        { typeof(string), new Utf8Parser() }
+        { typeof(string), new Utf8Parser() },
+#if NET5_0_OR_GREATER
+        { typeof(Half), new HalfParser() },
+#endif
+        { typeof(float), new SingleParser() },
+        { typeof(double), new DoubleParser() },
+        { typeof(decimal), new DecimalParser() },
+        { typeof(DateTime), new DateTimeParser() },
+        { typeof(DateTimeOffset), new DateTimeOffsetParser() },
+        { typeof(TimeSpan), new TimeSpanParser() },
+        { typeof(Guid), new GuidParser() }
     };
 
     private readonly Dictionary<Type, int> _primitiveSizes = new Dictionary<Type, int>
@@ -50,10 +58,18 @@ public class DefaultSerializer : IRpcSerializer
         { typeof(int), sizeof(int) },
         { typeof(ulong), sizeof(ulong) },
         { typeof(long), sizeof(long) },
+        { typeof(nuint), sizeof(ulong) }, // native ints are always read/written in 64 bit
+        { typeof(nint), sizeof(long) },
+#if NET5_0_OR_GREATER
+        { typeof(Half), 2 },
+#endif
         { typeof(float), sizeof(float) },
         { typeof(double), sizeof(double) },
-        { typeof(nuint), sizeof(ulong) }, // native ints are always read/written in 64 bit
-        { typeof(nint), sizeof(long) }
+        { typeof(decimal), 16 },
+        { typeof(DateTime), sizeof(long) },
+        { typeof(DateTimeOffset), sizeof(long) + sizeof(short) },
+        { typeof(TimeSpan), sizeof(long) },
+        { typeof(Guid), 16 }
     };
 
     /// <inheritdoc />
@@ -81,7 +97,7 @@ public class DefaultSerializer : IRpcSerializer
     {
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_0_OR_GREATER
         _parsers = new Dictionary<Type, IBinaryTypeParser>(parsers);
-        PreCaluclatePrimitiveSizes = !IntlAnyCustomPrimitiveParsers();
+        PreCalculatePrimitiveSizes = !IntlAnyCustomPrimitiveParsers();
 #else
         _parsers = new Dictionary<Type, IBinaryTypeParser>(parsers is ICollection c ? c.Count : 4);
         PreCalculatePrimitiveSizes = true;
@@ -98,7 +114,7 @@ public class DefaultSerializer : IRpcSerializer
     {
         foreach (KeyValuePair<Type, IBinaryTypeParser> parser in _parsers)
         {
-            if (_primitiveParsers.TryGetValue(parser.Key, out IBinaryTypeParser defaultParser) && !defaultParser.IsVariableSize)
+            if (_primitiveParsers.TryGetValue(parser.Key, out IBinaryTypeParser? defaultParser) && !defaultParser.IsVariableSize)
                 return true;
         }
 
@@ -171,32 +187,159 @@ public class DefaultSerializer : IRpcSerializer
         ThrowNoParserFound(type);
         return 0; // not reached
     }
-
-    public unsafe void WriteObject<T>(T value, byte* bytes, uint maxSize)
+    public unsafe int WriteObject<T>(T value, byte* bytes, uint maxSize)
     {
-        throw new NotImplementedException();
+        Type type = typeof(T);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(value, bytes, maxSize);
+
+            return parser.WriteObject(__makeref(value), bytes, maxSize);
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(value, bytes, maxSize);
+
+            return parser.WriteObject(__makeref(value), bytes, maxSize);
+        }
+
+        ThrowNoParserFound(type);
+        return 0; // not reached
+    }
+    public unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize)
+    {
+        Type type = __reftype(value);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, bytes, maxSize);
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+            return parser.WriteObject(value, bytes, maxSize);
+
+        ThrowNoParserFound(type);
+        return 0; // not reached
+    }
+    public int WriteObject<T>(T value, Stream stream)
+    {
+        Type type = typeof(T);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(value, stream);
+
+            return parser.WriteObject(__makeref(value), stream);
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(value, stream);
+
+            return parser.WriteObject(__makeref(value), stream);
+        }
+
+        ThrowNoParserFound(type);
+        return 0; // not reached
+    }
+    public int WriteObject(TypedReference value, Stream stream)
+    {
+        Type type = __reftype(value);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, stream);
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+            return parser.WriteObject(value, stream);
+
+        ThrowNoParserFound(type);
+        return 0; // not reached
+    }
+    public unsafe T ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        Type type = typeof(T);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(bytes, maxSize, out bytesRead);
+
+            T? value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            return value!;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(bytes, maxSize, out bytesRead);
+
+            T? value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            return value!;
+        }
+
+        ThrowNoParserFound(type);
+        bytesRead = 0;
+        return default!;
     }
 
-    public unsafe void WriteObject(object value, byte* bytes, uint maxSize)
+    public unsafe object ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead)
     {
-        throw new NotImplementedException();
-    }
+        if (_parsers.TryGetValue(objectType, out IBinaryTypeParser? parser))
+        {
+            return parser.ReadObject(bytes, maxSize, out bytesRead);
+        }
 
-    public void WriteObject<T>(T value, Stream stream)
+        if (_primitiveParsers.TryGetValue(objectType, out parser))
+        {
+            return parser.ReadObject(bytes, maxSize, out bytesRead);
+        }
+
+        ThrowNoParserFound(objectType);
+        bytesRead = 0;
+        return default!;
+    }
+    public T ReadObject<T>(Stream stream, out int bytesRead)
     {
-        throw new NotImplementedException();
-    }
+        Type type = typeof(T);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(stream, out bytesRead);
 
-    public void WriteObject(object value, Stream stream)
+            T? value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            return value!;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(stream, out bytesRead);
+
+            T? value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            return value!;
+        }
+
+        ThrowNoParserFound(type);
+        bytesRead = 0;
+        return default!;
+    }
+    public object ReadObject(Type objectType, Stream stream, out int bytesRead)
     {
-        throw new NotImplementedException();
+        if (_parsers.TryGetValue(objectType, out IBinaryTypeParser? parser))
+        {
+            return parser.ReadObject(stream, out bytesRead);
+        }
+
+        if (_primitiveParsers.TryGetValue(objectType, out parser))
+        {
+            return parser.ReadObject(stream, out bytesRead);
+        }
+
+        ThrowNoParserFound(objectType);
+        bytesRead = 0;
+        return default!;
     }
-
-    public unsafe T ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead) => throw new NotImplementedException();
-
-    public unsafe object ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead) => throw new NotImplementedException();
-
-    public T ReadObject<T>(Stream stream, out int bytesRead) => throw new NotImplementedException();
-
-    public object ReadObject(Type objectType, Stream stream, out int bytesRead) => throw new NotImplementedException();
 }

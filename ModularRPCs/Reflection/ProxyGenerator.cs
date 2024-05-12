@@ -632,19 +632,7 @@ public sealed class ProxyGenerator
                         il.Emit(OpCodes.Call, getHasValueMethod!);
                         il.Emit(OpCodes.Brtrue, ifNotDefault);
                     }
-                    else if (idType.IsPrimitive && (idType == typeof(long)
-                                                    || idType == typeof(ulong)
-                                                    || idType == typeof(int)
-                                                    || idType == typeof(uint)
-                                                    || idType == typeof(short)
-                                                    || idType == typeof(ushort)
-                                                    || idType == typeof(sbyte)
-                                                    || idType == typeof(byte)
-                                                    || idType == typeof(char)
-                                                    || idType == typeof(float)
-                                                    || idType == typeof(double)
-                                                    || idType == typeof(nint)
-                                                    || idType == typeof(nuint)))
+                    else if (idType.IsPrimitive)
                     {
                         if (identifierBackingField != null)
                             il.Emit(OpCodes.Ldfld, identifierBackingField);
