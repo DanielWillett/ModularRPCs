@@ -1,9 +1,14 @@
-﻿using System;
-using System.Reflection;
-using DanielWillett.ModularRpcs.Abstractions;
+﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
-using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.IO;
+using System.Reflection;
+using System.Threading;
+using DanielWillett.ModularRpcs.Routing;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -14,13 +19,13 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
 {
     public IServiceProvider ServiceProvider { get; }
 
-    protected DependencyInjectionRpcEndpoint(IRpcRouter router, DependencyInjectionRpcEndpoint other, object? identifier)
-        : base(router, other, identifier)
+    protected DependencyInjectionRpcEndpoint(IRpcSerializer serializer, DependencyInjectionRpcEndpoint other, object? identifier)
+        : base(serializer, other, identifier)
     {
         ServiceProvider = other.ServiceProvider;
     }
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, IRpcRouter router, MethodInfo method, object? identifier)
-        : base(router, method, identifier)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, IRpcSerializer serializer, MethodInfo method, object? identifier)
+        : base(serializer, method, identifier)
     {
         ServiceProvider = serviceProvider;
     }
@@ -37,6 +42,15 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         ServiceProvider = serviceProvider;
     }
 
+    private protected override unsafe object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerBytes handlerBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, byte* bytes, uint maxSize, CancellationToken token)
+    {
+        return handlerBytes(ServiceProvider, targetObject, overhead, router, serializer, bytes, maxSize, token);
+    }
+    private protected override object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    {
+        return handlerStream(ServiceProvider, targetObject, overhead, router, serializer, stream, token);
+    }
+
     protected override object? GetTargetObject()
     {
         if (IsStatic)
@@ -51,8 +65,8 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         return ServiceProvider.GetRequiredService(DeclaringType);
     }
 
-    public override IRpcInvocationPoint CloneWithIdentifier(IRpcRouter router, object? identifier)
+    public override IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)
     {
-        return new DependencyInjectionRpcEndpoint(router, this, identifier);
+        return new DependencyInjectionRpcEndpoint(serializer, this, identifier);
     }
 }

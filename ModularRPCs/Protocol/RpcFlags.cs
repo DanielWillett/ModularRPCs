@@ -3,7 +3,7 @@
 namespace DanielWillett.ModularRpcs.Protocol;
 
 [Flags]
-public enum ModularRpcFlags : ushort
+public enum RpcFlags : ushort
 {
     None = 0,
 

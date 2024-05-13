@@ -6,28 +6,29 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Loopback;
 public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection, IModularRpcClientsideConnection
 {
     public LoopbackRpcServersideRemoteConnection Server { get; }
     public LoopbackRpcClientsideLocalConnection Local { get; internal set; }
-    public LoopbackEndPoint EndPoint { get; }
+    public LoopbackEndpoint Endpoint { get; }
     public bool IsClosed { get; internal set; }
-    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndPoint endPoint, IRpcRouter router, LoopbackRpcServersideRemoteConnection server)
+    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, LoopbackRpcServersideRemoteConnection server)
     {
         if (endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedClientsideEndpoint, nameof(endPoint));
-        EndPoint = endPoint;
+        Endpoint = endPoint;
         IsClosed = true;
         Local = new LoopbackRpcClientsideLocalConnection(this, router);
         server.Client = this;
         Server = server;
     }
 
-    IModularRpcRemoteEndPoint IModularRpcRemoteConnection.EndPoint => EndPoint;
+    IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
     IModularRpcLocalConnection IModularRpcRemoteConnection.Local => Local;
-    unsafe ValueTask IModularRpcRemoteConnection.SendDataAsync(ReadOnlySpan<byte> rawData, CancellationToken token)
+    unsafe ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
@@ -38,19 +39,19 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
         RpcOverhead overhead;
         fixed (byte* ptr = rawData)
         {
-            overhead = RpcOverhead.ReadFromBytes(Server, ptr, (uint)rawData.Length);
+            overhead = RpcOverhead.ReadFromBytes(Server, serializer, ptr, (uint)rawData.Length);
         }
 
-        return Server.Local.Router.HandleReceivedData(overhead, rawData, token);
+        return overhead.Rpc.Invoke(overhead, serializer, rawData.Length == overhead.OverheadSize ? default : rawData.Slice(overhead.OverheadSize), token);
     }
-    ValueTask IModularRpcRemoteConnection.SendDataAsync(Stream streamData, CancellationToken token)
+    ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
 
-        RpcOverhead overhead = RpcOverhead.ReadFromStream(Server, streamData);
+        RpcOverhead overhead = RpcOverhead.ReadFromStream(Server, serializer, streamData);
 
-        return Server.Local.Router.HandleReceivedData(overhead, streamData, token);
+        return overhead.Rpc.Invoke(overhead, serializer, streamData, token);
     }
 
     public ValueTask DisposeAsync() => CloseAsync();

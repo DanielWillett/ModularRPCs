@@ -2,6 +2,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Abstractions;
 
@@ -18,15 +19,15 @@ public interface IModularRpcRemoteConnection : IModularRpcConnection
     /// <summary>
     /// The endpoint this remote connection represents.
     /// </summary>
-    IModularRpcRemoteEndPoint EndPoint { get; }
+    IModularRpcRemoteEndpoint Endpoint { get; }
 
     /// <summary>
     /// Send data in the form of raw binary data to the remote end.
     /// </summary>
-    ValueTask SendDataAsync(ReadOnlySpan<byte> rawData, CancellationToken token);
+    ValueTask SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token);
 
     /// <summary>
     /// Send data in the form of a stream to the remote end.
     /// </summary>
-    ValueTask SendDataAsync(Stream streamData, CancellationToken token);
+    ValueTask SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token);
 }

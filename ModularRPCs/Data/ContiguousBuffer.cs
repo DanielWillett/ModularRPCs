@@ -2,12 +2,13 @@
 using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ReflectionTools;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using DanielWillett.ReflectionTools;
 
 namespace DanielWillett.ModularRpcs.Data;
 
@@ -76,7 +77,7 @@ public sealed class ContiguousBuffer
     /// <param name="offset">Offset of data read into <see cref="Buffer"/>, usually 0.</param>
     /// <exception cref="ObjectDisposedException"/>
     /// <exception cref="ContiguousBufferParseException">Any other error occurs while separating messages.</exception>
-    public unsafe void ProcessBuffer(uint amtReceived, Action<Memory<byte>, RpcOverhead> callback, uint offset = 0)
+    public unsafe void ProcessBuffer(uint amtReceived, IRpcSerializer serializer, Action<Memory<byte>, RpcOverhead> callback, uint offset = 0)
     {
         if (_disposed != 0)
             throw new ObjectDisposedException(nameof(ContiguousBuffer));
@@ -103,7 +104,7 @@ public sealed class ContiguousBuffer
                                 goto reset;
                             }
                             
-                            PendingOverhead = RpcOverhead.ReadFromBytes(Connection.Remote, bytes, amtReceived);
+                            PendingOverhead = RpcOverhead.ReadFromBytes(Connection.Remote, serializer, bytes, amtReceived);
                             if (!PendingOverhead.CheckSizeHashValid())
                             {
                                 string msg = $"Mismatch in size hash of \"{PendingOverhead}\"!";

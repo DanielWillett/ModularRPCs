@@ -13,7 +13,9 @@ public struct ProxyContext
 {
     public IRpcSerializer DefaultSerializer;
     public IRpcRouter Router;
+    public RpcEndpoint Endpoint;
 
     internal static FieldInfo SerializerField = typeof(ProxyContext).GetField(nameof(DefaultSerializer), BindingFlags.Public | BindingFlags.Instance)!;
     internal static FieldInfo RouterField = typeof(ProxyContext).GetField(nameof(Router), BindingFlags.Public | BindingFlags.Instance)!;
+    internal static FieldInfo EndpointField = typeof(ProxyContext).GetField(nameof(Endpoint), BindingFlags.Public | BindingFlags.Instance)!;
 }

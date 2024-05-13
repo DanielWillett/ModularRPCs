@@ -223,6 +223,33 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to An injected parameter in an RPC receive method is not able to be injected..
+        /// </summary>
+        public static string RpcInjectionException {
+            get {
+                return ResourceManager.GetString("RpcInjectionException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Injected parameter &apos;{0}&apos; of type {1} in method {2} is not able to be injected..
+        /// </summary>
+        public static string RpcInjectionExceptionInfo {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionInfo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Unable to find an available instance of {0} to invoke {1} with..
+        /// </summary>
+        public static string RpcInjectionExceptionInstanceNull {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionInstanceNull", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A parameter in an RPC is not serializable..
         /// </summary>
         public static string RpcInvalidParameterException {

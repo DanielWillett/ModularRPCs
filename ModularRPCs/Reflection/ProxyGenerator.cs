@@ -15,6 +15,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -28,9 +29,22 @@ namespace DanielWillett.ModularRpcs.Reflection;
 /// </summary>
 public sealed class ProxyGenerator
 {
+    private struct InvokeMethodCacheEntry
+    {
+        public readonly RpcInvokeHandlerStream Stream;
+        public readonly RpcInvokeHandlerBytes Bytes;
+        public InvokeMethodCacheEntry(RpcInvokeHandlerStream stream, RpcInvokeHandlerBytes bytes)
+        {
+            Stream = stream;
+            Bytes = bytes;
+        }
+    }
+
     private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
+    private readonly ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerStream> _invokeMethodsStream = new ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerStream>();
+    private readonly ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerBytes> _invokeMethodsBytes = new ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerBytes>();
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
 #if DEBUG
@@ -92,6 +106,11 @@ public sealed class ProxyGenerator
     /// Virtual or abstract methods in parent classes will be overridden and base-called.
     /// </summary>
     public string ReleaseMethodName => "Release";
+
+    /// <summary>
+    /// Maximum size in bytes that a stackalloc can be used instead of creating an new byte array for writing messages to.
+    /// </summary>
+    public int MaxSizeForStackalloc { get; set; } = 512;
 
     internal SerializerGenerator SerializerGenerator { get; }
     internal AssemblyBuilder AssemblyBuilder { get; }
@@ -1051,8 +1070,6 @@ public sealed class ProxyGenerator
 
         return typeBuilder;
     }
-
-    private ProxyContext ctx;
     private Type CreateProxyType(Type type)
     {
         if (type.IsValueType)
@@ -1137,11 +1154,46 @@ public sealed class ProxyGenerator
             }
 
             serializerCache = serializerCache.MakeGenericType(genericArguments);
+
             FieldInfo getSizeMethod = serializerCache.GetField(SerializerGenerator.GetSizeMethodField)
                                        ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(SerializerGenerator.GetSizeMethodField)
                                            .DeclaredIn(serializerCache, isStatic: true)
                                            .Returning<int>()
                                        )}.");
+
+            FieldInfo writeStreamMethod = serializerCache.GetField(SerializerGenerator.WriteToStreamMethodField)
+                                       ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(SerializerGenerator.WriteToStreamMethodField)
+                                           .DeclaredIn(serializerCache, isStatic: true)
+                                           .ReturningVoid()
+                                       )}.");
+
+            FieldInfo writeBytesMethod = serializerCache.GetField(SerializerGenerator.WriteToBytesMethodField)
+                                       ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(SerializerGenerator.WriteToBytesMethodField)
+                                           .DeclaredIn(serializerCache, isStatic: true)
+                                           .ReturningVoid()
+                                       )}.");
+
+            Type getSizeDelegateType = getSizeMethod.FieldType;
+            Type writeStreamDelegateType = writeStreamMethod.FieldType;
+            Type writeBytesDelegateType = writeBytesMethod.FieldType;
+
+            MethodInfo getSizeInvokeMethod = getSizeDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
+                                                 .DeclaredIn(getSizeDelegateType, isStatic: false)
+                                                 .Returning<int>()
+                                             )}.");
+
+            MethodInfo writeStreamInvokeMethod = writeStreamDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+                                                 ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
+                                                     .DeclaredIn(writeStreamDelegateType, isStatic: false)
+                                                     .Returning<int>()
+                                                 )}.");
+
+            MethodInfo writeBytesInvokeMethod = writeBytesDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+                                                ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
+                                                    .DeclaredIn(writeBytesDelegateType, isStatic: false)
+                                                    .Returning<int>()
+                                                )}.");
 
             MethodBuilder methodBuilder = builder.DefineMethod(method.Name,
                 privacyAttributes | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final,
@@ -1151,43 +1203,113 @@ public sealed class ProxyGenerator
                 method.ReturnParameter?.GetOptionalCustomModifiers(),
                 types, reqMods, optMods);
 
-            IOpCodeEmitter generator = methodBuilder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+            methodBuilder.InitLocals = false;
+
+            IOpCodeEmitter il = methodBuilder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 #if DEBUG
-            generator.EmitWriteLine("Calling " + Accessor.Formatter.Format(method));
+            il.EmitWriteLine("Calling " + Accessor.Formatter.Format(method));
 #endif
-            LocalBuilder lclSize = generator.DeclareLocal(typeof(int));
+            LocalBuilder lclSize = il.DeclareLocal(typeof(int));
+            LocalBuilder lclByteBuffer = il.DeclareLocal(typeof(byte*));
+            LocalBuilder lclByteBufferPin = il.DeclareLocal(typeof(byte[]), true);
 
             // invoke the delegate
-            generator.Emit(OpCodes.Ldsfld, getSizeMethod);
-            generator.Emit(OpCodes.Ldarg_0);
-            generator.Emit(OpCodes.Ldflda, proxyContextField);
-            generator.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
+            il.Emit(OpCodes.Ldsfld, getSizeMethod);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, proxyContextField);
+            il.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
             for (int i = 0; i < genericArguments.Length; ++i)
             {
-                generator.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i + 1);
+                il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i + 1);
             }
 
-            Type delegateType = getSizeMethod.FieldType;
-            MethodInfo invokeMethod = delegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
-                                      ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
-                                          .DeclaredIn(delegateType, isStatic: true)
-                                          .Returning<int>()
-                                      )}.");
-            Type[] paramArray = new Type[genericArguments.Length + 1];
-            paramArray[0] = typeof(IRpcSerializer);
-            for (int i = 1; i < paramArray.Length; ++i)
+            il.Emit(OpCodes.Callvirt, getSizeInvokeMethod);
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Stloc, lclSize);
+#if DEBUG
+            il.EmitWriteLine("Calculated size: ");
+            il.EmitWriteLine(lclSize);
+#endif
+            Label lblSizeIsTooBigForLocalloc = il.DefineLabel();
+            Label lblSizeIsFineForLocalloc = il.DefineLabel();
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Ldc_I4, MaxSizeForStackalloc);
+            il.Emit(OpCodes.Bgt, lblSizeIsTooBigForLocalloc);
+
+            il.Emit(OpCodes.Localloc);
+            il.Emit(OpCodes.Stloc, lclByteBuffer);
+            il.Emit(OpCodes.Br, lblSizeIsFineForLocalloc);
+
+            il.MarkLabel(lblSizeIsTooBigForLocalloc);
+            il.Emit(OpCodes.Newarr, typeof(byte));
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Stloc, lclByteBufferPin);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Ldelema, typeof(byte));
+            il.Emit(OpCodes.Conv_U);
+            il.Emit(OpCodes.Stloc, lclByteBuffer);
+
+            il.MarkLabel(lblSizeIsFineForLocalloc);
+            il.Emit(OpCodes.Nop);
+
+            il.BeginExceptionBlock();
+
+            il.Emit(OpCodes.Ldsfld, writeBytesMethod);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, proxyContextField);
+            il.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
+            il.Emit(OpCodes.Ldloc, lclByteBuffer);
+            il.Emit(OpCodes.Ldloc, lclSize);
+            il.Emit(OpCodes.Conv_Ovf_U4);
+            for (int i = 0; i < genericArguments.Length; ++i)
             {
-                Type parameterType = parameters[i - 1].ParameterType;
-                paramArray[i] = parameterType.IsByRef ? parameterType : parameterType.MakeByRefType();
+                il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i + 1);
             }
 
-            generator.Emit(OpCodes.Callvirt, invokeMethod);
-            generator.Emit(OpCodes.Stloc, lclSize);
-            generator.EmitWriteLine(lclSize);
+            il.Emit(OpCodes.Callvirt, writeBytesInvokeMethod);
+            il.Emit(OpCodes.Stloc, lclSize);
+#if DEBUG
+            il.EmitWriteLine("Written size: ");
+            il.EmitWriteLine(lclSize);
+            LocalBuilder lclIndex = il.DeclareLocal(typeof(int));
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Stloc, lclIndex);
+            Label topOfForLoop = il.DefineLabel();
+            Label afterForLoop = il.DefineLabel();
+            il.EmitWriteLine("Data: ");
+            il.MarkLabel(topOfForLoop);
+            il.Emit(OpCodes.Ldloc, lclIndex);
+            il.Emit(OpCodes.Ldloc, lclSize);
+            il.Emit(OpCodes.Bge, afterForLoop);
+
+            il.Emit(OpCodes.Ldloc, lclByteBuffer);
+            il.Emit(OpCodes.Ldloc, lclIndex);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Ldind_I1);
+            il.Emit(OpCodes.Conv_U1);
+            il.Emit(OpCodes.Conv_I4);
+            il.Emit(OpCodes.Call, new Action<int>(Console.WriteLine).Method);
+            
+            il.Emit(OpCodes.Ldloc, lclIndex);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, lclIndex);
+            
+            il.Emit(OpCodes.Br, topOfForLoop);
+            
+            il.MarkLabel(afterForLoop);
+            il.Emit(OpCodes.Nop);
+#endif
+            il.BeginFinallyBlock();
+
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Stloc, lclByteBufferPin);
+
+            il.EndExceptionBlock();
 
             MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
-            generator.Emit(OpCodes.Call, getter);
-            generator.Emit(OpCodes.Ret);
+            il.Emit(OpCodes.Call, getter);
+            il.Emit(OpCodes.Ret);
         }
 
         try
@@ -1203,7 +1325,55 @@ public sealed class ProxyGenerator
         {
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type), ex);
         }
+    }
+    internal RpcInvokeHandlerStream GetInvokeStreamMethod(MethodInfo method)
+    {
+        RpcInvokeHandlerStream entry = _invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodStream);
+        return entry;
+    }
+    internal RpcInvokeHandlerBytes GetInvokeBytesMethod(MethodInfo method)
+    {
+        RpcInvokeHandlerBytes entry = _invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodBytes);
+        return entry;
+    }
+    private RpcInvokeHandlerStream GetOrAddInvokeMethodStream(RuntimeMethodHandle handle)
+    {
+        MethodInfo method = (MethodInfo)MethodBase.GetMethodFromHandle(handle);
 
+        Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
+
+        DynamicMethod streamDynMethod = new DynamicMethod("Invoke<" + method.Name + ">", attr, conv, typeof(object), RpcInvokeHandlerStreamParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+
+        streamDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
+        streamDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
+        streamDynMethod.DefineParameter(3, ParameterAttributes.None, "overhead");
+        streamDynMethod.DefineParameter(4, ParameterAttributes.None, "router");
+        streamDynMethod.DefineParameter(5, ParameterAttributes.None, "serializer");
+        streamDynMethod.DefineParameter(6, ParameterAttributes.None, "stream");
+        streamDynMethod.DefineParameter(7, ParameterAttributes.None, "token");
+
+        SerializerGenerator.GenerateInvokeStream(method, streamDynMethod, streamDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
+        return (RpcInvokeHandlerStream)streamDynMethod.CreateDelegate(typeof(RpcInvokeHandlerStream));
+    }
+    private RpcInvokeHandlerBytes GetOrAddInvokeMethodBytes(RuntimeMethodHandle handle)
+    {
+        MethodInfo method = (MethodInfo)MethodBase.GetMethodFromHandle(handle);
+
+        Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
+
+        DynamicMethod bytesDynMethod = new DynamicMethod("Invoke<" + method.Name + ">", attr, conv, typeof(object), RpcInvokeHandlerBytesParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+
+        bytesDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
+        bytesDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
+        bytesDynMethod.DefineParameter(3, ParameterAttributes.None, "overhead");
+        bytesDynMethod.DefineParameter(4, ParameterAttributes.None, "router");
+        bytesDynMethod.DefineParameter(5, ParameterAttributes.None, "serializer");
+        bytesDynMethod.DefineParameter(6, ParameterAttributes.None, "bytes");
+        bytesDynMethod.DefineParameter(7, ParameterAttributes.None, "maxSize");
+        bytesDynMethod.DefineParameter(8, ParameterAttributes.None, "token");
+
+        SerializerGenerator.GenerateInvokeBytes(method, bytesDynMethod, bytesDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
+        return (RpcInvokeHandlerBytes)bytesDynMethod.CreateDelegate(typeof(RpcInvokeHandlerBytes));
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1221,4 +1391,36 @@ public sealed class ProxyGenerator
         if (Logger is ILogger logger)
             logger.LogDebug(text);
     }
+
+    internal static readonly Type[] RpcInvokeHandlerBytesParams =
+    [
+        typeof(object), typeof(object), typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), typeof(byte*), typeof(uint), typeof(CancellationToken)
+    ];
+
+    internal static readonly Type[] RpcInvokeHandlerStreamParams =
+    [
+        typeof(object), typeof(object), typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), typeof(Stream), typeof(CancellationToken)
+    ];
+    
+    internal unsafe delegate object? RpcInvokeHandlerBytes(
+        object? serviceProvider,
+        object? targetObject,
+        RpcOverhead overhead,
+        IRpcRouter router,
+        IRpcSerializer serializer,
+        byte* bytes,
+        uint maxSize,
+        CancellationToken token
+    );
+
+    internal delegate object? RpcInvokeHandlerStream(
+        object? serviceProvider,
+        object? targetObject,
+        RpcOverhead overhead,
+        IRpcRouter router,
+        IRpcSerializer serializer,
+        Stream stream,
+        CancellationToken token
+    );
+
 }

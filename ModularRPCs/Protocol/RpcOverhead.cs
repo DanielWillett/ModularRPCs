@@ -1,5 +1,6 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -44,14 +45,14 @@ public class RpcOverhead
     /// The local size of the connection representing this client or server that the RPC is meant for.
     /// </summary>
     public IModularRpcLocalConnection ReceivingConnection { get; }
-
+    
     /// <summary>
-    /// Arguments read from the data.
+    /// Various bitwise settings for an RPC call.
     /// </summary>
-    public object[] Arguments { get; }
-    internal RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, uint messageSize, ulong messageId, object[] arguments, byte subMsgId)
-        : this(sendingConnection, rpc, messageSize, messageSize, messageId, subMsgId, arguments, CalculateOverheadSize(rpc)) { }
-    private RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, uint messageSize, uint size2Check, ulong messageId, byte subMsgId, object[] arguments, int overheadSize)
+    public RpcFlags Flags { get; }
+    internal RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, RpcFlags flags, uint messageSize, ulong messageId, byte subMsgId)
+        : this(sendingConnection, rpc, flags, messageSize, messageSize, messageId, subMsgId, CalculateOverheadSize(rpc)) { }
+    private RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, RpcFlags flags, uint messageSize, uint size2Check, ulong messageId, byte subMsgId, int overheadSize)
     {
         MessageId = messageId;
         SubMessageId = subMsgId;
@@ -59,9 +60,9 @@ public class RpcOverhead
         ReceivingConnection = sendingConnection.Local;
         MessageSize = messageSize;
         Rpc = rpc;
+        Flags = flags;
         _size2Check = size2Check;
         OverheadSize = overheadSize;
-        Arguments = arguments;
     }
     private static int CalculateOverheadSize(IRpcInvocationPoint rpc)
     {
@@ -72,7 +73,7 @@ public class RpcOverhead
         return size;
     }
     internal bool CheckSizeHashValid() => _size2Check == MessageSize;
-    internal static RpcOverhead ReadFromStream(IModularRpcRemoteConnection sendingConnection, Stream stream)
+    public static RpcOverhead ReadFromStream(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream)
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
@@ -88,33 +89,31 @@ public class RpcOverhead
         if (byteCt < 19)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-        ModularRpcFlags flags = isLittleEndian ? (ModularRpcFlags)(bytes[0] | bytes[1] << 8) : (ModularRpcFlags)(bytes[0] << 8 | bytes[1]);
-        int index = sizeof(ModularRpcFlags);
+        RpcFlags flags = isLittleEndian ? (RpcFlags)(bytes[0] | bytes[1] << 8) : (RpcFlags)(bytes[0] << 8 | bytes[1]);
+        int index = sizeof(RpcFlags);
 
         uint size = isLittleEndian
-            ? bytes[index] | (uint)bytes[index + 1] << 8 | (uint)bytes[index + 2] << 16 | (uint)bytes[index + 3] << 24
+            ? Unsafe.ReadUnaligned<uint>(ref bytes[index])
             : (uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3];
 
         index += sizeof(uint);
 
         uint size2 = isLittleEndian
-            ? bytes[index] | (uint)bytes[index + 1] << 8 | (uint)bytes[index + 2] << 16 | (uint)bytes[index + 3] << 24
+            ? Unsafe.ReadUnaligned<uint>(ref bytes[index])
             : (uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3];
 
         index += sizeof(uint);
 
         ulong messageId = isLittleEndian
-            ? bytes[index] | (ulong)bytes[index + 1] << 8 | (ulong)bytes[index + 2] << 16 | (ulong)bytes[index + 3] << 24
-              | (ulong)bytes[index + 4] << 32 | (ulong)bytes[index + 5] << 40 | (ulong)bytes[index + 6] << 48 | (ulong)bytes[index + 7] << 56
-            : (ulong)bytes[index] << 56 | (ulong)bytes[index + 1] << 48 | (ulong)bytes[index + 2] << 40 | (ulong)bytes[index + 3] << 32
-              | (ulong)bytes[index + 4] << 24 | (ulong)bytes[index + 5] << 16 | (ulong)bytes[index + 6] << 8 | bytes[index + 7];
+            ? Unsafe.ReadUnaligned<ulong>(ref bytes[index])
+            : ((ulong)((uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3]) << 32) | ((uint)bytes[index + 4] << 24 | (uint)bytes[index + 5] << 16 | (uint)bytes[index + 6] << 8 | bytes[index + 7]);
 
         byte subMsgId = bytes[index + 8];
 
         index += 9;
 
         IRpcInvocationPoint? endPoint;
-        if ((flags & ModularRpcFlags.HasFullEndpoint) == 0)
+        if ((flags & RpcFlags.HasFullEndpoint) == 0)
         {
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byteCt = stream.Read(bytes, 0, 4);
@@ -125,7 +124,7 @@ public class RpcOverhead
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
             uint endpointId = isLittleEndian
-                ? bytes[index] | (uint)bytes[index + 1] << 8 | (uint)bytes[index + 2] << 16 | (uint)bytes[index + 3] << 24
+                ? Unsafe.ReadUnaligned<uint>(ref bytes[index])
                 : (uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3];
 
             index += sizeof(uint);
@@ -137,37 +136,33 @@ public class RpcOverhead
             }
 
             object? identifier = null;
-            if ((flags & ModularRpcFlags.EndpointCodeIncludesIdentifier) != 0)
+            if ((flags & RpcFlags.EndpointCodeIncludesIdentifier) != 0)
             {
-                identifier = sendingConnection.Local.Router.ReadIdentifierFromStream(stream, out int bytesReadIdentifier);
+                identifier = RpcEndpoint.ReadIdentifierFromStream(serializer, stream, out int bytesReadIdentifier);
                 index += bytesReadIdentifier;
             }
             if (!ReferenceEquals(endPoint.Identifier, identifier))
             {
-                endPoint = endPoint.CloneWithIdentifier(sendingConnection.Local.Router, identifier);
+                endPoint = endPoint.CloneWithIdentifier(serializer, identifier);
             }
         }
         else
         {
-            endPoint = RpcEndpoint.ReadFromStream(sendingConnection.Local.Router, stream, out int bytesRead);
+            endPoint = RpcEndpoint.ReadFromStream(serializer, sendingConnection.Local.Router, stream, out int bytesRead);
             index += bytesRead;
         }
 
-        object[] arguments = Array.Empty<object>();
-
-
-
-        return new RpcOverhead(sendingConnection, endPoint, size, size2, messageId, subMsgId, arguments, index);
+        return new RpcOverhead(sendingConnection, endPoint, flags, size, size2, messageId, subMsgId, index);
     }
-    internal static unsafe RpcOverhead ReadFromBytes(IModularRpcRemoteConnection sendingConnection, byte* bytes, uint maxCt)
+    public static unsafe RpcOverhead ReadFromBytes(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, byte* bytes, uint maxCt)
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
         if (maxCt < 19)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        ModularRpcFlags flags = isLittleEndian ? (ModularRpcFlags)(*bytes | bytes[1] << 8) : (ModularRpcFlags)(*bytes << 8 | bytes[1]);
-        int index = sizeof(ModularRpcFlags);
+        RpcFlags flags = isLittleEndian ? (RpcFlags)(*bytes | bytes[1] << 8) : (RpcFlags)(*bytes << 8 | bytes[1]);
+        int index = sizeof(RpcFlags);
 
         uint size = isLittleEndian
             ? Unsafe.ReadUnaligned<uint>(bytes + index)
@@ -183,15 +178,14 @@ public class RpcOverhead
 
         ulong messageId = isLittleEndian
             ? Unsafe.ReadUnaligned<ulong>(bytes + index)
-            : (ulong)bytes[index] << 56 | (ulong)bytes[index + 1] << 48 | (ulong)bytes[index + 2] << 40 | (ulong)bytes[index + 3] << 32
-              | (ulong)bytes[index + 4] << 24 | (ulong)bytes[index + 5] << 16 | (ulong)bytes[index + 6] << 8 | bytes[index + 7];
+            : ((ulong)((uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3]) << 32) | ((uint)bytes[index + 4] << 24 | (uint)bytes[index + 5] << 16 | (uint)bytes[index + 6] << 8 | bytes[index + 7]);
 
         byte subMsgId = bytes[index + 8];
 
         index += 9;
 
         IRpcInvocationPoint? endPoint;
-        if ((flags & ModularRpcFlags.HasFullEndpoint) == 0)
+        if ((flags & RpcFlags.HasFullEndpoint) == 0)
         {
             if (maxCt < index + 4)
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
@@ -209,24 +203,22 @@ public class RpcOverhead
             }
 
             object? identifier = null;
-            if ((flags & ModularRpcFlags.EndpointCodeIncludesIdentifier) != 0)
+            if ((flags & RpcFlags.EndpointCodeIncludesIdentifier) != 0)
             {
-                identifier = sendingConnection.Local.Router.ReadIdentifierFromBytes(bytes, (uint)(maxCt - index), out int bytesReadIdentifier);
+                identifier = RpcEndpoint.ReadIdentifierFromBytes(serializer, bytes, maxCt - (uint)index, out int bytesReadIdentifier);
                 index += bytesReadIdentifier;
             }
             if (!ReferenceEquals(endPoint.Identifier, identifier))
             {
-                endPoint = endPoint.CloneWithIdentifier(sendingConnection.Local.Router, identifier);
+                endPoint = endPoint.CloneWithIdentifier(serializer, identifier);
             }
         }
         else
         {
-            endPoint = RpcEndpoint.ReadFromBytes(sendingConnection.Local.Router, bytes + index, (uint)(maxCt - index), out int bytesRead);
+            endPoint = RpcEndpoint.ReadFromBytes(serializer, sendingConnection.Local.Router, bytes + index, maxCt - (uint)index, out int bytesRead);
             index += bytesRead;
         }
 
-        object[] arguments = Array.Empty<object>();
-
-        return new RpcOverhead(sendingConnection, endPoint, size, size2, messageId, subMsgId, arguments, index);
+        return new RpcOverhead(sendingConnection, endPoint, flags, size, size2, messageId, subMsgId, index);
     }
 }

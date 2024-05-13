@@ -39,7 +39,7 @@ public class Program
         
         SampleClass sc0 = ProxyGenerator.Instance.CreateProxy<SampleClass>(router);
 
-        nint i = 3;
+        int i = 3;
         nint val = 5;
         string str = "test";
         DateTime dt = DateTime.UtcNow;
@@ -54,7 +54,7 @@ public class Program
         //
         //int size = (int)actualMethod.Invoke(method, [ new Serializer(), 3, default(SpinLock), "test" ]);
 
-        RpcTask task = sc0.CallRpcOne(i, ref val);
+        RpcTask task = sc0.CallRpcOne(i);
 
         bool didRelease = sc0.Release();
         Console.WriteLine($"released: {didRelease}.");

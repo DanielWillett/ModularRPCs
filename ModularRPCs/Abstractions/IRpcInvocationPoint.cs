@@ -1,6 +1,9 @@
-﻿using System;
+﻿using DanielWillett.ModularRpcs.Protocol;
+using System;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Abstractions;
 public interface IRpcInvocationPoint
@@ -10,6 +13,7 @@ public interface IRpcInvocationPoint
     int Size { get; }
     bool IsStatic { get; }
     object? Identifier { get; }
-    ValueTask Invoke(ArraySegment<object> parameters);
-    IRpcInvocationPoint CloneWithIdentifier(IRpcRouter router, object? identifier);
+    ValueTask Invoke(RpcOverhead overhead, IRpcSerializer serializer, ReadOnlySpan<byte> byteData, CancellationToken token = default);
+    ValueTask Invoke(RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
+    IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier);
 }

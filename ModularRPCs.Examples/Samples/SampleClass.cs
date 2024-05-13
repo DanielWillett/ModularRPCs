@@ -1,6 +1,5 @@
 ﻿using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
-using DanielWillett.ModularRpcs.Invocation;
 using DanielWillett.ModularRpcs.Protocol;
 using System;
 using System.Threading;
@@ -29,13 +28,19 @@ public class SampleClass : IRpcObject<int>
         Identifier = Interlocked.Increment(ref _identifier);
         Console.WriteLine($"Called base ctor ({test1}, {test2})");
     }
+    private unsafe void Test()
+    {
+        byte* ptr = stackalloc byte[5];
+
+        *(int*)(ptr + 1) = 4;
+    }
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
     [RpcSend]
-    internal virtual RpcTask CallRpcOne(nint arg1, ref nint arg2) => RpcTask.NotImplemented;
+    internal virtual RpcTask CallRpcOne(int arg1) => RpcTask.NotImplemented;
 
     [RpcReceive]
-    private async Task RpcOne(RpcInvocationContext ctx, int value, int dt, string str)
+    private async Task RpcOne(RpcOverhead ctx, [RpcInject] SampleClass service, int value, int dt, string str)
     {
         Console.WriteLine("Start");
         await Task.Delay(TimeSpan.FromSeconds(5d));
