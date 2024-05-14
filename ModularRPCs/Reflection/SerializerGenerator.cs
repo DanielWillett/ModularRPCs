@@ -17,6 +17,9 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using MethodDefinition = DanielWillett.ReflectionTools.Formatting.MethodDefinition;
 
@@ -35,6 +38,7 @@ internal sealed class SerializerGenerator
     ];
 
     private readonly ConcurrentDictionary<int, Type> _argBuilders = new ConcurrentDictionary<int, Type>();
+    private readonly ConcurrentDictionary<RuntimeMethodHandle, int> _methodSigHashCache = new ConcurrentDictionary<RuntimeMethodHandle, int>();
     private readonly ProxyGenerator _proxyGenerator;
     internal const string GetSizeMethodField = "GetSizeMethod";
     internal const string WriteToStreamMethodField = "WriteStreamMethod";
@@ -46,6 +50,13 @@ internal sealed class SerializerGenerator
     public Type GetSerializerType(int argCt)
     {
         return _argBuilders.GetOrAdd(argCt, CreateType);
+    }
+    internal int GetBindingMethodSignatureHash(MethodBase method)
+    {
+        if (method == null)
+            return 0;
+
+        return _methodSigHashCache.GetOrAdd(method.MethodHandle, CreateMethodSignature);
     }
     private Type CreateType(int typeCt)
     {
@@ -1018,6 +1029,75 @@ internal sealed class SerializerGenerator
             }
         }
     }
+
+    internal int CreateMethodSignature(RuntimeMethodHandle handle)
+    {
+        MethodBase method = MethodBase.GetMethodFromHandle(handle)!;
+
+        ParameterInfo[] parameters = method.GetParameters();
+        BindParameters(parameters, out _, out ArraySegment<ParameterInfo> toBind);
+
+        if (toBind.Count == 0)
+        {
+            return 0;
+        }
+
+        Type[] types = new Type[toBind.Count];
+
+        int len = 0;
+        for (int i = 0; i < types.Length; ++i)
+        {
+            Type type = toBind.Array![toBind.Offset + i].ParameterType;
+
+            try
+            {
+                if (type.IsByRef)
+                    type = type.GetElementType()!;
+            }
+            catch (NotSupportedException) { }
+
+            types[i] = type;
+
+            len += Encoding.UTF8.GetByteCount(type.Name);
+        }
+
+        byte[] toHash = new byte[len];
+        int index = 0;
+        for (int i = 0; i < types.Length; ++i)
+        {
+            Type type = types[i];
+            string typeName = type.Name;
+            index += Encoding.UTF8.GetBytes(typeName, 0, typeName.Length, toHash, index);
+        }
+
+#if NETFRAMEWORK || NETSTANDARD || !NET5_0_OR_GREATER
+        byte[] hash;
+        using (SHA1 sha1 = SHA1.Create())
+            hash = sha1.ComputeHash(toHash);
+#else
+        byte[] hash = SHA1.HashData(toHash);
+#endif
+
+        uint h1, h2, h3, h4, h5;
+        if (BitConverter.IsLittleEndian)
+        {
+            h1 = Unsafe.ReadUnaligned<uint>(ref hash[00]);
+            h2 = Unsafe.ReadUnaligned<uint>(ref hash[04]);
+            h3 = Unsafe.ReadUnaligned<uint>(ref hash[08]);
+            h4 = Unsafe.ReadUnaligned<uint>(ref hash[12]);
+            h5 = Unsafe.ReadUnaligned<uint>(ref hash[16]);
+        }
+        else
+        {
+            h1 = (uint)(hash[00] << 24 | hash[01] << 16 | hash[02] << 8 | hash[03]);
+            h2 = (uint)(hash[04] << 24 | hash[05] << 16 | hash[06] << 8 | hash[07]);
+            h3 = (uint)(hash[08] << 24 | hash[09] << 16 | hash[10] << 8 | hash[11]);
+            h4 = (uint)(hash[12] << 24 | hash[13] << 16 | hash[14] << 8 | hash[15]);
+            h5 = (uint)(hash[16] << 24 | hash[17] << 16 | hash[18] << 8 | hash[19]);
+        }
+
+        return unchecked ( (int)(h1 + ((h2 >> 6) | (h2 << 26)) + ((h3 >> 12) | (h3 << 20)) + ((h4 >> 18) | (h4 << 14)) + ((h5 >> 24) | (h5 << 8))) );
+    }
     private static void HandleInvocation(MethodInfo method, ParameterInfo[] parameters, LocalBuilder[] injectionLcls, LocalBuilder[] bindLcls, IOpCodeEmitter il, ArraySegment<ParameterInfo> toInject, ArraySegment<ParameterInfo> toBind)
     {
         if (!method.IsStatic)
@@ -1051,6 +1131,7 @@ internal sealed class SerializerGenerator
                     il.Emit(OpCodes.Call, stringFormat2);
                     il.Emit(OpCodes.Newobj, typeNotFoundCtor);
                     il.Emit(OpCodes.Throw);
+                    il.MarkLabel(lblDontThrowNullRef);
                 }
                 else
                 {
@@ -1062,20 +1143,21 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < parameters.Length; ++i)
         {
             LocalBuilder? lcl = null;
+            ParameterInfo param = parameters[i];
             if (toBind.Count != 0)
             {
-                int ind = Array.IndexOf(toBind.Array!, parameters[i], toBind.Offset, toBind.Count);
+                int ind = Array.IndexOf(toBind.Array!, param, toBind.Offset, toBind.Count);
                 if (ind != -1)
                     lcl = bindLcls[ind];
             }
 
             if (lcl == null)
             {
-                int ind = Array.IndexOf(toInject.Array!, parameters[i], toInject.Offset, toInject.Count);
+                int ind = Array.IndexOf(toInject.Array!, param, toInject.Offset, toInject.Count);
                 lcl = injectionLcls[ind];
             }
 
-            il.Emit(OpCodes.Ldloc, lcl);
+            il.Emit(param.ParameterType.IsByRef ? OpCodes.Ldloca : OpCodes.Ldloc, lcl);
         }
 
         il.Emit(method.GetCallRuntime(), method);
@@ -1111,7 +1193,9 @@ internal sealed class SerializerGenerator
         HandleInjections(method, il, toInject, injectionLcls, false);
 
         for (int i = 0; i < toBind.Count; ++i)
+        {
             bindLcls[i] = il.DeclareLocal(toBind.Array![i + toBind.Offset].ParameterType);
+        }
 
 
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);

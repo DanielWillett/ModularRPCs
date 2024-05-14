@@ -25,7 +25,8 @@ public class DefaultRpcRouter : IRpcRouter
     protected int NextId;
     public virtual IRpcInvocationPoint? FindSavedRpcEndpoint(uint endpointSharedId)
     {
-        return CachedDescriptors.TryGetValue(endpointSharedId, out IRpcInvocationPoint? endpoint) ? endpoint : null!;
+        // ReSharper disable once CanSimplifyDictionaryTryGetValueWithGetValueOrDefault
+        return CachedDescriptors.TryGetValue(endpointSharedId, out IRpcInvocationPoint? endpoint) ? endpoint : null;
     }
 
     public uint AddRpcEndpoint(IRpcInvocationPoint endPoint)
@@ -46,13 +47,13 @@ public class DefaultRpcRouter : IRpcRouter
             }
         }
     }
-    protected virtual IRpcInvocationPoint CreateEndpoint(uint key, string typeName, string methodName, string[]? args, bool isStatic)
+    protected virtual IRpcInvocationPoint CreateEndpoint(uint key, string typeName, string methodName, string[]? args, int signatureHash, bool isStatic)
     {
-        return new RpcEndpoint(key, typeName, methodName, args, isStatic, null, null);
+        return new RpcEndpoint(key, typeName, methodName, args, signatureHash, isStatic, null, null);
     }
-    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, bool isStatic, string[] args, int byteSize, object? identifier)
-        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, isStatic, args, byteSize, identifier);
-    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, bool isStatic, string[] args, int byteSize, object? identifier)
+    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier)
+        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, signatureHash, isStatic, args, byteSize, identifier);
+    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier)
     {
         IRpcInvocationPoint cachedEndpoint = knownRpcShortcutId == 0u
             ? ValueFactory(0u)
@@ -64,7 +65,7 @@ public class DefaultRpcRouter : IRpcRouter
 
         IRpcInvocationPoint ValueFactory(uint key)
         {
-            IRpcInvocationPoint endPoint = CreateEndpoint(key, typeName, methodName, args, isStatic);
+            IRpcInvocationPoint endPoint = CreateEndpoint(key, typeName, methodName, args, signatureHash, isStatic);
             return endPoint;
         }
     }

@@ -205,6 +205,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point. The signature hash was a mis-match, likely caused by a version mismatch between server and client..
+        /// </summary>
+        public static string RpcEndpointNotFoundExceptionMismatchHash {
+            get {
+                return ResourceManager.GetString("RpcEndpointNotFoundExceptionMismatchHash", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This is a fire-and-forget RPC and can not be awaited..
         /// </summary>
         public static string RpcFireAndForgetException {

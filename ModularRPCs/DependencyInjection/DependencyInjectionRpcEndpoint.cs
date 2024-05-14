@@ -2,13 +2,13 @@
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.IO;
 using System.Reflection;
 using System.Threading;
-using DanielWillett.ModularRpcs.Routing;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -30,14 +30,14 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         ServiceProvider = serviceProvider;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : base(knownId, declaringTypeName, methodName, argumentTypeNames, isStatic, expectedAssembly, expectedType)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+        : base(knownId, declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)
     {
         ServiceProvider = serviceProvider;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : base(declaringTypeName, methodName, argumentTypeNames, isStatic, expectedAssembly, expectedType)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+        : base(declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)
     {
         ServiceProvider = serviceProvider;
     }

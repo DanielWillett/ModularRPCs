@@ -1311,6 +1311,15 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Call, getter);
             il.Emit(OpCodes.Ret);
         }
+#if DEBUG
+        foreach (MethodInfo method in methods)
+        {
+            if (!method.IsDefinedSafe<RpcReceiveAttribute>() || method.DeclaringType == typeof(object))
+                continue;
+
+            _ = GetInvokeBytesMethod(method);
+        }
+#endif
 
         try
         {

@@ -12,8 +12,8 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     {
         ServiceProvider = serviceProvider;
     }
-    protected override IRpcInvocationPoint CreateEndpoint(uint key, string typeName, string methodName, string[]? args, bool isStatic)
+    protected override IRpcInvocationPoint CreateEndpoint(uint key, string typeName, string methodName, string[]? args, int signatureHash, bool isStatic)
     {
-        return new DependencyInjectionRpcEndpoint(ServiceProvider, key, typeName, methodName, args, isStatic, null, null);
+        return new DependencyInjectionRpcEndpoint(ServiceProvider, key, typeName, methodName, args, signatureHash, isStatic, null, null);
     }
 }

@@ -1,8 +1,11 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ReflectionTools;
 using System;
 using System.IO;
 using System.Reflection;
@@ -10,9 +13,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Annotations;
-using DanielWillett.ModularRpcs.Protocol;
-using DanielWillett.ReflectionTools;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -23,6 +23,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 {
     private static MethodInfo? _fromResultMethod;
     private int _sizeWithoutIdentifier;
+    protected int SignatureHash;
 
     /// <summary>
     /// Unique ID corresponding to this endpoint set by the server.
@@ -127,17 +128,18 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
     }
 
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : this(declaringTypeName, methodName, argumentTypeNames, isStatic, expectedAssembly, expectedType)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+        : this(declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)
     {
         EndpointId = knownId;
     }
 
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
     {
         IsStatic = isStatic;
         DeclaringTypeName = declaringTypeName;
         MethodName = methodName;
+        SignatureHash = signatureHash;
         bool foundAllTypes = false;
         if (argumentTypeNames != null)
         {
@@ -195,6 +197,13 @@ public class RpcEndpoint : IRpcInvocationPoint
     {
         if (Method == null || !Method.IsDefinedSafe<RpcReceiveAttribute>())
             throw new RpcEndpointNotFoundException(this);
+
+        int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(Method);
+
+        if (SignatureHash != paramHash)
+        {
+            throw new RpcEndpointNotFoundException(this, Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash);
+        }
 
         object? targetObject = null;
         if (!IsStatic)
@@ -320,6 +329,12 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         bytes += sizeof(uint);
 
+        int signatureHash = isLittleEndian
+            ? Unsafe.ReadUnaligned<int>(bytes)
+            : *bytes << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3];
+
+        bytes += sizeof(int);
+
         int rpcTypeLength = isLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(bytes)
             : (ushort)(*bytes << 8 | bytes[1]);
@@ -393,7 +408,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
 
         bytesRead = checked( (int)(bytes - originalPtr) );
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, (flags1 & EndpointFlags.IsStatic) != 0, args, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, signatureHash, (flags1 & EndpointFlags.IsStatic) != 0, args, bytesRead, identifier);
     }
 
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcSerializer serializer, IRpcRouter router, Stream stream, out int bytesRead)
@@ -403,13 +418,13 @@ public class RpcEndpoint : IRpcInvocationPoint
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = new byte[64];
 
-        int byteCt = stream.Read(bytes, 0, 9);
+        int byteCt = stream.Read(bytes, 0, 13);
 #else
         Span<byte> bytes = stackalloc byte[64];
 
-        int byteCt = stream.Read(bytes[..9]);
+        int byteCt = stream.Read(bytes[..13]);
 #endif
-        if (byteCt < 8)
+        if (byteCt < 13)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
         EndpointFlags flags1 = (EndpointFlags)bytes[0];
@@ -421,6 +436,12 @@ public class RpcEndpoint : IRpcInvocationPoint
             : (uint)bytes[1] << 24 | (uint)bytes[2] << 16 | (uint)bytes[3] << 8 | bytes[4];
 
         int index = sizeof(uint) + 1;
+
+        int signatureHash = isLittleEndian
+            ? Unsafe.ReadUnaligned<int>(ref bytes[index])
+            : bytes[index] << 24 | bytes[index + 1] << 16 | bytes[index + 2] << 8 | bytes[index + 3];
+
+        index += sizeof(int);
 
         int rpcTypeLength = isLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(ref bytes[index])
@@ -565,7 +586,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
 
         bytesRead = index;
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, isStatic, args, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, signatureHash, isStatic, args, bytesRead, identifier);
     }
     public virtual IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)
     {

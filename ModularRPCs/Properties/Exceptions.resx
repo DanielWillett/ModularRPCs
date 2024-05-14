@@ -249,4 +249,7 @@
   <data name="RpcInjectionExceptionInstanceNull" xml:space="preserve">
     <value>Unable to find an available instance of {0} to invoke {1} with.</value>
   </data>
+  <data name="RpcEndpointNotFoundExceptionMismatchHash" xml:space="preserve">
+    <value>The endpoint data from a message could not be linked to an invocation point. The signature hash was a mis-match, likely caused by a version mismatch between server and client.</value>
+  </data>
 </root>
