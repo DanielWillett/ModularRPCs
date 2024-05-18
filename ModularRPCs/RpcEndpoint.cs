@@ -134,6 +134,11 @@ public class RpcEndpoint : IRpcInvocationPoint
         EndpointId = knownId;
     }
 
+    private static readonly ConstructorInfo MainConstructor = typeof(RpcEndpoint).GetConstructor(
+        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+        [ typeof(string), typeof(string), typeof(string[]), typeof(int), typeof(bool), typeof(Assembly), typeof(Type) ],
+        null)!;
+
     internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
     {
         IsStatic = isStatic;
@@ -1109,7 +1114,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         return type;
     }
-
+    
     [Flags]
     protected internal enum IdentifierFlags : byte
     {

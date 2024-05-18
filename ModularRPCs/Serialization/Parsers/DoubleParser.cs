@@ -77,7 +77,7 @@ public class DoubleParser : BinaryTypeParser<double>
     public override unsafe double ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(DoubleParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(DoubleParser))) { ErrorCode = 1 };
 
         double value;
         if (BitConverter.IsLittleEndian)
@@ -107,7 +107,7 @@ public class DoubleParser : BinaryTypeParser<double>
 #endif
 
         if (ct != 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(DoubleParser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DoubleParser))) { ErrorCode = 2 };
 
         if (BitConverter.IsLittleEndian)
         {

@@ -22,7 +22,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
     public override unsafe byte ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 1)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(UInt8Parser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(UInt8Parser))) { ErrorCode = 1 };
 
         bytesRead = 1;
         return *bytes;
@@ -31,7 +31,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
     {
         int b = stream.ReadByte();
         if (b == -1)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt8Parser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt8Parser))) { ErrorCode = 2 };
 
         bytesRead = 1;
         return (byte)b;

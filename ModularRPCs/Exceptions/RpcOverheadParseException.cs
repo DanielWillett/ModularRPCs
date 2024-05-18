@@ -8,13 +8,8 @@ namespace DanielWillett.ModularRpcs.Exceptions;
 /// Thrown by a <see cref="RpcOverhead.ReadFromBytes"/> or <see cref="RpcOverhead.ReadFromStream"/> when it fails to parse a proper overhead, likely due to bad data.
 /// </summary>
 [Serializable]
-public class RpcOverheadParseException : RpcException
+public class RpcOverheadParseException : RpcParseException
 {
-    /// <summary>
-    /// Generic error code used by <see cref="RpcOverhead"/> to identify error types.
-    /// </summary>
-    public int ErrorCode { get; internal set; } = -1;
-
     /// <inheritdoc />
     public RpcOverheadParseException() : base(Properties.Exceptions.RpcOverheadParseException) { }
 

@@ -91,7 +91,7 @@ public class DecimalParser : BinaryTypeParser<decimal>
     public override unsafe decimal ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 16)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(DecimalParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(DecimalParser))) { ErrorCode = 1 };
 
 #if NET5_0_OR_GREATER
         int* bits = stackalloc int[4];
@@ -134,7 +134,7 @@ public class DecimalParser : BinaryTypeParser<decimal>
 #endif
 
         if (ct != 16)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int32Parser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DecimalParser))) { ErrorCode = 2 };
 
 #if NET5_0_OR_GREATER
         Span<int> bits = stackalloc int[4];

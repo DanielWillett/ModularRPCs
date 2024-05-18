@@ -8,7 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.IO;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Threading;
+using DanielWillett.ReflectionTools.Emit;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -35,6 +37,11 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
     {
         ServiceProvider = serviceProvider;
     }
+
+    private static readonly ConstructorInfo MainConstructor = typeof(RpcEndpoint).GetConstructor(
+        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+        [ typeof(IServiceProvider), typeof(string), typeof(string), typeof(string[]), typeof(int), typeof(bool), typeof(Assembly), typeof(Type) ],
+        null)!;
 
     internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
         : base(declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)

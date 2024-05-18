@@ -75,7 +75,7 @@ public class Int64Parser : BinaryTypeParser<long>
     public override unsafe long ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 1 };
 
         long value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(bytes)
@@ -98,7 +98,7 @@ public class Int64Parser : BinaryTypeParser<long>
 #endif
 
         if (ct != 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 2 };
         
         value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(ref span[0])

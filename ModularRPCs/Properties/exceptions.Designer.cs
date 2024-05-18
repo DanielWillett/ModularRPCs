@@ -169,6 +169,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given method &apos;{0}&apos; was not a call/invoke method. It must be decorated with the RpcSendAttribute..
+        /// </summary>
+        public static string MethodNotCallMethod {
+            get {
+                return ResourceManager.GetString("MethodNotCallMethod", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The given type is not able to have an identifier..
         /// </summary>
         public static string ObjectNotIdentifyableType {
@@ -214,11 +223,11 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to This is a fire-and-forget RPC and can not be awaited..
+        ///   Looks up a localized string similar to Fire-and-forget methods can not return a value, such is the case in {0}..
         /// </summary>
-        public static string RpcFireAndForgetException {
+        public static string RpcFireAndForgetExceptionReturnValue {
             get {
-                return ResourceManager.GetString("RpcFireAndForgetException", resourceCulture);
+                return ResourceManager.GetString("RpcFireAndForgetExceptionReturnValue", resourceCulture);
             }
         }
         
@@ -268,6 +277,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Generic methods are not supported, as is the case with {0}..
+        /// </summary>
+        public static string RpcInvalidParameterExceptionGenericMethod {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterExceptionGenericMethod", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Parameter #{0}, {1} in {2} is not serializable. {3}..
         /// </summary>
         public static string RpcInvalidParameterExceptionInfo {
@@ -300,6 +318,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcInvalidParameterExceptionOutMessage {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionOutMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The return type of method &apos;{0}&apos; is not supported. It must be void, RpcTask, or RpcTask&lt;T&gt;..
+        /// </summary>
+        public static string RpcInvalidParameterExceptionReturnType {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterExceptionReturnType", resourceCulture);
             }
         }
         
@@ -349,24 +376,6 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the buffer was too short while reading from the binary type parser: &apos;{0}&apos;..
-        /// </summary>
-        public static string RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser {
-            get {
-                return ResourceManager.GetString("RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the native int value was too long for this system while reading from the binary type parser: &apos;{0}&apos;..
-        /// </summary>
-        public static string RpcOverheadParseExceptionBufferRunOutNativeIntOverflow {
-            get {
-                return ResourceManager.GetString("RpcOverheadParseExceptionBufferRunOutNativeIntOverflow", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the declaring type was not available on the receving end..
         /// </summary>
         public static string RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound {
@@ -403,15 +412,6 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the stream ended too early while reading from the binary type parser: &apos;{0}&apos;..
-        /// </summary>
-        public static string RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser {
-            get {
-                return ResourceManager.GetString("RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the string identifier had a length well over the max, likely due to corrupted data..
         /// </summary>
         public static string RpcOverheadParseExceptionStringLengthOverflow {
@@ -435,6 +435,60 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcOverheadParseExceptionUnknownRpcDescriptor {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionUnknownRpcDescriptor", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to read a message, likely due to bad data..
+        /// </summary>
+        public static string RpcParseException {
+            get {
+                return ResourceManager.GetString("RpcParseException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the buffer was too short..
+        /// </summary>
+        public static string RpcParseExceptionBufferRunOut {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionBufferRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the buffer was too short while reading from the binary type parser: &apos;{0}&apos;..
+        /// </summary>
+        public static string RpcParseExceptionBufferRunOutIBinaryTypeParser {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionBufferRunOutIBinaryTypeParser", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the native int value was too long for this system while reading from the binary type parser: &apos;{0}&apos;..
+        /// </summary>
+        public static string RpcParseExceptionBufferRunOutNativeIntOverflow {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionBufferRunOutNativeIntOverflow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the stream ended too early..
+        /// </summary>
+        public static string RpcParseExceptionStreamRunOut {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionStreamRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the stream ended too early while reading from the binary type parser: &apos;{0}&apos;..
+        /// </summary>
+        public static string RpcParseExceptionStreamRunOutIBinaryTypeParser {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionStreamRunOutIBinaryTypeParser", resourceCulture);
             }
         }
         

@@ -69,7 +69,7 @@ public class SingleParser : BinaryTypeParser<float>
     public override unsafe float ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 4)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(SingleParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(SingleParser))) { ErrorCode = 1 };
 
         float value;
         if (BitConverter.IsLittleEndian)
@@ -99,7 +99,7 @@ public class SingleParser : BinaryTypeParser<float>
 #endif
 
         if (ct != 4)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(SingleParser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(SingleParser))) { ErrorCode = 2 };
 
         if (BitConverter.IsLittleEndian)
         {

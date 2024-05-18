@@ -11,7 +11,7 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
     public override unsafe int WriteObject(TimeSpan value, byte* bytes, uint maxSize)
     {
         if (maxSize < 8)
-            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 1 };
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 1 };
 
         long ticks = value.Ticks;
         if (BitConverter.IsLittleEndian)
@@ -76,7 +76,7 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
     public override unsafe TimeSpan ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 1 };
 
         long value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(bytes)
@@ -99,7 +99,7 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
 #endif
 
         if (ct != 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 2 };
         
         value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(ref span[0])

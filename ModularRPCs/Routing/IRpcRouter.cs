@@ -2,6 +2,7 @@
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
+using DanielWillett.ModularRpcs.Async;
 
 namespace DanielWillett.ModularRpcs.Routing;
 
@@ -32,6 +33,16 @@ public interface IRpcRouter
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
     IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier);
+
+    /// <summary>
+    /// Invoke an RPC from a 'call' method.
+    /// </summary>
+    unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo, byte* bytes, uint maxSize);
+
+    /// <summary>
+    /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.
+    /// </summary>
+    int GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
     /// Get the default interface implementations for a proxy class.

@@ -7,6 +7,10 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
 {
     private Action? _continuation;
     public RpcTask Task { get; }
+
+    /// <summary>
+    /// Get the completion state of the <see cref="RpcTask"/>. 
+    /// </summary>
     public bool IsCompleted { get; private protected set; }
     public RpcTaskAwaiter(RpcTask task, bool isCompleted)
     {
@@ -26,15 +30,21 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
             // todo
         }
     }
-    public void UnsafeOnCompleted(Action continuation) => OnCompleted(continuation);
-    public void OnCompleted(Action continuation)
+
+    void ICriticalNotifyCompletion.UnsafeOnCompleted(Action continuation) => ((ICriticalNotifyCompletion)this).OnCompleted(continuation);
+    void INotifyCompletion.OnCompleted(Action continuation)
     {
         _continuation = continuation;
     }
+
+    /// <summary>
+    /// The value of the task. Will throw a <see cref="RpcGetResultUsageException"/> if the task hasn't completed yet.
+    /// </summary>
+    /// <exception cref="RpcGetResultUsageException">Task has yet to complete.</exception>
     public void GetResult()
     {
         if (Task.IsFireAndForget)
-            throw new RpcFireAndForgetException();
+            return;
         if (!IsCompleted)
             throw new RpcGetResultUsageException();
 

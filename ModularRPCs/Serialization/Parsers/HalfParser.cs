@@ -66,7 +66,7 @@ public class HalfParser : BinaryTypeParser<Half>
     public override unsafe Half ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 2)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(HalfParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(HalfParser))) { ErrorCode = 1 };
 
         short value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<short>(bytes)
@@ -89,7 +89,7 @@ public class HalfParser : BinaryTypeParser<Half>
 #endif
 
         if (ct != 2)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(HalfParser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(HalfParser))) { ErrorCode = 2 };
 
         value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<short>(ref span[0])

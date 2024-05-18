@@ -126,8 +126,8 @@
   <data name="PrivatesNotVisibleMissingMethodException" xml:space="preserve">
     <value>The constructor you're trying to use was not found. Private constructors are not supported with RPC proxies.</value>
   </data>
-  <data name="RpcFireAndForgetException" xml:space="preserve">
-    <value>This is a fire-and-forget RPC and can not be awaited.</value>
+  <data name="RpcFireAndForgetExceptionReturnValue" xml:space="preserve">
+    <value>Fire-and-forget methods can not return a value, such is the case in {0}.</value>
   </data>
   <data name="RpcGetResultUsageException" xml:space="preserve">
     <value>GetResult can not be explicitly called by user code.</value>
@@ -213,11 +213,11 @@
   <data name="RpcOverflowExceptionIBinaryTypeParser" xml:space="preserve">
     <value>The buffer overflowed while writing from the binary type parser: '{0}'.</value>
   </data>
-  <data name="RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser" xml:space="preserve">
-    <value>The RpcOverhead failed to parse a proper overhead because the buffer was too short while reading from the binary type parser: '{0}'.</value>
+  <data name="RpcParseExceptionBufferRunOutIBinaryTypeParser" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a message because the buffer was too short while reading from the binary type parser: '{0}'.</value>
   </data>
-  <data name="RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser" xml:space="preserve">
-    <value>The RpcOverhead failed to parse a proper overhead because the stream ended too early while reading from the binary type parser: '{0}'.</value>
+  <data name="RpcParseExceptionStreamRunOutIBinaryTypeParser" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a message because the stream ended too early while reading from the binary type parser: '{0}'.</value>
   </data>
   <data name="BinaryTypeParserNotVariableSizeGetSizeNotImplemented" xml:space="preserve">
     <value>This BinaryTypeParser has IsVariableSize set to true but didn't override GetSize.</value>
@@ -237,8 +237,8 @@
   <data name="RpcInvalidParameterExceptionNoParserFound" xml:space="preserve">
     <value>Unable to find an IBinaryTypeParser for the type</value>
   </data>
-  <data name="RpcOverheadParseExceptionBufferRunOutNativeIntOverflow" xml:space="preserve">
-    <value>The RpcOverhead failed to parse a proper overhead because the native int value was too long for this system while reading from the binary type parser: '{0}'.</value>
+  <data name="RpcParseExceptionBufferRunOutNativeIntOverflow" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a message because the native int value was too long for this system while reading from the binary type parser: '{0}'.</value>
   </data>
   <data name="RpcInjectionException" xml:space="preserve">
     <value>An injected parameter in an RPC receive method is not able to be injected.</value>
@@ -251,5 +251,23 @@
   </data>
   <data name="RpcEndpointNotFoundExceptionMismatchHash" xml:space="preserve">
     <value>The endpoint data from a message could not be linked to an invocation point. The signature hash was a mis-match, likely caused by a version mismatch between server and client.</value>
+  </data>
+  <data name="RpcParseException" xml:space="preserve">
+    <value>The RpcOverhead failed to read a message, likely due to bad data.</value>
+  </data>
+  <data name="RpcParseExceptionBufferRunOut" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a message because the buffer was too short.</value>
+  </data>
+  <data name="RpcParseExceptionStreamRunOut" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a message because the stream ended too early.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionGenericMethod" xml:space="preserve">
+    <value>Generic methods are not supported, as is the case with {0}.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionReturnType" xml:space="preserve">
+    <value>The return type of method '{0}' is not supported. It must be void, RpcTask, or RpcTask&lt;T&gt;.</value>
+  </data>
+  <data name="MethodNotCallMethod" xml:space="preserve">
+    <value>The given method '{0}' was not a call/invoke method. It must be decorated with the RpcSendAttribute.</value>
   </data>
 </root>

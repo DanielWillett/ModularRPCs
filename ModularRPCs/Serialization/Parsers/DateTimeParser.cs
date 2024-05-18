@@ -77,7 +77,7 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
     public override unsafe DateTime ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(DateTimeParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(DateTimeParser))) { ErrorCode = 1 };
 
         long value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(bytes)
@@ -110,7 +110,7 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
 #endif
 
         if (ct != 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(DateTimeParser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DateTimeParser))) { ErrorCode = 2 };
         
         value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(ref span[0])

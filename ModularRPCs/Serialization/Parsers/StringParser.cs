@@ -289,7 +289,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
     public override unsafe string ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 1)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
         byte lenFlag = *bytes;
         if (lenFlag == 0)
@@ -304,14 +304,14 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
         {
             case 1:
                 if (maxSize < 2)
-                    throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
                 size = bytes[1];
                 hdrSize = 2;
                 break;
 
             case 2:
                 if (maxSize < 3)
-                    throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
                 size = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<ushort>(bytes + 1)
                         : bytes[1] << 8 | bytes[2];
@@ -320,7 +320,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 
             default:
                 if (maxSize < 5)
-                    throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
                 size = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<int>(bytes + 1)
                     : bytes[1] << 24 | bytes[2] << 16 | bytes[3] << 8 | bytes[4];
@@ -346,7 +346,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 
             case 1:
                 if (maxSize < 1)
-                    throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
                 charLen = bytes[1];
 #endif
@@ -355,7 +355,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 
             case 2:
                 if (maxSize < 2)
-                    throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
                 charLen = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<ushort>(bytes + 1)
@@ -366,7 +366,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 
             default:
                 if (maxSize < 4)
-                    throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
                 charLen = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<int>(bytes + 1)
@@ -380,7 +380,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
         bytes += charHdrSize;
 
         if (maxSize < size)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         string str;
@@ -409,7 +409,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
     {
         int b = stream.ReadByte();
         if (b == -1)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
         byte lenFlag = (byte)b;
         if (lenFlag == 0)
@@ -439,7 +439,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 #endif
 
         if (ct != hdrSize)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
         int ind;
         switch (lenFlag & 3)
@@ -510,7 +510,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
                     using StreamReader reader = new StreamReader(state.Stream, state.Parser._encoding, false, 1024, true);
                     int charCt = reader.ReadBlock(span);
                     if (charCt != span.Length)
-                        throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
                 });
             }
             else
@@ -526,7 +526,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
                         byte[] data = new byte[state.ByteSize];
                         int ct = state.Stream.Read(data, 0, state.ByteSize);
                         if (ct != state.ByteSize)
-                            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
+                            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
 
                         state.Parser._encoding.GetChars(data, span);
                     });
@@ -536,7 +536,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
                     byte[] data = new byte[size];
                     ct = stream.Read(data, 0, size);
                     if (ct != size)
-                        throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
                     str = _encoding.GetString(data);
                 }
@@ -548,7 +548,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
             Span<byte> dataSpan = new Span<byte>(dataPtr, size);
             ct = stream.Read(dataSpan);
             if (ct != size)
-                throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
+                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
             try
             {
@@ -571,7 +571,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
         byte[] data = new byte[size];
         int ct2 = stream.Read(data, 0, size);
         if (ct2 != size)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
         string str = _encoding.GetString(data);
 #endif

@@ -63,7 +63,7 @@ public class UInt16Parser : BinaryTypeParser<ushort>
     public override unsafe ushort ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 2)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(UInt16Parser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(UInt16Parser))) { ErrorCode = 1 };
 
         int value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(bytes)
@@ -86,7 +86,7 @@ public class UInt16Parser : BinaryTypeParser<ushort>
 #endif
 
         if (ct != 2)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt16Parser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt16Parser))) { ErrorCode = 2 };
 
         value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(ref span[0])

@@ -22,6 +22,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using MethodDefinition = DanielWillett.ReflectionTools.Formatting.MethodDefinition;
+using TypedReference = System.TypedReference;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 internal sealed class SerializerGenerator
@@ -413,6 +414,7 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
+            il.CommentIfDebug($"== Write {Accessor.Formatter.Format(genType)} ==");
             if (lblNotPrimitive.HasValue)
             {
                 il.CommentIfDebug("lblNotPrimitive:");
@@ -526,7 +528,8 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
-        
+            il.CommentIfDebug($"== Write {Accessor.Formatter.Format(genType)} ==");
+
             bool isByRef = ShouldBePassedByReference(genType);
             il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(genType) + ">" : string.Empty)}(" +
                               $"arg{i.ToString(CultureInfo.InvariantCulture)}, stream);");
@@ -684,6 +687,7 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
+            il.CommentIfDebug($"== Get size of {Accessor.Formatter.Format(genType)} ==");
             if (lblPrimitive.HasValue)
             {
                 il.CommentIfDebug("lblPrimitive:");
@@ -1164,8 +1168,63 @@ internal sealed class SerializerGenerator
     }
     internal void GenerateInvokeBytes(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
     {
+        dynMethod.InitLocals = false;
         ParameterInfo[] parameters = method.GetParameters();
         BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
+
+        LocalBuilder lclPreCalc = il.DeclareLocal(typeof(bool));
+        LocalBuilder lclReadInd = il.DeclareLocal(typeof(int));
+        LocalBuilder lclTempByteCt = il.DeclareLocal(typeof(int));
+
+        MethodInfo getCanPreCalcPrimitives = typeof(IRpcSerializer).GetProperty(nameof(IRpcSerializer.CanFastReadPrimitives), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(IRpcSerializer.CanFastReadPrimitives))
+                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                 .WithPropertyType<bool>()
+                                                 .WithNoSetter()
+                                             )}");
+
+        MethodInfo getRpcSerializerReadMethodMkref = typeof(IRpcSerializer).GetMethod(nameof(IRpcSerializer.ReadObject), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+                                                        [ typeof(TypedReference), typeof(byte*), typeof(uint), typeof(int).MakeByRefType() ], null)
+                                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadObject))
+                                                        .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                        .WithParameter(typeof(TypedReference), "refValue")
+                                                        .WithParameter(typeof(byte*), "bytes")
+                                                        .WithParameter(typeof(uint), "maxSize")
+                                                        .WithParameter(typeof(int), "maxSize", ByRefTypeMode.Out)
+                                                        .ReturningVoid()
+                                                    )}");
+
+        MethodInfo getRpcSerializerReadMethodNormal = typeof(IRpcSerializer).GetMethod(nameof(IRpcSerializer.ReadObject), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+                                                        [ typeof(byte*), typeof(uint), typeof(int).MakeByRefType() ], null)
+                                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadObject))
+                                                        .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                        .WithGenericParameterDefinition("T")
+                                                        .WithParameter(typeof(byte*), "bytes")
+                                                        .WithParameter(typeof(uint), "maxSize")
+                                                        .WithParameter(typeof(int), "maxSize", ByRefTypeMode.Out)
+                                                        .ReturningUsingGeneric("T")
+                                                    )}");
+
+        ConstructorInfo rpcParseExceptionError = typeof(RpcParseException).GetConstructor([ typeof(string) ])
+                                                 ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(typeof(RpcParseException))
+                                                     .WithParameter<string>("message")
+                                                 )}");
+
+        MethodInfo setErrorCode = typeof(RpcParseException).GetProperty(nameof(RpcParseException.ErrorCode), BindingFlags.Instance | BindingFlags.Public)?.GetSetMethod(true)
+                                  ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(RpcParseException.ErrorCode))
+                                      .DeclaredIn<RpcParseException>(isStatic: false)
+                                      .WithPropertyType<int>()
+                                      .WithNoGetter()
+                                  )}");
+
+        il.CommentIfDebug("bool lclPreCalc = serializer.PreCalculatePrimitiveSizes;");
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Callvirt, getCanPreCalcPrimitives);
+        il.Emit(OpCodes.Stloc, lclPreCalc);
+
+        il.CommentIfDebug("int lclReadInd = 0;");
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Stloc, lclReadInd);
 
         LocalBuilder[] injectionLcls = new LocalBuilder[toInject.Count];
         LocalBuilder[] bindLcls = new LocalBuilder[toBind.Count];
@@ -1174,9 +1233,115 @@ internal sealed class SerializerGenerator
 
         for (int i = 0; i < toBind.Count; ++i)
         {
-            bindLcls[i] = il.DeclareLocal(toBind.Array![i + toBind.Offset].ParameterType);
+            ParameterInfo parameter = toBind.Array![i + toBind.Offset];
+            Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+            bindLcls[i] = il.DeclareLocal(type);
 
+            bool isPrimitive = CanQuickSerializeType(type);
+            bool shouldPassByRef = ShouldBePassedByReference(type);
+            Label lblDoPrimitiveRead = default;
+            // 4: serializer, 5: bytes, 6: maxCt
+
+            il.CommentIfDebug($"== Read {Accessor.Formatter.Format(type)} ==");
+            if (isPrimitive)
+            {
+                lblDoPrimitiveRead = il.DefineLabel();
+                il.CommentIfDebug("if (lclPreCalc) goto lblDoPrimitiveRead;");
+                il.Emit(OpCodes.Ldloc, lclPreCalc);
+                il.Emit(OpCodes.Brtrue, lblDoPrimitiveRead);
+            }
+
+            Label continueRead = il.DefineLabel();
+            il.CommentIfDebug($"if (maxCount - lclReadInd <= 0) throw new RpcParseException({Properties.Exceptions.RpcParseExceptionBufferRunOut}) {{ ErrorCode = 1 }};");
+            il.Emit(OpCodes.Ldarg_S, 6);
+            il.Emit(OpCodes.Ldloc, lclReadInd);
+            il.Emit(OpCodes.Sub);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Bgt, continueRead);
+            il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcParseExceptionBufferRunOut);
+            il.Emit(OpCodes.Newobj, rpcParseExceptionError);
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(setErrorCode.GetCallRuntime(), setErrorCode);
+            il.Emit(OpCodes.Throw);
+
+            il.MarkLabel(continueRead);
+            if (shouldPassByRef)
+            {
+                il.CommentIfDebug($"serializer.ReadObject(__makeref(bindLcl{i}), bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                il.Emit(OpCodes.Ldarg_S, 4);
+                il.Emit(OpCodes.Ldloca, bindLcls[i]);
+                il.Emit(OpCodes.Mkrefany, type);
+                il.Emit(OpCodes.Ldarg_S, 5);
+                il.Emit(OpCodes.Ldloc, lclReadInd);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Ldarg_S, 6);
+                il.Emit(OpCodes.Ldloc, lclReadInd);
+                il.Emit(OpCodes.Sub);
+                il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                il.Emit(OpCodes.Callvirt, getRpcSerializerReadMethodMkref);
+            }
+            else
+            {
+                il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                il.Emit(OpCodes.Ldarg_S, 4);
+                il.Emit(OpCodes.Ldarg_S, 5);
+                il.Emit(OpCodes.Ldloc, lclReadInd);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Ldarg_S, 6);
+                il.Emit(OpCodes.Ldloc, lclReadInd);
+                il.Emit(OpCodes.Sub);
+                il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                il.Emit(OpCodes.Callvirt, getRpcSerializerReadMethodNormal.MakeGenericMethod(type));
+                il.Emit(OpCodes.Stloc, bindLcls[i]);
+            }
+
+            il.CommentIfDebug("lclReadInd += lclTempByteCt;");
+            il.Emit(OpCodes.Ldloc, lclReadInd);
+            il.Emit(OpCodes.Ldloc, lclTempByteCt);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, lclReadInd);
+
+            if (!isPrimitive)
+                continue;
+            
+            il.CommentIfDebug("lblDoPrimitiveRead:");
+            il.MarkLabel(lblDoPrimitiveRead);
+
+            continueRead = il.DefineLabel();
+            int primSize = GetPrimitiveTypeSize(type);
+            il.CommentIfDebug($"if (maxCount - lclReadInd < {primSize}) throw new RpcParseException({Properties.Exceptions.RpcParseExceptionBufferRunOut}) {{ ErrorCode = 1 }};");
+            il.Emit(OpCodes.Ldarg_S, 6);
+            il.Emit(OpCodes.Ldloc, lclReadInd);
+            il.Emit(OpCodes.Sub);
+            il.Emit(OpCodes.Ldc_I4, primSize);
+            il.Emit(OpCodes.Bge, continueRead);
+            il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcParseExceptionBufferRunOut);
+            il.Emit(OpCodes.Newobj, rpcParseExceptionError);
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(setErrorCode.GetCallRuntime(), setErrorCode);
+            il.Emit(OpCodes.Throw);
+
+            il.MarkLabel(continueRead);
+
+            il.CommentIfDebug($"bindLcl{i} = *({Accessor.Formatter.Format(type)}*)(bytes + lclReadInd);");
+            il.Emit(OpCodes.Ldarg_S, 5);
+            il.Emit(OpCodes.Ldloc, lclReadInd);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Unaligned, type);
+            LoadFromRef(type, il);
+            il.Emit(OpCodes.Stloc, bindLcls[i]);
+
+            il.CommentIfDebug($"lclReadInd += {primSize};");
+            il.Emit(OpCodes.Ldloc, lclReadInd);
+            il.Emit(OpCodes.Ldc_I4, primSize);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, lclReadInd);
         }
+
+        il.EmitWriteLine("Read bytes:");
+        il.EmitWriteLine(lclReadInd);
 
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
         il.Emit(OpCodes.Ret);
@@ -1196,7 +1361,6 @@ internal sealed class SerializerGenerator
         {
             bindLcls[i] = il.DeclareLocal(toBind.Array![i + toBind.Offset].ParameterType);
         }
-
 
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
         il.Emit(OpCodes.Ret);

@@ -21,6 +21,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using FieldBuilderCallMethodInfoCache = (System.Reflection.Emit.FieldBuilder Field, DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo MethodInfo);
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
@@ -29,17 +30,6 @@ namespace DanielWillett.ModularRpcs.Reflection;
 /// </summary>
 public sealed class ProxyGenerator
 {
-    private struct InvokeMethodCacheEntry
-    {
-        public readonly RpcInvokeHandlerStream Stream;
-        public readonly RpcInvokeHandlerBytes Bytes;
-        public InvokeMethodCacheEntry(RpcInvokeHandlerStream stream, RpcInvokeHandlerBytes bytes)
-        {
-            Stream = stream;
-            Bytes = bytes;
-        }
-    }
-
     private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
@@ -108,6 +98,12 @@ public sealed class ProxyGenerator
     public string ReleaseMethodName => "Release";
 
     /// <summary>
+    /// Static field of type <see cref="RpcCallMethodInfo"/> that stores information about the target of a call method in a proxy type.
+    /// </summary>
+    /// <remarks>Use this value with <see cref="string.Format(string, object)"/>, where {0} is the call method name.</remarks>
+    public string CallMethodInfoFieldFormat => "_callMtdInfo<{0}>";
+
+    /// <summary>
     /// Maximum size in bytes that a stackalloc can be used instead of creating an new byte array for writing messages to.
     /// </summary>
     public int MaxSizeForStackalloc { get; set; } = 512;
@@ -137,11 +133,18 @@ public sealed class ProxyGenerator
         _identifierErrorConstructor = typeof(RpcObjectInitializationException).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [ typeof(string) ], null)
                                       ?? throw new MemberAccessException("Failed to find RpcObjectInitializationException(string).");
 
+        CustomAttributeBuilder attr = new CustomAttributeBuilder(
+            typeof(InternalsVisibleToAttribute).GetConstructor([typeof(string)])!,
+            [ thisAssembly.GetName().Name ]
+        );
+
+        AssemblyBuilder.SetCustomAttribute(attr);
+
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
             return;
 
         _accessIgnoredAssemblies.Add(thisAssembly);
-        CustomAttributeBuilder attr = new CustomAttributeBuilder(
+        attr = new CustomAttributeBuilder(
             typeof(IgnoresAccessChecksToAttribute).GetConstructor([ typeof(string) ])!,
             [ thisAssembly.GetName().Name ]
         );
@@ -197,7 +200,7 @@ public sealed class ProxyGenerator
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes)
     {
-        if (type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+        if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
         Type newType = _proxies.GetOrAdd(type, CreateProxyType);
 
@@ -219,7 +222,7 @@ public sealed class ProxyGenerator
                 newType,
                 BindingFlags.CreateInstance | BindingFlags.Instance | (nonPublic ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public),
                 binder,
-                constructorParameters ?? Array.Empty<object>(),
+                constructorParameters,
                 culture,
                 activationAttributes
             )!;
@@ -265,7 +268,7 @@ public sealed class ProxyGenerator
     /// <exception cref="ArgumentException"/>
     public Type GetProxyType(Type type)
     {
-        if (type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+        if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
 
         return _proxies.GetOrAdd(type, CreateProxyType);
@@ -285,7 +288,7 @@ public sealed class ProxyGenerator
         if (instanceType == null)
             throw new ArgumentNullException(nameof(instanceType));
 
-        if (!instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+        if (instanceType.Assembly.FullName == null || !instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             instanceType = GetProxyType(instanceType);
 
         if (!_getObjectFunctions.ContainsKey(instanceType))
@@ -339,7 +342,7 @@ public sealed class ProxyGenerator
         if (obj == null)
             throw new ArgumentNullException(nameof(obj));
 
-        if (!instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+        if (instanceType.Assembly.FullName == null || !instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             instanceType = GetProxyType(instanceType);
 
         if (!_releaseObjectFunctions.ContainsKey(instanceType))
@@ -360,7 +363,7 @@ public sealed class ProxyGenerator
         )(obj);
     }
 
-    private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess, out FieldBuilder proxyContextField)
+    private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer)
     {
         TypeBuilder typeBuilder = ModuleBuilder.DefineType(type.Name + "<RPC_Proxy>",
             TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
@@ -487,8 +490,8 @@ public sealed class ProxyGenerator
 
             ParameterInfo[] parameters = baseCtor.GetParameters();
             Type[] types = new Type[parameters.Length + 1];
-            Type?[][] reqMods = new Type[parameters.Length + 1][];
-            Type?[][] optMods = new Type[parameters.Length + 1][];
+            Type[][] reqMods = new Type[parameters.Length + 1][];
+            Type[][] optMods = new Type[parameters.Length + 1][];
             types[0] = typeof(IRpcRouter);
             for (int i = 0; i < parameters.Length; ++i)
             {
@@ -880,11 +883,10 @@ public sealed class ProxyGenerator
                                          }.");
 
             // static constructor to initalize the dictionary
-            ConstructorBuilder typeInitializer = typeBuilder.DefineTypeInitializer();
+            typeInitializer = typeBuilder.DefineTypeInitializer();
             IOpCodeEmitter il = typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
             il.Emit(OpCodes.Newobj, dictCtor);
             il.Emit(OpCodes.Stsfld, dictField);
-            il.Emit(OpCodes.Ret);
 
             // look for finalizer of base type if it exists.
             MethodInfo? baseFinalizerMethod = null;
@@ -1067,6 +1069,8 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldloc_S, lcl);
             il.Emit(OpCodes.Ret);
         }
+        else
+            typeInitializer = null;
 
         return typeBuilder;
     }
@@ -1093,8 +1097,10 @@ public sealed class ProxyGenerator
         if (!VisibilityUtility.IsTypeVisible(type, typeGivesInternalAccess))
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type));
 
-        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, out FieldBuilder proxyContextField);
+        IOpCodeEmitter? typeInitIl = null;
 
+        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer);
+        List<FieldBuilderCallMethodInfoCache> toSet = new List<FieldBuilderCallMethodInfoCache>();
         foreach (MethodInfo method in methods)
         {
             if (!method.IsDefinedSafe<RpcSendAttribute>() || method.DeclaringType == typeof(object))
@@ -1102,6 +1108,28 @@ public sealed class ProxyGenerator
                 if (method.IsAbstract && method.DeclaringType == type)
                     throw new ArgumentException(Properties.Exceptions.TypeNotInheritable, nameof(type));
                 continue;
+            }
+
+            if (method.IsGenericMethodDefinition)
+                throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionGenericMethod, Accessor.ExceptionFormatter.Format(method)));
+
+            bool isFireAndForget = false;
+            if (method.ReturnType == typeof(RpcTask))
+            {
+                isFireAndForget = method.IsDefinedSafe<RpcFireAndForgetAttribute>();
+            }
+            else if (method.ReturnType.IsGenericType && method.ReturnType.GetGenericTypeDefinition() == typeof(RpcTask<>))
+            {
+                if (method.IsDefinedSafe<RpcFireAndForgetAttribute>())
+                    throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionReturnValue, Accessor.ExceptionFormatter.Format(method)));
+            }
+            else if (method.ReturnType == typeof(void))
+            {
+                isFireAndForget = true;
+            }
+            else
+            {
+                throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionReturnType, Accessor.ExceptionFormatter.Format(method)));
             }
 
             if (!VisibilityUtility.IsMethodOverridable(method))
@@ -1195,6 +1223,39 @@ public sealed class ProxyGenerator
                                                     .Returning<int>()
                                                 )}.");
 
+            MethodInfo invokeRpcMethod = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+                                             [ typeof(RuntimeMethodHandle), typeof(RpcCallMethodInfo).MakeByRefType(), typeof(byte*), typeof(uint) ], null)
+                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
+                                             .DeclaredIn<IRpcRouter>(isStatic: false)
+                                             .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
+                                             .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.In)
+                                             .WithParameter(typeof(byte*), "bytes")
+                                             .WithParameter<uint>("maxSize")
+                                             .Returning<RpcTask>()
+                                         )}.");
+
+            MethodInfo getOverheadSizeMethod = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.GetOverheadSize), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+                                                   [ typeof(RuntimeMethodHandle), typeof(RpcCallMethodInfo).MakeByRefType()], null)
+                                               ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcRouter.GetOverheadSize))
+                                                   .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                   .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
+                                                   .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.In)
+                                                   .Returning<int>()
+                                               )}.");
+
+            FieldBuilder methodInfoField = builder.DefineField(string.Format(CallMethodInfoFieldFormat, method.Name),
+                typeof(RpcCallMethodInfo),
+                FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly
+            );
+
+            RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(method, isFireAndForget);
+
+            typeInitializer ??= builder.DefineTypeInitializer();
+            typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+
+            typeInitIl.Emit(OpCodes.Ldsflda, methodInfoField);
+            rpcCall.EmitToAddress(typeInitIl);
+
             MethodBuilder methodBuilder = builder.DefineMethod(method.Name,
                 privacyAttributes | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final,
                 method.CallingConvention,
@@ -1210,10 +1271,12 @@ public sealed class ProxyGenerator
             il.EmitWriteLine("Calling " + Accessor.Formatter.Format(method));
 #endif
             LocalBuilder lclSize = il.DeclareLocal(typeof(int));
+            LocalBuilder lclOverheadSize = il.DeclareLocal(typeof(int));
             LocalBuilder lclByteBuffer = il.DeclareLocal(typeof(byte*));
             LocalBuilder lclByteBufferPin = il.DeclareLocal(typeof(byte[]), true);
+            LocalBuilder lclTaskRtn = il.DeclareLocal(typeof(RpcTask));
 
-            // invoke the delegate
+            // invoke the static get-size delegate in the static dynamically generated serializer class
             il.Emit(OpCodes.Ldsfld, getSizeMethod);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldflda, proxyContextField);
@@ -1228,6 +1291,23 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Stloc, lclSize);
 #if DEBUG
             il.EmitWriteLine("Calculated size: ");
+            il.EmitWriteLine(lclSize);
+#endif
+
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, proxyContextField);
+            il.Emit(OpCodes.Ldfld, ProxyContext.RouterField);
+            il.Emit(OpCodes.Ldtoken, method);
+            il.Emit(OpCodes.Ldsflda, methodInfoField);
+            il.Emit(OpCodes.Callvirt, getOverheadSizeMethod);
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Ldloc, lclSize);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Stloc, lclSize);
+            il.Emit(OpCodes.Stloc, lclOverheadSize);
+
+#if DEBUG
+            il.EmitWriteLine("Calculated size w/ overhead: ");
             il.EmitWriteLine(lclSize);
 #endif
             Label lblSizeIsTooBigForLocalloc = il.DefineLabel();
@@ -1254,12 +1334,17 @@ public sealed class ProxyGenerator
 
             il.BeginExceptionBlock();
 
+            // invoke the static write delegate in the serializer class
             il.Emit(OpCodes.Ldsfld, writeBytesMethod);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldflda, proxyContextField);
             il.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
             il.Emit(OpCodes.Ldloc, lclByteBuffer);
+            il.Emit(OpCodes.Ldloc, lclOverheadSize);
+            il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Ldloc, lclSize);
+            il.Emit(OpCodes.Ldloc, lclOverheadSize);
+            il.Emit(OpCodes.Sub);
             il.Emit(OpCodes.Conv_Ovf_U4);
             for (int i = 0; i < genericArguments.Length; ++i)
             {
@@ -1267,8 +1352,11 @@ public sealed class ProxyGenerator
             }
 
             il.Emit(OpCodes.Callvirt, writeBytesInvokeMethod);
+            il.Emit(OpCodes.Ldloc, lclOverheadSize);
+            il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Stloc, lclSize);
 #if DEBUG
+            // print each byte to console
             il.EmitWriteLine("Written size: ");
             il.EmitWriteLine(lclSize);
             LocalBuilder lclIndex = il.DeclareLocal(typeof(int));
@@ -1298,8 +1386,17 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Br, topOfForLoop);
             
             il.MarkLabel(afterForLoop);
-            il.Emit(OpCodes.Nop);
 #endif
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldflda, proxyContextField);
+            il.Emit(OpCodes.Ldfld, ProxyContext.RouterField);
+            il.Emit(OpCodes.Ldtoken, method);
+            il.Emit(OpCodes.Ldsflda, methodInfoField);
+            il.Emit(OpCodes.Ldloc, lclByteBuffer);
+            il.Emit(OpCodes.Ldloc, lclSize);
+            il.Emit(OpCodes.Callvirt, invokeRpcMethod);
+            il.Emit(OpCodes.Stloc, lclTaskRtn);
+
             il.BeginFinallyBlock();
 
             il.Emit(OpCodes.Ldnull);
@@ -1307,8 +1404,9 @@ public sealed class ProxyGenerator
 
             il.EndExceptionBlock();
 
-            MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
-            il.Emit(OpCodes.Call, getter);
+            //MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
+            //il.Emit(OpCodes.Call, getter);
+            il.Emit(OpCodes.Ldloc, lclTaskRtn);
             il.Emit(OpCodes.Ret);
         }
 #if DEBUG
@@ -1320,6 +1418,13 @@ public sealed class ProxyGenerator
             _ = GetInvokeBytesMethod(method);
         }
 #endif
+
+        if (typeInitializer != null)
+        {
+            typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+            typeInitIl.Emit(OpCodes.Ret);
+        }
+            
 
         try
         {
@@ -1347,7 +1452,7 @@ public sealed class ProxyGenerator
     }
     private RpcInvokeHandlerStream GetOrAddInvokeMethodStream(RuntimeMethodHandle handle)
     {
-        MethodInfo method = (MethodInfo)MethodBase.GetMethodFromHandle(handle);
+        MethodInfo method = (MethodInfo?)MethodBase.GetMethodFromHandle(handle)!;
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
 
@@ -1366,7 +1471,7 @@ public sealed class ProxyGenerator
     }
     private RpcInvokeHandlerBytes GetOrAddInvokeMethodBytes(RuntimeMethodHandle handle)
     {
-        MethodInfo method = (MethodInfo)MethodBase.GetMethodFromHandle(handle);
+        MethodInfo method = (MethodInfo?)MethodBase.GetMethodFromHandle(handle)!;
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
 

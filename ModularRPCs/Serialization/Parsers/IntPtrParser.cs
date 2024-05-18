@@ -77,7 +77,7 @@ public class IntPtrParser : BinaryTypeParser<nint>
     public override unsafe nint ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(IntPtrParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(IntPtrParser))) { ErrorCode = 1 };
 
         long value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(bytes)
@@ -101,7 +101,7 @@ public class IntPtrParser : BinaryTypeParser<nint>
 #endif
 
         if (ct != 8)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(IntPtrParser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(IntPtrParser))) { ErrorCode = 2 };
         
         value = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<long>(ref span[0])
@@ -125,6 +125,6 @@ public class IntPtrParser : BinaryTypeParser<nint>
             return;
 
         if (value is < int.MinValue or > int.MaxValue)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutNativeIntOverflow, nameof(IntPtrParser))) { ErrorCode = 9 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, nameof(IntPtrParser))) { ErrorCode = 9 };
     }
 }

@@ -41,7 +41,7 @@ public class GuidParser : BinaryTypeParser<Guid>
     public override unsafe Guid ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 16)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 1 };
 
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         Guid guid = new Guid(new ReadOnlySpan<byte>(bytes, 16));
@@ -79,7 +79,7 @@ public class GuidParser : BinaryTypeParser<Guid>
         int ct = stream.Read(span);
 #endif
         if (ct != 16)
-            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int64Parser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 2 };
 
         bytesRead = 16;
         guid = new Guid(span);

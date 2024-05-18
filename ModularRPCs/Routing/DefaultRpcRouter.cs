@@ -1,4 +1,6 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Async;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
@@ -12,6 +14,14 @@ public class DefaultRpcRouter : IRpcRouter
     public DefaultRpcRouter(IRpcSerializer defaultSerializer)
     {
         _defaultSerializer = defaultSerializer;
+    }
+    public unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo, byte* bytes, uint maxSize)
+    {
+        return RpcTask.CompletedTask;
+    }
+    public int GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo)
+    {
+        return RpcOverhead.MinimumSize;
     }
 
     /// <summary>
