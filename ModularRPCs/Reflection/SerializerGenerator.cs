@@ -1036,6 +1036,7 @@ internal sealed class SerializerGenerator
 
     internal int CreateMethodSignature(RuntimeMethodHandle handle)
     {
+        // ReSharper disable once RedundantSuppressNullableWarningExpression
         MethodBase method = MethodBase.GetMethodFromHandle(handle)!;
 
         ParameterInfo[] parameters = method.GetParameters();

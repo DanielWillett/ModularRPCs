@@ -1,6 +1,9 @@
-﻿using DanielWillett.ModularRpcs.Routing;
+﻿using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Routing;
 using JetBrains.Annotations;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Threading;
 
 namespace DanielWillett.ModularRpcs.Annotations;
@@ -62,5 +65,18 @@ public abstract class RpcTargetAttribute : Attribute
         Type = declaringType;
         TypeName = declaringType.AssemblyQualifiedName;
         MethodName = methodName;
+    }
+
+    /// <summary>
+    /// Resolve a method from this target.
+    /// </summary>
+    public bool TryResolveMethod(
+        MethodInfo decoratingMethod,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]
+#endif
+        out MethodInfo method, out ResolveMethodResult result)
+    {
+        return TypeUtility.TryResolveMethod(decoratingMethod, MethodName, Type, TypeName, ParameterTypes, ParameterTypeNames, ParametersAreBindedParametersOnly, out method, out result);
     }
 }

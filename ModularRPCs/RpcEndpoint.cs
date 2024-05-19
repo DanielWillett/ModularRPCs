@@ -36,6 +36,15 @@ public class RpcEndpoint : IRpcInvocationPoint
     public bool IsStatic { get; }
 
     /// <summary>
+    /// Do <see cref="ParameterTypes"/> or <see cref="ParameterTypeNames"/> only include binded parameters. Defaults to <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// Binded parameters means non-injected parameters, meaning only parameters that are replicated.
+    /// Other injected parameters such as <see cref="CancellationToken"/>, <see cref="IRpcRouter"/>, etc, along with any other parameters decorated with the <see cref="RpcInjectAttribute"/>, will not be checked as part of the parameter type arrays.
+    /// </remarks>
+    public bool ParametersAreBindedParametersOnly { get; }
+
+    /// <summary>
     /// The identifier, if any, to identify the instance with.
     /// </summary>
     public object? Identifier { get; }
@@ -53,12 +62,12 @@ public class RpcEndpoint : IRpcInvocationPoint
     /// <summary>
     /// The fully declared names of the argument types.
     /// </summary>
-    public string[]? ArgumentTypeNames { get; }
+    public string[]? ParameterTypeNames { get; }
 
     /// <summary>
     /// The argument types of the method, if available.
     /// </summary>
-    public Type?[]? ArgumentTypes { get; }
+    public Type?[]? ParameterTypes { get; }
 
     /// <summary>
     /// The method, if available.
@@ -86,104 +95,67 @@ public class RpcEndpoint : IRpcInvocationPoint
         IsStatic = other.IsStatic;
         DeclaringTypeName = other.DeclaringTypeName;
         MethodName = other.MethodName;
-        ArgumentTypeNames = other.ArgumentTypeNames;
-        ArgumentTypes = other.ArgumentTypes;
+        ParameterTypeNames = other.ParameterTypeNames;
+        ParameterTypes = other.ParameterTypes;
         Method = other.Method;
         DeclaringType = other.DeclaringType;
         Size = _sizeWithoutIdentifier = other._sizeWithoutIdentifier;
+        ParametersAreBindedParametersOnly = other.ParametersAreBindedParametersOnly;
         if (identifier != null)
         {
             Size += CalculateIdentifierSize(serializer, identifier);
         }
     }
 
-    internal RpcEndpoint(IRpcSerializer serializer, MethodInfo method, object? identifier)
-    {
-        if (identifier is DBNull)
-            identifier = null;
+    //internal RpcEndpoint(IRpcSerializer serializer, MethodInfo method, object? identifier)
+    //{
+    //    if (identifier is DBNull)
+    //        identifier = null;
 
-        if (method.DeclaringType == null)
-            throw new ArgumentException(Properties.Exceptions.MethodHasNoDeclaringType, nameof(method));
+    //    if (method.DeclaringType == null)
+    //        throw new ArgumentException(Properties.Exceptions.MethodHasNoDeclaringType, nameof(method));
 
-        Identifier = identifier;
-        ParameterInfo[] parameters = method.GetParameters();
-        ArgumentTypes = parameters.Length == 0 ? Type.EmptyTypes : new Type[parameters.Length];
-        ArgumentTypeNames = parameters.Length == 0 ? Array.Empty<string>() : new string[parameters.Length];
-        IsStatic = method.IsStatic;
-        for (int i = 0; i < parameters.Length; ++i)
-        {
-            Type parameterType = parameters[i].ParameterType;
-            ArgumentTypes[i] = parameterType;
-            ArgumentTypeNames[i] = parameterType.AssemblyQualifiedName!;
-        }
+    //    Identifier = identifier;
+    //    ParameterInfo[] parameters = method.GetParameters();
+    //    ParameterTypes = parameters.Length == 0 ? Type.EmptyTypes : new Type[parameters.Length];
+    //    ParameterTypeNames = parameters.Length == 0 ? Array.Empty<string>() : new string[parameters.Length];
+    //    IsStatic = method.IsStatic;
+    //    for (int i = 0; i < parameters.Length; ++i)
+    //    {
+    //        Type parameterType = parameters[i].ParameterType;
+    //        ParameterTypes[i] = parameterType;
+    //        ParameterTypeNames[i] = parameterType.AssemblyQualifiedName!;
+    //    }
 
-        Method = method;
-        MethodName = method.Name;
-        DeclaringType = method.DeclaringType;
-        DeclaringTypeName = method.DeclaringType.AssemblyQualifiedName!;
-        CalculateSize();
-        if (identifier != null)
-        {
-            Size += CalculateIdentifierSize(serializer, identifier);
-        }
-    }
+    //    Method = method;
+    //    MethodName = method.Name;
+    //    DeclaringType = method.DeclaringType;
+    //    DeclaringTypeName = method.DeclaringType.AssemblyQualifiedName!;
+    //    CalculateSize();
+    //    if (identifier != null)
+    //    {
+    //        Size += CalculateIdentifierSize(serializer, identifier);
+    //    }
+    //}
 
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : this(declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, int signatureHash)
+        : this(declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, signatureHash)
     {
         EndpointId = knownId;
     }
-
-    private static readonly ConstructorInfo MainConstructor = typeof(RpcEndpoint).GetConstructor(
-        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-        [ typeof(string), typeof(string), typeof(string[]), typeof(int), typeof(bool), typeof(Assembly), typeof(Type) ],
-        null)!;
-
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, int signatureHash)
     {
-        IsStatic = isStatic;
+        IsStatic = false;
         DeclaringTypeName = declaringTypeName;
         MethodName = methodName;
         SignatureHash = signatureHash;
-        bool foundAllTypes = false;
-        if (argumentTypeNames != null)
-        {
-            ArgumentTypeNames = argumentTypeNames;
-            ArgumentTypes = argumentTypeNames.Length == 0 ? Type.EmptyTypes : new Type[argumentTypeNames.Length];
-            foundAllTypes = true;
-            for (int i = 0; i < argumentTypeNames.Length; ++i)
-            {
-                Type? type = Type.GetType(argumentTypeNames[i], throwOnError: false) ?? expectedAssembly?.GetType(declaringTypeName);
-                ArgumentTypes[i] = type;
-                if (type == null)
-                    foundAllTypes = false;
-            }
-        }
-        DeclaringType = Type.GetType(declaringTypeName, throwOnError: false) ?? expectedAssembly?.GetType(declaringTypeName) ?? expectedType;
-        if (DeclaringType != null && !string.IsNullOrEmpty(declaringTypeName) && !declaringTypeName.Equals(DeclaringType.Name))
-        {
-            DeclaringType = null;
-        }
+        ParametersAreBindedParametersOnly = argsAreBindOnly;
+        ParameterTypeNames = parameterTypeNames;
 
-        if (DeclaringType == null)
-            return;
-
-        if (foundAllTypes)
+        if (TypeUtility.TryResolveMethod(null, methodName, null, declaringTypeName, null, parameterTypeNames, argsAreBindOnly, out MethodInfo? foundMethod, out _))
         {
-            Method = DeclaringType.GetMethod(methodName,
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static, null,
-                CallingConventions.Any, ArgumentTypes!, null);
-        }
-        else
-        {
-            try
-            {
-                Method = DeclaringType.GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-            }
-            catch (AmbiguousMatchException)
-            {
-                // ignored
-            }
+            Method = foundMethod;
+            IsStatic = Method.IsStatic;
         }
 
         CalculateSize();
@@ -272,8 +244,6 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
 
         return new ValueTask(newTask);
-
-        return default;
     }
     protected virtual object? GetTargetObject()
     {
@@ -306,11 +276,11 @@ public class RpcEndpoint : IRpcInvocationPoint
         int size = sizeof(uint) + sizeof(ushort) + sizeof(ushort) + 1;
         size += Encoding.UTF8.GetByteCount(DeclaringTypeName)
                 + Encoding.UTF8.GetByteCount(MethodName);
-        if (ArgumentTypeNames != null)
+        if (ParameterTypeNames != null)
         {
             size += sizeof(ushort);
-            for (int i = 0; i < ArgumentTypeNames.Length; ++i)
-                size += Encoding.UTF8.GetByteCount(ArgumentTypeNames[i]);
+            for (int i = 0; i < ParameterTypeNames.Length; ++i)
+                size += Encoding.UTF8.GetByteCount(ParameterTypeNames[i]);
         }
 
         _sizeWithoutIdentifier = size;
@@ -413,7 +383,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
 
         bytesRead = checked( (int)(bytes - originalPtr) );
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, signatureHash, (flags1 & EndpointFlags.IsStatic) != 0, args, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, signatureHash, bytesRead, identifier);
     }
 
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcSerializer serializer, IRpcRouter router, Stream stream, out int bytesRead)
@@ -433,7 +403,6 @@ public class RpcEndpoint : IRpcInvocationPoint
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
         EndpointFlags flags1 = (EndpointFlags)bytes[0];
-        bool isStatic = (flags1 & EndpointFlags.IsStatic) != 0;
         bool hasIdentifier = (flags1 & EndpointFlags.HasIdentifier) != 0;
 
         uint knownRpcShortcutId = isLittleEndian
@@ -591,7 +560,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
 
         bytesRead = index;
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, signatureHash, isStatic, args, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, signatureHash, bytesRead, identifier);
     }
     public virtual IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)
     {
@@ -1126,7 +1095,7 @@ public class RpcEndpoint : IRpcInvocationPoint
     [Flags]
     protected internal enum EndpointFlags
     {
-        IsStatic = 1,
-        HasIdentifier = 1 << 1
+        HasIdentifier = 1,
+        ArgsAreBindOnly = 1 << 1
     }
 }

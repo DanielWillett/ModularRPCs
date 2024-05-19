@@ -26,13 +26,13 @@ public interface IRpcRouter
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier);
+    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier);
 
     /// <summary>
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier);
+    IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier);
 
     /// <summary>
     /// Invoke an RPC from a 'call' method.

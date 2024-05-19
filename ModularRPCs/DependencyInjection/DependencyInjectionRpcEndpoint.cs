@@ -7,10 +7,7 @@ using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.IO;
-using System.Reflection;
-using System.Reflection.Emit;
 using System.Threading;
-using DanielWillett.ReflectionTools.Emit;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -26,25 +23,20 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
     {
         ServiceProvider = other.ServiceProvider;
     }
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, IRpcSerializer serializer, MethodInfo method, object? identifier)
-        : base(serializer, method, identifier)
+    //internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, IRpcSerializer serializer, MethodInfo method, object? identifier)
+    //    : base(serializer, method, identifier)
+    //{
+    //    ServiceProvider = serviceProvider;
+    //}
+
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, int signatureHash)
+        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, signatureHash)
     {
         ServiceProvider = serviceProvider;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : base(knownId, declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)
-    {
-        ServiceProvider = serviceProvider;
-    }
-
-    private static readonly ConstructorInfo MainConstructor = typeof(RpcEndpoint).GetConstructor(
-        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-        [ typeof(IServiceProvider), typeof(string), typeof(string), typeof(string[]), typeof(int), typeof(bool), typeof(Assembly), typeof(Type) ],
-        null)!;
-
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, int signatureHash, bool isStatic, Assembly? expectedAssembly = null, Type? expectedType = null)
-        : base(declaringTypeName, methodName, argumentTypeNames, signatureHash, isStatic, expectedAssembly, expectedType)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, int signatureHash)
+        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, signatureHash)
     {
         ServiceProvider = serviceProvider;
     }

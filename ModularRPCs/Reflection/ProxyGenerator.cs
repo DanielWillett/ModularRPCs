@@ -1100,7 +1100,7 @@ public sealed class ProxyGenerator
         IOpCodeEmitter? typeInitIl = null;
 
         TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer);
-        List<FieldBuilderCallMethodInfoCache> toSet = new List<FieldBuilderCallMethodInfoCache>();
+
         foreach (MethodInfo method in methods)
         {
             if (!method.IsDefinedSafe<RpcSendAttribute>() || method.DeclaringType == typeof(object))
@@ -1202,7 +1202,7 @@ public sealed class ProxyGenerator
                                        )}.");
 
             Type getSizeDelegateType = getSizeMethod.FieldType;
-            Type writeStreamDelegateType = writeStreamMethod.FieldType;
+            // Type writeStreamDelegateType = writeStreamMethod.FieldType;
             Type writeBytesDelegateType = writeBytesMethod.FieldType;
 
             MethodInfo getSizeInvokeMethod = getSizeDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
@@ -1211,11 +1211,11 @@ public sealed class ProxyGenerator
                                                  .Returning<int>()
                                              )}.");
 
-            MethodInfo writeStreamInvokeMethod = writeStreamDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
-                                                 ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
-                                                     .DeclaredIn(writeStreamDelegateType, isStatic: false)
-                                                     .Returning<int>()
-                                                 )}.");
+            // MethodInfo writeStreamInvokeMethod = writeStreamDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+            //                                      ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
+            //                                          .DeclaredIn(writeStreamDelegateType, isStatic: false)
+            //                                          .Returning<int>()
+            //                                      )}.");
 
             MethodInfo writeBytesInvokeMethod = writeBytesDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
                                                 ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition("Invoke")
@@ -1247,14 +1247,14 @@ public sealed class ProxyGenerator
                 typeof(RpcCallMethodInfo),
                 FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly
             );
-
-            RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(method, isFireAndForget);
-
-            typeInitializer ??= builder.DefineTypeInitializer();
-            typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
-
-            typeInitIl.Emit(OpCodes.Ldsflda, methodInfoField);
-            rpcCall.EmitToAddress(typeInitIl);
+            
+            //RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(method, isFireAndForget);
+            //
+            //typeInitializer ??= builder.DefineTypeInitializer();
+            //typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+            //
+            //typeInitIl.Emit(OpCodes.Ldsflda, methodInfoField);
+            //rpcCall.EmitToAddress(typeInitIl);
 
             MethodBuilder methodBuilder = builder.DefineMethod(method.Name,
                 privacyAttributes | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final,

@@ -9,6 +9,10 @@ public struct RpcCallMethodInfo
     public int SignatureHash;
     public RpcEndpointTarget Endpoint;
 
+    private static readonly FieldInfo IsFireAndForgetField = typeof(RpcCallMethodInfo).GetField(nameof(IsFireAndForget), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo SignatureHashField = typeof(RpcCallMethodInfo).GetField(nameof(SignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo EndpointField = typeof(RpcCallMethodInfo).GetField(nameof(Endpoint), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+
     /// <summary>
     /// Create a <see cref="RpcCallMethodInfo"/> from a call/invoke method.
     /// </summary>
@@ -41,8 +45,4 @@ public struct RpcCallMethodInfo
         il.Emit(OpCodes.Ldflda, EndpointField);
         Endpoint.EmitToAddress(il);
     }
-
-    private static readonly FieldInfo IsFireAndForgetField = typeof(RpcCallMethodInfo).GetField(nameof(IsFireAndForget), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
-    private static readonly FieldInfo SignatureHashField = typeof(RpcCallMethodInfo).GetField(nameof(SignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
-    private static readonly FieldInfo EndpointField = typeof(RpcCallMethodInfo).GetField(nameof(Endpoint), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
 }

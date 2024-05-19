@@ -178,6 +178,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given method &apos;{0}&apos; was not a receive method. It must be decorated with the RpcReceiveAttribute..
+        /// </summary>
+        public static string MethodNotReceiveMethod {
+            get {
+                return ResourceManager.GetString("MethodNotReceiveMethod", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The given type is not able to have an identifier..
         /// </summary>
         public static string ObjectNotIdentifyableType {

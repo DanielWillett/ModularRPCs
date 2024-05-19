@@ -2,16 +2,11 @@
 using DanielWillett.ModularRpcs.Examples.Samples;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Reflection.Emit;
-using System.Runtime.CompilerServices;
 using System.Threading;
-using DanielWillett.ModularRpcs.Routing;
 
 // ReSharper disable LocalizableElement
 

@@ -38,7 +38,6 @@ public class DefaultRpcRouter : IRpcRouter
         // ReSharper disable once CanSimplifyDictionaryTryGetValueWithGetValueOrDefault
         return CachedDescriptors.TryGetValue(endpointSharedId, out IRpcInvocationPoint? endpoint) ? endpoint : null;
     }
-
     public uint AddRpcEndpoint(IRpcInvocationPoint endPoint)
     {
         // keep trying to add if the id is taken, could've been added by a third party
@@ -57,27 +56,21 @@ public class DefaultRpcRouter : IRpcRouter
             }
         }
     }
-    protected virtual IRpcInvocationPoint CreateEndpoint(uint key, string typeName, string methodName, string[]? args, int signatureHash, bool isStatic)
+    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, int signatureHash)
     {
-        return new RpcEndpoint(key, typeName, methodName, args, signatureHash, isStatic, null, null);
+        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, signatureHash);
     }
-    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier)
-        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, signatureHash, isStatic, args, byteSize, identifier);
-    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, int signatureHash, bool isStatic, string[] args, int byteSize, object? identifier)
+    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier)
+        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, signatureHash, byteSize, identifier);
+    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier)
     {
         IRpcInvocationPoint cachedEndpoint = knownRpcShortcutId == 0u
-            ? ValueFactory(0u)
-            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, ValueFactory);
+            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, signatureHash)
+            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, signatureHash));
 
         return ReferenceEquals(cachedEndpoint.Identifier, identifier)
             ? cachedEndpoint
             : cachedEndpoint.CloneWithIdentifier(serializer, identifier);
-
-        IRpcInvocationPoint ValueFactory(uint key)
-        {
-            IRpcInvocationPoint endPoint = CreateEndpoint(key, typeName, methodName, args, signatureHash, isStatic);
-            return endPoint;
-        }
     }
     public void GetDefaultProxyContext(Type proxyType, out ProxyContext context)
     {

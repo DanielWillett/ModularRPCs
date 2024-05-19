@@ -270,4 +270,7 @@
   <data name="MethodNotCallMethod" xml:space="preserve">
     <value>The given method '{0}' was not a call/invoke method. It must be decorated with the RpcSendAttribute.</value>
   </data>
+  <data name="MethodNotReceiveMethod" xml:space="preserve">
+    <value>The given method '{0}' was not a receive method. It must be decorated with the RpcReceiveAttribute.</value>
+  </data>
 </root>
