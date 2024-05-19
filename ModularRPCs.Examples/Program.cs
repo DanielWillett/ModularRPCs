@@ -6,6 +6,7 @@ using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 // ReSharper disable LocalizableElement
@@ -22,7 +23,7 @@ public class Program
 
         Console.ReadLine();
     }
-    public static void Run(string[] args)
+    public static unsafe void Run(string[] args)
     {
         Accessor.LogILTraceMessages = true;
         Accessor.LogDebugMessages = true;
@@ -33,6 +34,10 @@ public class Program
         IRpcRouter router = new DefaultRpcRouter(new DefaultSerializer());
         
         SampleClass sc0 = ProxyGenerator.Instance.CreateProxy<SampleClass>(router);
+
+        byte* ptr = stackalloc byte[4];
+
+        ref byte b = ref ptr[0];
 
         int i = 3;
         nint val = 5;
@@ -51,11 +56,13 @@ public class Program
 
         RpcTask task = sc0.CallRpcOne(i);
 
-        bool didRelease = sc0.Release();
-        Console.WriteLine($"released: {didRelease}.");
+        //bool didRelease = sc0.Release();
+        //Console.WriteLine($"released: {didRelease}.");
+        //
+        //didRelease = sc0.Release();
+        //Console.WriteLine($"released: {didRelease}.");
 
-        didRelease = sc0.Release();
-        Console.WriteLine($"released: {didRelease}.");
+        Console.WriteLine("over");
     }
 
     //public static void Run(string[] args)

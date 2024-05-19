@@ -32,7 +32,7 @@ public class SampleClass : IRpcObject<int>
     }
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
-    [RpcSend]
+    [RpcSend(nameof(RpcOne))]
     internal virtual RpcTask CallRpcOne(int arg1) => RpcTask.NotImplemented;
 
     [RpcReceive]

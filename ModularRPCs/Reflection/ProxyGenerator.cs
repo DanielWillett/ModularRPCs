@@ -137,7 +137,7 @@ public sealed class ProxyGenerator
             typeof(InternalsVisibleToAttribute).GetConstructor([typeof(string)])!,
             [ thisAssembly.GetName().Name ]
         );
-
+        
         AssemblyBuilder.SetCustomAttribute(attr);
 
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
@@ -642,13 +642,13 @@ public sealed class ProxyGenerator
 
                             il.Emit(OpCodes.Ldflda, identifierBackingField);
                             il.Emit(OpCodes.Dup);
-                            il.Emit(OpCodes.Stloc_S, id2);
+                            il.Emit(OpCodes.Stloc, id2);
                         }
                         else
                         {
                             il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
-                            il.Emit(OpCodes.Stloc_S, id2);
-                            il.Emit(OpCodes.Ldloca_S, id2);
+                            il.Emit(OpCodes.Stloc, id2);
+                            il.Emit(OpCodes.Ldloca, id2);
                         }
 
                         il.Emit(OpCodes.Call, getHasValueMethod!);
@@ -661,7 +661,7 @@ public sealed class ProxyGenerator
                         else
                             il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
                         il.Emit(OpCodes.Dup);
-                        il.Emit(OpCodes.Stloc_S, identifier);
+                        il.Emit(OpCodes.Stloc, identifier);
                         il.Emit(OpCodes.Brtrue, ifNotDefault);
                     }
                     else
@@ -673,26 +673,26 @@ public sealed class ProxyGenerator
 
                             il.Emit(OpCodes.Ldflda, identifierBackingField);
                             il.Emit(OpCodes.Dup);
-                            il.Emit(OpCodes.Stloc_S, id2);
+                            il.Emit(OpCodes.Stloc, id2);
                         }
                         else
                         {
                             il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
-                            il.Emit(OpCodes.Stloc_S, id2);
-                            il.Emit(OpCodes.Ldloca_S, id2);
+                            il.Emit(OpCodes.Stloc, id2);
+                            il.Emit(OpCodes.Ldloca, id2);
                         }
 
                         // check if value == default
                         LocalBuilder lclCheck = il.DeclareLocal(idType);
-                        il.Emit(OpCodes.Ldloca_S, lclCheck);
+                        il.Emit(OpCodes.Ldloca, lclCheck);
                         il.Emit(OpCodes.Initobj, idType);
-                        il.Emit(isAddr ? OpCodes.Ldloc_S : OpCodes.Ldloca_S, id2);
+                        il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
 
-                        il.Emit(OpCodes.Ldloca_S, identifier);
+                        il.Emit(OpCodes.Ldloca, identifier);
                         MethodInfo? refEqual = idType.GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ idType.MakeByRefType() ], null);
                         if (refEqual != null && !refEqual.IsIgnored())
                         {
-                            il.Emit(OpCodes.Ldloca_S, lclCheck);
+                            il.Emit(OpCodes.Ldloca, lclCheck);
                             il.Emit(OpCodes.Call, refEqual);
                             il.Emit(OpCodes.Brfalse, ifNotDefault);
                         }
@@ -709,7 +709,7 @@ public sealed class ProxyGenerator
                                                     }.");
 
                                 equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
-                                il.Emit(OpCodes.Ldloc_S, lclCheck);
+                                il.Emit(OpCodes.Ldloc, lclCheck);
                                 il.Emit(equal.GetCallRuntime(), equal);
                                 il.Emit(OpCodes.Brfalse, ifNotDefault);
                             }
@@ -726,7 +726,7 @@ public sealed class ProxyGenerator
                                                        }.");
 
                                     equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
-                                    il.Emit(OpCodes.Ldloc_S, lclCheck);
+                                    il.Emit(OpCodes.Ldloc, lclCheck);
                                     il.Emit(equal.GetCallRuntime(), equal);
                                     il.Emit(OpCodes.Brtrue, ifNotDefault);
                                 }
@@ -739,7 +739,7 @@ public sealed class ProxyGenerator
                                                            .Returning<bool>())
                                                        }.");
 
-                                    il.Emit(OpCodes.Ldloc_S, lclCheck);
+                                    il.Emit(OpCodes.Ldloc, lclCheck);
                                     il.Emit(OpCodes.Callvirt, equal);
                                     il.Emit(OpCodes.Brfalse, ifNotDefault);
                                 }
@@ -755,10 +755,10 @@ public sealed class ProxyGenerator
                         il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
                     ifDefault = il.DefineLabel();
                     il.Emit(OpCodes.Dup);
-                    il.Emit(OpCodes.Stloc_S, identifier);
+                    il.Emit(OpCodes.Stloc, identifier);
                     il.Emit(OpCodes.Ldnull);
                     il.Emit(OpCodes.Beq, ifDefault.Value);
-                    il.Emit(OpCodes.Ldloc_S, identifier);
+                    il.Emit(OpCodes.Ldloc, identifier);
                     MethodInfo getStrLen = typeof(string)
                                             .GetProperty(nameof(string.Length), BindingFlags.Public | BindingFlags.Instance)?
                                             .GetMethod
@@ -777,7 +777,7 @@ public sealed class ProxyGenerator
                     else
                         il.Emit(identifierGetter.GetCallRuntime(), identifierGetter);
                     il.Emit(OpCodes.Dup);
-                    il.Emit(OpCodes.Stloc_S, identifier);
+                    il.Emit(OpCodes.Stloc, identifier);
                     il.Emit(OpCodes.Ldnull);
                     il.Emit(OpCodes.Bne_Un, ifNotDefault);
                 }
@@ -796,12 +796,12 @@ public sealed class ProxyGenerator
                 
                 if (isNullable)
                 {
-                    il.Emit(isAddr ? OpCodes.Ldloc_S : OpCodes.Ldloca_S, id2);
+                    il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
                     il.Emit(OpCodes.Call, getValueMethod!);
                 }
                 else
                 {
-                    il.Emit(OpCodes.Ldloc_S, id2);
+                    il.Emit(OpCodes.Ldloc, id2);
                     if (isAddr)
                         il.Emit(OpCodes.Ldind_Ref);
                 }
@@ -820,12 +820,12 @@ public sealed class ProxyGenerator
 
                 if (isNullable)
                 {
-                    il.Emit(isAddr ? OpCodes.Ldloc_S : OpCodes.Ldloca_S, id2);
+                    il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
                     il.Emit(OpCodes.Call, getValueMethod!);
                 }
                 else
                 {
-                    il.Emit(OpCodes.Ldloc_S, id2);
+                    il.Emit(OpCodes.Ldloc, id2);
                     if (isAddr)
                         il.Emit(OpCodes.Ldind_Ref);
                 }
@@ -953,7 +953,7 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldsfld, dictField);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldfld, idField);
-            il.Emit(OpCodes.Ldloca_S, lcl);
+            il.Emit(OpCodes.Ldloca, lcl);
             il.Emit(OpCodes.Call, dictTryRemoveMethod);
 #if DEBUG
             Label brtrue = il.DefineLabel();
@@ -1012,7 +1012,7 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldsfld, dictField);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldfld, idField);
-            il.Emit(OpCodes.Ldloca_S, lcl);
+            il.Emit(OpCodes.Ldloca, lcl);
             il.Emit(OpCodes.Call, dictTryRemoveMethod);
 #if DEBUG
             brtrue = il.DefineLabel();
@@ -1063,10 +1063,10 @@ public sealed class ProxyGenerator
 
             il.Emit(OpCodes.Ldsfld, dictField);
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldloca_S, lcl);
+            il.Emit(OpCodes.Ldloca, lcl);
             il.Emit(OpCodes.Call, dictTryGetValueMethod);
             il.Emit(OpCodes.Pop);
-            il.Emit(OpCodes.Ldloc_S, lcl);
+            il.Emit(OpCodes.Ldloc, lcl);
             il.Emit(OpCodes.Ret);
         }
         else
@@ -1224,13 +1224,13 @@ public sealed class ProxyGenerator
                                                 )}.");
 
             MethodInfo invokeRpcMethod = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                             [ typeof(RuntimeMethodHandle), typeof(RpcCallMethodInfo).MakeByRefType(), typeof(byte*), typeof(uint) ], null)
+                                             [ typeof(RuntimeMethodHandle), typeof(byte*), typeof(int), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
                                          ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
                                              .DeclaredIn<IRpcRouter>(isStatic: false)
                                              .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
-                                             .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.In)
-                                             .WithParameter(typeof(byte*), "bytes")
                                              .WithParameter<uint>("maxSize")
+                                             .WithParameter(typeof(byte*), "bytes")
+                                             .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.In)
                                              .Returning<RpcTask>()
                                          )}.");
 
@@ -1243,18 +1243,24 @@ public sealed class ProxyGenerator
                                                    .Returning<int>()
                                                )}.");
 
+            ConstructorInfo spanCtor = typeof(Span<byte>).GetConstructor([ typeof(void*), typeof(int) ])
+                                       ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(typeof(Span<byte>))
+                                           .WithParameter(typeof(void*), "pointer")
+                                           .WithParameter<int>("length")
+                                       )}.");
+
             FieldBuilder methodInfoField = builder.DefineField(string.Format(CallMethodInfoFieldFormat, method.Name),
                 typeof(RpcCallMethodInfo),
                 FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly
             );
             
-            //RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(method, isFireAndForget);
-            //
-            //typeInitializer ??= builder.DefineTypeInitializer();
-            //typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
-            //
-            //typeInitIl.Emit(OpCodes.Ldsflda, methodInfoField);
-            //rpcCall.EmitToAddress(typeInitIl);
+            RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(method, isFireAndForget);
+            
+            typeInitializer ??= builder.DefineTypeInitializer();
+            typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+            
+            typeInitIl.Emit(OpCodes.Ldsflda, methodInfoField);
+            rpcCall.EmitToAddress(typeInitIl);
 
             MethodBuilder methodBuilder = builder.DefineMethod(method.Name,
                 privacyAttributes | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final,
@@ -1264,7 +1270,7 @@ public sealed class ProxyGenerator
                 method.ReturnParameter?.GetOptionalCustomModifiers(),
                 types, reqMods, optMods);
 
-            methodBuilder.InitLocals = false;
+            methodBuilder.InitLocals = true;
 
             IOpCodeEmitter il = methodBuilder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 #if DEBUG
@@ -1275,12 +1281,25 @@ public sealed class ProxyGenerator
             LocalBuilder lclByteBuffer = il.DeclareLocal(typeof(byte*));
             LocalBuilder lclByteBufferPin = il.DeclareLocal(typeof(byte[]), true);
             LocalBuilder lclTaskRtn = il.DeclareLocal(typeof(RpcTask));
+            LocalBuilder lclRouter = il.DeclareLocal(typeof(IRpcRouter));
+            LocalBuilder lclSerializer = il.DeclareLocal(typeof(IRpcSerializer));
 
-            // invoke the static get-size delegate in the static dynamically generated serializer class
-            il.Emit(OpCodes.Ldsfld, getSizeMethod);
+            il.CommentIfDebug("IRpcRouter lclRouter = this.proxyContextField.Router;");
+            il.CommentIfDebug("IRpcSerializer lclSerializer = this.proxyContextField.Serializer;");
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldflda, proxyContextField);
+            il.Emit(OpCodes.Dup);
+
+            il.Emit(OpCodes.Ldfld, ProxyContext.RouterField);
+            il.Emit(OpCodes.Stloc, lclRouter);
+
             il.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
+            il.Emit(OpCodes.Stloc, lclSerializer);
+
+            il.CommentIfDebug("int lclSize = getSizeMethod.Invoke(lclSerializer, ...);");
+            // invoke the static get-size delegate in the static dynamically generated serializer class
+            il.Emit(OpCodes.Ldsfld, getSizeMethod);
+            il.Emit(OpCodes.Ldloc, lclSerializer);
             for (int i = 0; i < genericArguments.Length; ++i)
             {
                 il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, i + 1);
@@ -1294,9 +1313,9 @@ public sealed class ProxyGenerator
             il.EmitWriteLine(lclSize);
 #endif
 
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldflda, proxyContextField);
-            il.Emit(OpCodes.Ldfld, ProxyContext.RouterField);
+            il.CommentIfDebug("int lclOverheadSize = lclRouter.GetOverheadSize(methodof(method), in methodInfoField);");
+            il.CommentIfDebug("lclSize += lclOverheadSize;");
+            il.Emit(OpCodes.Ldloc, lclRouter);
             il.Emit(OpCodes.Ldtoken, method);
             il.Emit(OpCodes.Ldsflda, methodInfoField);
             il.Emit(OpCodes.Callvirt, getOverheadSizeMethod);
@@ -1310,12 +1329,21 @@ public sealed class ProxyGenerator
             il.EmitWriteLine("Calculated size w/ overhead: ");
             il.EmitWriteLine(lclSize);
 #endif
+            il.CommentIfDebug($"if (lclSize > {MaxSizeForStackalloc})");
+            il.CommentIfDebug("{");
+            il.CommentIfDebug("   byte* lclByteBuffer = fixed {{ new byte[lclSize]; }}");
+            il.CommentIfDebug("}");
+            il.CommentIfDebug("else");
+            il.CommentIfDebug("{");
+            il.CommentIfDebug("   byte* lclByteBuffer = stackalloc byte[lclSize];");
+            il.CommentIfDebug("}");
             Label lblSizeIsTooBigForLocalloc = il.DefineLabel();
             Label lblSizeIsFineForLocalloc = il.DefineLabel();
             il.Emit(OpCodes.Dup);
             il.Emit(OpCodes.Ldc_I4, MaxSizeForStackalloc);
             il.Emit(OpCodes.Bgt, lblSizeIsTooBigForLocalloc);
 
+            il.Emit(OpCodes.Conv_U);
             il.Emit(OpCodes.Localloc);
             il.Emit(OpCodes.Stloc, lclByteBuffer);
             il.Emit(OpCodes.Br, lblSizeIsFineForLocalloc);
@@ -1334,11 +1362,10 @@ public sealed class ProxyGenerator
 
             il.BeginExceptionBlock();
 
+            il.CommentIfDebug("lclSize = lclOverheadSize + writeBytesMethod.Invoke(lclSerializer, lclByteBuffer + lclOverheadSize, (uint)(lclSize - lclOverheadSize), ...);");
             // invoke the static write delegate in the serializer class
             il.Emit(OpCodes.Ldsfld, writeBytesMethod);
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldflda, proxyContextField);
-            il.Emit(OpCodes.Ldfld, ProxyContext.SerializerField);
+            il.Emit(OpCodes.Ldloc, lclSerializer);
             il.Emit(OpCodes.Ldloc, lclByteBuffer);
             il.Emit(OpCodes.Ldloc, lclOverheadSize);
             il.Emit(OpCodes.Add);
@@ -1355,6 +1382,27 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldloc, lclOverheadSize);
             il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Stloc, lclSize);
+
+            il.CommentIfDebug("lclTaskRtn = lclRouter.InvokeRpc(methodof(method), lclByteBuffer, lclOverheadSize, in methodInfoField);");
+            il.Emit(OpCodes.Ldloc, lclRouter);
+            il.Emit(OpCodes.Ldtoken, method);
+            il.Emit(OpCodes.Ldloc, lclByteBuffer);
+            il.Emit(OpCodes.Ldloc, lclOverheadSize);
+            il.Emit(OpCodes.Ldsflda, methodInfoField);
+            il.Emit(OpCodes.Callvirt, invokeRpcMethod);
+            //il.Emit(OpCodes.Pop);
+            //il.Emit(OpCodes.Pop);
+            //il.Emit(OpCodes.Pop);
+            //il.Emit(OpCodes.Pop);
+            //il.Emit(OpCodes.Pop);
+            //
+            //MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
+            //il.Emit(OpCodes.Call, getter);
+
+            il.Emit(OpCodes.Stloc, lclTaskRtn);
+            //il.Emit(OpCodes.Ldc_I4_0);
+            //il.Emit(OpCodes.Pop);
+
 #if DEBUG
             // print each byte to console
             il.EmitWriteLine("Written size: ");
@@ -1387,18 +1435,12 @@ public sealed class ProxyGenerator
             
             il.MarkLabel(afterForLoop);
 #endif
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldflda, proxyContextField);
-            il.Emit(OpCodes.Ldfld, ProxyContext.RouterField);
-            il.Emit(OpCodes.Ldtoken, method);
-            il.Emit(OpCodes.Ldsflda, methodInfoField);
-            il.Emit(OpCodes.Ldloc, lclByteBuffer);
-            il.Emit(OpCodes.Ldloc, lclSize);
-            il.Emit(OpCodes.Callvirt, invokeRpcMethod);
-            il.Emit(OpCodes.Stloc, lclTaskRtn);
+
+            il.EmitWriteLine("test");
 
             il.BeginFinallyBlock();
 
+            il.CommentIfDebug("lclByteBufferPin = null;");
             il.Emit(OpCodes.Ldnull);
             il.Emit(OpCodes.Stloc, lclByteBufferPin);
 
@@ -1406,6 +1448,7 @@ public sealed class ProxyGenerator
 
             //MethodInfo getter = typeof(RpcTask).GetProperty(nameof(RpcTask.CompletedTask), BindingFlags.Public | BindingFlags.Static)!.GetMethod!;
             //il.Emit(OpCodes.Call, getter);
+            il.CommentIfDebug("return lclTaskRtn;");
             il.Emit(OpCodes.Ldloc, lclTaskRtn);
             il.Emit(OpCodes.Ret);
         }
@@ -1439,6 +1482,10 @@ public sealed class ProxyGenerator
         {
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type), ex);
         }
+    }
+    public static unsafe RpcTask TestMtd(IRpcRouter router, RuntimeMethodHandle mtdHndl, byte* ptr, int maxSize, in RpcCallMethodInfo info)
+    {
+        return router.InvokeRpc(mtdHndl, ptr, maxSize, in info);
     }
     internal RpcInvokeHandlerStream GetInvokeStreamMethod(MethodInfo method)
     {

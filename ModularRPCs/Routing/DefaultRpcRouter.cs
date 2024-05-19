@@ -15,7 +15,7 @@ public class DefaultRpcRouter : IRpcRouter
     {
         _defaultSerializer = defaultSerializer;
     }
-    public unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo, byte* bytes, uint maxSize)
+    public unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, byte* bytes, int byteCt, in RpcCallMethodInfo callMethodInfo)
     {
         return RpcTask.CompletedTask;
     }

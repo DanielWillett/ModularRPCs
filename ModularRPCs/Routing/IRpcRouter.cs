@@ -37,7 +37,7 @@ public interface IRpcRouter
     /// <summary>
     /// Invoke an RPC from a 'call' method.
     /// </summary>
-    unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo, byte* bytes, uint maxSize);
+    unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, byte* bytesSt, int byteCt, in RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
     /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.

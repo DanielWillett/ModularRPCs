@@ -85,11 +85,11 @@ internal sealed class SerializerGenerator
         il.CommentIfDebug("Type[] lclTypeArray = new Type[typeCt];");
         il.Emit(OpCodes.Ldc_I4, typeCt);
         il.Emit(OpCodes.Newarr, typeof(Type));
-        il.Emit(OpCodes.Stloc_S, lclTypeArray);
+        il.Emit(OpCodes.Stloc, lclTypeArray);
         for (int i = 0; i < typeCt; ++i)
         {
             il.CommentIfDebug("lclTypeArray[i] = typeof(" + Accessor.Formatter.Format(genParams[i]) + ");");
-            il.Emit(OpCodes.Ldloc_S, lclTypeArray);
+            il.Emit(OpCodes.Ldloc, lclTypeArray);
             il.Emit(OpCodes.Ldc_I4, i);
             il.Emit(OpCodes.Ldtoken, genParams[i]);
             il.Emit(OpCodes.Call, getTypeFromHandleMethod);
@@ -157,7 +157,7 @@ internal sealed class SerializerGenerator
 
             il.CommentIfDebug("lclObjArray[1] = lclTypeArray;");
             il.Emit(OpCodes.Ldc_I4_1);
-            il.Emit(OpCodes.Ldloc_S, lclTypeArray);
+            il.Emit(OpCodes.Ldloc, lclTypeArray);
             il.Emit(OpCodes.Stelem_Ref);
 
             // invoke InitTypeStatic method via reflection since it's private
@@ -178,7 +178,7 @@ internal sealed class SerializerGenerator
             il.CommentIfDebug("SerializerGenerator.InitTypeStatic(typeof(" + Accessor.Formatter.Format(thisType) + "), lclTypeArray);");
             il.Emit(OpCodes.Ldtoken, thisType);
             il.Emit(OpCodes.Call, getTypeFromHandleMethod);
-            il.Emit(OpCodes.Ldloc_S, lclTypeArray);
+            il.Emit(OpCodes.Ldloc, lclTypeArray);
             il.Emit(OpCodes.Call, Accessor.GetMethod(InitTypeStatic)!);
         }
         il.Emit(OpCodes.Ret);
@@ -496,7 +496,7 @@ internal sealed class SerializerGenerator
         }
 
         il.CommentIfDebug("return lclSize;");
-        il.Emit(OpCodes.Ldloc_S, lclSize);
+        il.Emit(OpCodes.Ldloc, lclSize);
         il.Emit(OpCodes.Ret);
 
         bytesField.SetValue(null, writeBytes.CreateDelegate(bytesField.FieldType));
@@ -558,7 +558,7 @@ internal sealed class SerializerGenerator
         }
         
         il.CommentIfDebug("return lclSize;");
-        il.Emit(OpCodes.Ldloc_S, lclSize);
+        il.Emit(OpCodes.Ldloc, lclSize);
         il.Emit(OpCodes.Ret);
         il.Emit(OpCodes.Ldc_I4_0);
         il.Emit(OpCodes.Ret);
@@ -681,7 +681,7 @@ internal sealed class SerializerGenerator
         il.Emit(OpCodes.Ldc_I4, ttl);
         il.Emit(OpCodes.Ldloc, lclPreCalc);
         il.Emit(OpCodes.Mul);
-        il.Emit(OpCodes.Stloc_S, lclSize);
+        il.Emit(OpCodes.Stloc, lclSize);
 
         Label? lblPrimitive = null;
         for (int i = 0; i < genTypes.Length; ++i)
@@ -707,7 +707,7 @@ internal sealed class SerializerGenerator
             il.CommentIfDebug($"size += serializer.GetSize{(!isByRef ? "<" + Accessor.Formatter.Format(genType) + ">" : string.Empty)}(" +
                               $"arg{i.ToString(CultureInfo.InvariantCulture)});");
 
-            il.Emit(OpCodes.Ldloc_S, lclSize);
+            il.Emit(OpCodes.Ldloc, lclSize);
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg, i + 1);
 
@@ -723,7 +723,7 @@ internal sealed class SerializerGenerator
             }
 
             il.Emit(OpCodes.Add);
-            il.Emit(OpCodes.Stloc_S, lclSize);
+            il.Emit(OpCodes.Stloc, lclSize);
         }
 
         if (lblPrimitive.HasValue)
@@ -733,7 +733,7 @@ internal sealed class SerializerGenerator
         }
 
         il.CommentIfDebug("return lclSize;");
-        il.Emit(OpCodes.Ldloc_S, lclSize);
+        il.Emit(OpCodes.Ldloc, lclSize);
         il.Emit(OpCodes.Ret);
 
         field.SetValue(null, getSize.CreateDelegate(field.FieldType));
@@ -1254,7 +1254,7 @@ internal sealed class SerializerGenerator
 
             Label continueRead = il.DefineLabel();
             il.CommentIfDebug($"if (maxCount - lclReadInd <= 0) throw new RpcParseException({Properties.Exceptions.RpcParseExceptionBufferRunOut}) {{ ErrorCode = 1 }};");
-            il.Emit(OpCodes.Ldarg_S, 6);
+            il.Emit(OpCodes.Ldarg, 6);
             il.Emit(OpCodes.Ldloc, lclReadInd);
             il.Emit(OpCodes.Sub);
             il.Emit(OpCodes.Ldc_I4_0);
@@ -1270,13 +1270,13 @@ internal sealed class SerializerGenerator
             if (shouldPassByRef)
             {
                 il.CommentIfDebug($"serializer.ReadObject(__makeref(bindLcl{i}), bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg_S, 4);
+                il.Emit(OpCodes.Ldarg, 4);
                 il.Emit(OpCodes.Ldloca, bindLcls[i]);
                 il.Emit(OpCodes.Mkrefany, type);
-                il.Emit(OpCodes.Ldarg_S, 5);
+                il.Emit(OpCodes.Ldarg, 5);
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg_S, 6);
+                il.Emit(OpCodes.Ldarg, 6);
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Sub);
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
@@ -1285,11 +1285,11 @@ internal sealed class SerializerGenerator
             else
             {
                 il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg_S, 4);
-                il.Emit(OpCodes.Ldarg_S, 5);
+                il.Emit(OpCodes.Ldarg, 4);
+                il.Emit(OpCodes.Ldarg, 5);
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg_S, 6);
+                il.Emit(OpCodes.Ldarg, 6);
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Sub);
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
@@ -1312,7 +1312,7 @@ internal sealed class SerializerGenerator
             continueRead = il.DefineLabel();
             int primSize = GetPrimitiveTypeSize(type);
             il.CommentIfDebug($"if (maxCount - lclReadInd < {primSize}) throw new RpcParseException({Properties.Exceptions.RpcParseExceptionBufferRunOut}) {{ ErrorCode = 1 }};");
-            il.Emit(OpCodes.Ldarg_S, 6);
+            il.Emit(OpCodes.Ldarg, 6);
             il.Emit(OpCodes.Ldloc, lclReadInd);
             il.Emit(OpCodes.Sub);
             il.Emit(OpCodes.Ldc_I4, primSize);
@@ -1327,7 +1327,7 @@ internal sealed class SerializerGenerator
             il.MarkLabel(continueRead);
 
             il.CommentIfDebug($"bindLcl{i} = *({Accessor.Formatter.Format(type)}*)(bytes + lclReadInd);");
-            il.Emit(OpCodes.Ldarg_S, 5);
+            il.Emit(OpCodes.Ldarg, 5);
             il.Emit(OpCodes.Ldloc, lclReadInd);
             il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Unaligned, type);
