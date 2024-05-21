@@ -1,8 +1,9 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
-using DanielWillett.ModularRpcs.Async;
+using System.Collections.Generic;
 
 namespace DanielWillett.ModularRpcs.Routing;
 
@@ -37,12 +38,13 @@ public interface IRpcRouter
     /// <summary>
     /// Invoke an RPC from a 'call' method.
     /// </summary>
-    unsafe RpcTask InvokeRpc(RuntimeMethodHandle sourceMethodHandle, byte* bytesSt, int byteCt, in RpcCallMethodInfo callMethodInfo);
+    /// <param name="connections">A <see cref="IModularRpcRemoteConnection"/>, <see cref="IEnumerable{T}"/> of <see cref="IModularRpcRemoteConnection"/>, or <see langword="null"/> for all connections.</param>
+    unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, byte* bytesSt, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
     /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.
     /// </summary>
-    int GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, in RpcCallMethodInfo callMethodInfo);
+    int GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
     /// Get the default interface implementations for a proxy class.

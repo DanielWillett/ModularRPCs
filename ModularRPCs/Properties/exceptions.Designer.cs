@@ -142,6 +142,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Must be of type &apos;IModularRpcRemoteConnection&apos;, &apos;IEnumerable&lt;IModularRpcRemoteConnection&gt;&apos;, or null..
+        /// </summary>
+        public static string InvokeRpcConnectionsInvalidType {
+            get {
+                return ResourceManager.GetString("InvokeRpcConnectionsInvalidType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Endpoint is not valid, expected clientside endpoint..
         /// </summary>
         public static string LoopbackRemoteConnectionExpectedClientsideEndpoint {
@@ -228,6 +237,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcEndpointNotFoundExceptionMismatchHash {
             get {
                 return ResourceManager.GetString("RpcEndpointNotFoundExceptionMismatchHash", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Unable to invoke this RPC ({0}) because returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void..
+        /// </summary>
+        public static string RpcFireAndForgetExceptionMultipleConnections {
+            get {
+                return ResourceManager.GetString("RpcFireAndForgetExceptionMultipleConnections", resourceCulture);
             }
         }
         
@@ -340,6 +358,42 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Type &apos;{0}&apos; can not be injected in this context.
+        /// </summary>
+        public static string RpcInvalidParameterInvalidInjection {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterInvalidInjection", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There can not be more than one connection arguments. If you need more than one, pass an IEnumerable&lt;IModularRpcRemoteConnection&gt;.
+        /// </summary>
+        public static string RpcInvalidParameterMultipleConnectionsInvokeMethod {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterMultipleConnectionsInvokeMethod", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There are no connections available to perform the given action..
+        /// </summary>
+        public static string RpcNoConnectionsException {
+            get {
+                return ResourceManager.GetString("RpcNoConnectionsException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There are no connections available in the connection lifetime when trying to invoke {0}..
+        /// </summary>
+        public static string RpcNoConnectionsExceptionConnectionLifetime {
+            get {
+                return ResourceManager.GetString("RpcNoConnectionsExceptionConnectionLifetime", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This RPC caller was not inherited by a parent class. Make sure you&apos;re getting this service&apos;s object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions..
         /// </summary>
         public static string RpcNotImplemented {
@@ -363,6 +417,42 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcOverflowExceptionIBinaryTypeParser {
             get {
                 return ResourceManager.GetString("RpcOverflowExceptionIBinaryTypeParser", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to encode endpoint for type &apos;{0}&apos;. The method name was longer than 65535 UTF8 bytes..
+        /// </summary>
+        public static string RpcOverflowExceptionMethodNameTooLong {
+            get {
+                return ResourceManager.GetString("RpcOverflowExceptionMethodNameTooLong", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to encode endpoint for type &apos;{0}&apos;, method &apos;{0}&apos;. A parameter type was longer than 65535 UTF8 bytes..
+        /// </summary>
+        public static string RpcOverflowExceptionParameterTypeNameTooLong {
+            get {
+                return ResourceManager.GetString("RpcOverflowExceptionParameterTypeNameTooLong", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to encode endpoint for type &apos;{0}&apos;, method &apos;{0}&apos;. There were more than 65535 arguments..
+        /// </summary>
+        public static string RpcOverflowExceptionTooManyArguments {
+            get {
+                return ResourceManager.GetString("RpcOverflowExceptionTooManyArguments", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to encode endpoint for method &apos;{0}&apos;. The type name was longer than 65535 UTF8 bytes..
+        /// </summary>
+        public static string RpcOverflowExceptionTypeNameTooLong {
+            get {
+                return ResourceManager.GetString("RpcOverflowExceptionTypeNameTooLong", resourceCulture);
             }
         }
         
@@ -525,6 +615,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string TypeNotReferenceType {
             get {
                 return ResourceManager.GetString("TypeNotReferenceType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There was an unexpected error trying to find a known member: {0}..
+        /// </summary>
+        public static string UnexpectedMemberAccessExceptionFailedToFind {
+            get {
+                return ResourceManager.GetString("UnexpectedMemberAccessExceptionFailedToFind", resourceCulture);
             }
         }
     }

@@ -24,6 +24,7 @@ public interface IModularRpcRemoteConnection : IModularRpcConnection
     /// <summary>
     /// Send data in the form of raw binary data to the remote end.
     /// </summary>
+    /// <remarks>This memory MUST BE COPIED if this method switches contexts.</remarks>
     ValueTask SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token);
 
     /// <summary>

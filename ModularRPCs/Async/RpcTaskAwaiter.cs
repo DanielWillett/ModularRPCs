@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using DanielWillett.ModularRpcs.Exceptions;
 
 namespace DanielWillett.ModularRpcs.Async;
@@ -19,16 +20,11 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
     }
     internal void TriggerComplete()
     {
+        if (Interlocked.Decrement(ref Task.CompleteCount) != 0)
+            return;
+
         IsCompleted = true;
-        try
-        {
-            _continuation?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            // todo
-        }
+        _continuation?.Invoke();
     }
 
     void ICriticalNotifyCompletion.UnsafeOnCompleted(Action continuation) => ((ICriticalNotifyCompletion)this).OnCompleted(continuation);
@@ -48,7 +44,12 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
         if (!IsCompleted)
             throw new RpcGetResultUsageException();
 
-        if (Task.Exception != null)
-            throw Task.Exception;
+        if (Task.Exception == null && Task.Exceptions == null)
+            return;
+
+        if (Task.Exceptions != null)
+            throw new AggregateException(Task.Exceptions.ToArray());
+            
+        throw Task.Exception!;
     }
 }

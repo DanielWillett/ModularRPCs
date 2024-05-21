@@ -5,6 +5,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
+using DanielWillett.ReflectionTools.Formatting;
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_0_OR_GREATER
 using System.Collections;
 #endif
@@ -16,7 +18,7 @@ namespace DanielWillett.ModularRpcs.Serialization;
 public class DefaultSerializer : IRpcSerializer
 {
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
-    internal static ArrayPool<byte> ArrayPool = ArrayPool<byte>.Create(16, 6);
+    internal static ArrayPool<byte> ArrayPool = ArrayPool<byte>.Create(19, 6);
 #endif
     protected readonly ConcurrentDictionary<uint, Type> KnownTypes = new ConcurrentDictionary<uint, Type>();
     protected readonly ConcurrentDictionary<Type, uint> KnownTypeIds = new ConcurrentDictionary<Type, uint>();

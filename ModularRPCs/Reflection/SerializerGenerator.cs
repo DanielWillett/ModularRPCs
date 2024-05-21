@@ -12,17 +12,15 @@ using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using MethodDefinition = DanielWillett.ReflectionTools.Formatting.MethodDefinition;
-using TypedReference = System.TypedReference;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 internal sealed class SerializerGenerator
@@ -35,6 +33,7 @@ internal sealed class SerializerGenerator
         typeof(IRpcRouter),
         typeof(IRpcSerializer),
         typeof(IModularRpcConnection),
+        typeof(IEnumerable<IModularRpcConnection>),
         typeof(RpcFlags)
     ];
 
@@ -123,22 +122,6 @@ internal sealed class SerializerGenerator
 
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
         {
-            MethodInfo getMethodMethod = typeof(Type).GetMethod(nameof(Type.GetMethod), BindingFlags.Public | BindingFlags.Instance, null, [ typeof(string), typeof(BindingFlags) ], null)
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(Type.GetMethod))
-                                             .DeclaredIn<Type>(isStatic: false)
-                                             .WithParameter<string>("name")
-                                             .WithParameter<BindingFlags>("bindingAttr")
-                                             .Returning<MethodInfo>()
-                                         )}");
-
-            MethodInfo invokeMethod = typeof(MethodBase).GetMethod(nameof(MethodBase.Invoke), BindingFlags.Public | BindingFlags.Instance, null, [ typeof(object), typeof(object[]) ], null)
-                                      ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(Type.GetMethod))
-                                          .DeclaredIn<MethodBase>(isStatic: false)
-                                          .WithParameter<object>("obj")
-                                          .WithParameter<object[]>("parameters")
-                                          .Returning<object>()
-                                      )}");
-
             LocalBuilder lclObjArray = il.DeclareLocal(typeof(object[]));
             // create array for invoking InitTypeStatic method
 
@@ -166,10 +149,10 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Call, getTypeFromHandleMethod);
             il.Emit(OpCodes.Ldstr, nameof(InitTypeStatic));
             il.Emit(OpCodes.Ldc_I4, (int)(BindingFlags.NonPublic | BindingFlags.Static));
-            il.Emit(OpCodes.Callvirt, getMethodMethod);
+            il.Emit(OpCodes.Callvirt, CommonReflectionCache.TypeGetMethodNameFlags);
             il.Emit(OpCodes.Ldnull);
             il.Emit(OpCodes.Ldloc, lclObjArray);
-            il.Emit(OpCodes.Callvirt, invokeMethod);
+            il.Emit(OpCodes.Callvirt, CommonReflectionCache.MethodBaseInvoke);
             il.Emit(OpCodes.Pop);
         }
         else
@@ -255,7 +238,7 @@ internal sealed class SerializerGenerator
         return type.IsValueType
                && (!IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal));
     }
-    private static int GetPrimitiveTypeSize(Type type)
+    internal static int GetPrimitiveTypeSize(Type type)
     {
         if (type == typeof(byte) || type == typeof(bool) || type == typeof(sbyte))
         {
@@ -313,67 +296,22 @@ internal sealed class SerializerGenerator
     }
     private void InitType(Type thisType, Type[] genTypes)
     {
-        MethodInfo[] methods = typeof(IRpcSerializer).GetMethods(BindingFlags.Public | BindingFlags.Instance);
-
-        MakeGetSizeMethod(thisType, genTypes, methods);
-        MakeWriteMethods(thisType, genTypes, methods);
+        MakeGetSizeMethod(thisType, genTypes);
+        MakeWriteMethods(thisType, genTypes);
     }
-    private void MakeWriteMethods(Type thisType, Type[] genTypes, MethodInfo[] iRpcSerializerMethods)
+    private void MakeWriteMethods(Type thisType, Type[] genTypes)
     {
-        MethodInfo writeRefMethodBytes = iRpcSerializerMethods.FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteObject) && !x.IsGenericMethod && x.GetParameters() is { Length: 3 } p && p[0].ParameterType == typeof(TypedReference))
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.WriteObject))
-                                             .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                             .WithParameter(typeof(TypedReference), "value")
-                                             .WithParameter(typeof(byte*), "bytes")
-                                             .WithParameter<uint>("maxSize")
-                                             .Returning<int>()
-                                         )}");
-
-        MethodInfo writeRefMethodStream = iRpcSerializerMethods.FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteObject) && !x.IsGenericMethod && x.GetParameters() is { Length: 3 } p && p[0].ParameterType == typeof(TypedReference))
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.WriteObject))
-                                             .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                             .WithParameter(typeof(TypedReference), "value")
-                                             .WithParameter<Stream>("stream")
-                                             .Returning<int>()
-                                         )}");
-
-        MethodInfo writeMethodBytes = iRpcSerializerMethods.FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteObject) && x.IsGenericMethod && x.GetParameters() is { Length: 3 } p && p[0].ParameterType == x.GetGenericArguments()[0])
-                                      ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.WriteObject))
-                                          .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                          .WithGenericParameterDefinition("T")
-                                          .WithParameterUsingGeneric(0, "value")
-                                          .WithParameter(typeof(byte*), "bytes")
-                                          .WithParameter<uint>("maxSize")
-                                          .Returning<int>()
-                                      )}");
-
-        MethodInfo writeMethodStream = iRpcSerializerMethods.FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteObject) && x.IsGenericMethod && x.GetParameters() is { Length: 3 } p && p[0].ParameterType == x.GetGenericArguments()[0])
-                                      ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.WriteObject))
-                                          .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                          .WithGenericParameterDefinition("T")
-                                          .WithParameterUsingGeneric(0, "value")
-                                          .WithParameter<Stream>("stream")
-                                          .Returning<int>()
-                                      )}");
-
         FieldInfo bytesField = thisType.GetField(WriteToBytesMethodField, BindingFlags.Public | BindingFlags.Static)
-                          ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new FieldDefinition(WriteToBytesMethodField)
+                          ?? throw new UnexpectedMemberAccessException(new FieldDefinition(WriteToBytesMethodField)
                               .DeclaredIn(thisType, isStatic: true)
                               .WithFieldType<Delegate>()
-                          )}");
+                          );
 
         FieldInfo streamField = thisType.GetField(WriteToStreamMethodField, BindingFlags.Public | BindingFlags.Static)
-                          ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new FieldDefinition(WriteToStreamMethodField)
+                          ?? throw new UnexpectedMemberAccessException(new FieldDefinition(WriteToStreamMethodField)
                               .DeclaredIn(thisType, isStatic: true)
                               .WithFieldType<Delegate>()
-                          )}");
-
-        MethodInfo getCanPreCalcPrimitives = typeof(IRpcSerializer).GetProperty(nameof(IRpcSerializer.CanFastReadPrimitives), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(IRpcSerializer.CanFastReadPrimitives))
-                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                                 .WithPropertyType<bool>()
-                                                 .WithNoSetter()
-                                             )}");
+                          );
 
         Type[] bytesParamsArray = GetTypeParams(genTypes, 3, 0, false);
         bytesParamsArray[0] = typeof(IRpcSerializer);
@@ -403,7 +341,7 @@ internal sealed class SerializerGenerator
 
         il.CommentIfDebug("bool lclPreCalc = serializer.PreCalculatePrimitiveSizes;");
         il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Callvirt, getCanPreCalcPrimitives);
+        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerCanFastReadPrimitives);
         il.Emit(OpCodes.Stloc, lclPreCalc);
 
         il.CommentIfDebug("int lclSize = 0;");
@@ -437,18 +375,18 @@ internal sealed class SerializerGenerator
                                 $"arg{i.ToString(CultureInfo.InvariantCulture)}, bytes + lclSize, maxSize - lclSize);");
 
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldarg, i + 3);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 3) ));
 
             MethodInfo writeMtd;
             if (isByRef)
             {
                 il.Emit(OpCodes.Mkrefany, genType);
-                writeMtd = writeRefMethodBytes;
+                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByTRefBytes;
             }
             else
             {
                 LoadFromRef(genType, il);
-                writeMtd = writeMethodBytes.MakeGenericMethod(genType);
+                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValBytes.MakeGenericMethod(genType);
             }
 
             il.Emit(OpCodes.Ldarg_1);
@@ -477,7 +415,7 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Ldarg_1);
             il.Emit(OpCodes.Ldloc, lclSize);
             il.Emit(OpCodes.Add);
-            il.Emit(OpCodes.Ldarg, i + 3);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 3) ));
             LoadFromRef(genType, il);
             il.Emit(OpCodes.Unaligned, (byte)1);
             SetToRef(genType, il);
@@ -518,7 +456,7 @@ internal sealed class SerializerGenerator
         
         il.CommentIfDebug("bool lclPreCalc = serializer.PreCalculatePrimitiveSizes;");
         il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Callvirt, getCanPreCalcPrimitives);
+        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerCanFastReadPrimitives);
         il.Emit(OpCodes.Stloc, lclPreCalc);
         
         il.CommentIfDebug("int lclSize = 0;");
@@ -535,18 +473,18 @@ internal sealed class SerializerGenerator
                               $"arg{i.ToString(CultureInfo.InvariantCulture)}, stream);");
         
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldarg, i + 2);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 2) ));
         
             MethodInfo writeMtd;
             if (isByRef)
             {
                 il.Emit(OpCodes.Mkrefany, genType);
-                writeMtd = writeRefMethodStream;
+                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByTRefStream;
             }
             else
             {
                 LoadFromRef(genType, il);
-                writeMtd = writeMethodStream.MakeGenericMethod(genType);
+                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValStream.MakeGenericMethod(genType);
             }
         
             il.Emit(OpCodes.Ldarg_1);
@@ -565,7 +503,7 @@ internal sealed class SerializerGenerator
 
         streamField.SetValue(null, writeStream.CreateDelegate(streamField.FieldType));
     }
-    private static void LoadFromRef(Type type, IOpCodeEmitter il)
+    internal static void LoadFromRef(Type type, IOpCodeEmitter il)
     {
         if (type == typeof(long))
             il.Emit(OpCodes.Ldind_I8);
@@ -594,7 +532,7 @@ internal sealed class SerializerGenerator
         else
             il.Emit(OpCodes.Ldind_Ref);
     }
-    private static void SetToRef(Type type, IOpCodeEmitter il)
+    internal static void SetToRef(Type type, IOpCodeEmitter il)
     {
         if (type == typeof(long))
             il.Emit(OpCodes.Stind_I8);
@@ -623,35 +561,13 @@ internal sealed class SerializerGenerator
         else
             il.Emit(OpCodes.Stind_Ref);
     }
-    private void MakeGetSizeMethod(Type thisType, Type[] genTypes, MethodInfo[] iRpcSerializerMethods)
+    private void MakeGetSizeMethod(Type thisType, Type[] genTypes)
     {
-        MethodInfo getSizeTypeRefMethod = iRpcSerializerMethods.FirstOrDefault(x => x.Name == nameof(IRpcSerializer.GetSize) && !x.IsGenericMethod && x.GetParameters() is { Length: 1 } p && p[0].ParameterType == typeof(TypedReference))
-                ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.GetSize))
-                    .DeclaredIn<IRpcSerializer>(isStatic: false)
-                    .WithParameter(typeof(TypedReference), "value")
-                    .Returning<int>()
-                )}");
-
-        MethodInfo getSizeTypeMethod = iRpcSerializerMethods.FirstOrDefault(x => x.Name == nameof(IRpcSerializer.GetSize) && x.IsGenericMethod && x.GetParameters() is { Length: 1 } p && p[0].ParameterType == x.GetGenericArguments()[0])
-                ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.GetSize))
-                    .DeclaredIn<IRpcSerializer>(isStatic: false)
-                    .WithGenericParameterDefinition("T")
-                    .WithParameterUsingGeneric(0, "value")
-                    .Returning<int>()
-                )}");
-
         FieldInfo field = thisType.GetField(GetSizeMethodField, BindingFlags.Public | BindingFlags.Static)
-                          ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new FieldDefinition(GetSizeMethodField)
+                          ?? throw new UnexpectedMemberAccessException(new FieldDefinition(GetSizeMethodField)
                               .DeclaredIn(thisType, isStatic: true)
                               .WithFieldType<Delegate>()
-                          )}");
-
-        MethodInfo getCanPreCalcPrimitives = typeof(IRpcSerializer).GetProperty(nameof(IRpcSerializer.CanFastReadPrimitives), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(IRpcSerializer.CanFastReadPrimitives))
-                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                                 .WithPropertyType<bool>()
-                                                 .WithNoSetter()
-                                             )}");
+                          );
 
         Type[] paramsArray = GetTypeParams(genTypes, 1, 0, false);
         paramsArray[0] = typeof(IRpcSerializer);
@@ -668,7 +584,7 @@ internal sealed class SerializerGenerator
 
         il.CommentIfDebug("bool lclPreCalc = serializer.PreCalculatePrimitiveSizes;");
         il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Callvirt, getCanPreCalcPrimitives);
+        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerCanFastReadPrimitives);
         il.Emit(OpCodes.Stloc, lclPreCalc);
         int ttl = 0;
         for (int i = 0; i < genTypes.Length; i++)
@@ -709,17 +625,17 @@ internal sealed class SerializerGenerator
 
             il.Emit(OpCodes.Ldloc, lclSize);
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldarg, i + 1);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 1) ));
 
             if (isByRef)
             {
                 il.Emit(OpCodes.Mkrefany, genType);
-                il.Emit(OpCodes.Callvirt, getSizeTypeRefMethod);
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByTRef);
             }
             else
             {
                 LoadFromRef(genType, il);
-                il.Emit(OpCodes.Callvirt, getSizeTypeMethod.MakeGenericMethod(genType));
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByVal.MakeGenericMethod(genType));
             }
 
             il.Emit(OpCodes.Add);
@@ -902,12 +818,12 @@ internal sealed class SerializerGenerator
 
             if (injectionType == typeof(CancellationToken))
             {
-                il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(CancellationToken)));
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(CancellationToken)) ));
                 il.Emit(OpCodes.Stloc, lcl);
             }
             else if (injectionType.CouldBeAssignedTo<RpcOverhead>())
             {
-                il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(RpcOverhead)));
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
 
                 if (!injectionType.IsAssignableFrom(typeof(RpcOverhead)))
                     il.Emit(OpCodes.Castclass, injectionType);
@@ -915,16 +831,9 @@ internal sealed class SerializerGenerator
             }
             else if (typeof(IRpcInvocationPoint).IsAssignableFrom(injectionType))
             {
-                MethodInfo getRpcInvPt = typeof(RpcOverhead).GetProperty(nameof(RpcOverhead.Rpc), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(RpcOverhead.Rpc))
-                                             .DeclaredIn<RpcOverhead>(isStatic: false)
-                                             .WithPropertyType<IRpcInvocationPoint>()
-                                             .WithNoSetter()
-                                         )}.");
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
 
-                il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(RpcOverhead)));
-
-                il.Emit(getRpcInvPt.GetCallRuntime(), getRpcInvPt);
+                il.Emit(CommonReflectionCache.RpcOverheadGetRpc.GetCallRuntime(), CommonReflectionCache.RpcOverheadGetRpc);
 
                 if (injectionType != typeof(IRpcInvocationPoint))
                     il.Emit(OpCodes.Castclass, injectionType);
@@ -932,21 +841,14 @@ internal sealed class SerializerGenerator
             }
             else if (injectionType == typeof(RpcFlags))
             {
-                MethodInfo getRpcInvPt = typeof(RpcOverhead).GetProperty(nameof(RpcOverhead.Flags), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(RpcOverhead.Flags))
-                                             .DeclaredIn<RpcOverhead>(isStatic: false)
-                                             .WithPropertyType<RpcFlags>()
-                                             .WithNoSetter()
-                                         )}.");
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
 
-                il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(RpcOverhead)));
-
-                il.Emit(getRpcInvPt.GetCallRuntime(), getRpcInvPt);
+                il.Emit(CommonReflectionCache.RpcOverheadGetFlags.GetCallRuntime(), CommonReflectionCache.RpcOverheadGetFlags);
                 il.Emit(OpCodes.Stloc, lcl);
             }
             else if (typeof(IRpcSerializer).IsAssignableFrom(injectionType))
             {
-                il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(IRpcSerializer)));
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(IRpcSerializer)) ));
 
                 if (injectionType != typeof(IRpcSerializer))
                     il.Emit(OpCodes.Castclass, injectionType);
@@ -954,7 +856,7 @@ internal sealed class SerializerGenerator
             }
             else if (typeof(IRpcRouter).IsAssignableFrom(injectionType))
             {
-                il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(IRpcRouter)));
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(IRpcRouter)) ));
 
                 if (injectionType != typeof(IRpcRouter))
                     il.Emit(OpCodes.Castclass, injectionType);
@@ -964,34 +866,50 @@ internal sealed class SerializerGenerator
             {
                 if (typeof(IModularRpcLocalConnection).IsAssignableFrom(injectionType))
                 {
-                    MethodInfo getConn = typeof(RpcOverhead).GetProperty(nameof(RpcOverhead.ReceivingConnection), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(RpcOverhead.ReceivingConnection))
-                                             .DeclaredIn<RpcOverhead>(isStatic: false)
-                                             .WithPropertyType<IModularRpcLocalConnection>()
-                                             .WithNoSetter()
-                                         )}.");
+                    il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
 
-                    il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(RpcOverhead)));
-
-                    il.Emit(getConn.GetCallRuntime(), getConn);
+                    il.Emit(CommonReflectionCache.RpcOverheadGetReceivingConnection.GetCallRuntime(), CommonReflectionCache.RpcOverheadGetReceivingConnection);
 
                     if (!injectionType.IsAssignableFrom(typeof(IModularRpcLocalConnection)))
                         il.Emit(OpCodes.Castclass, injectionType);
                 }
                 else
                 {
-                    MethodInfo getConn = typeof(RpcOverhead).GetProperty(nameof(RpcOverhead.SendingConnection), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                         ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(RpcOverhead.SendingConnection))
-                                             .DeclaredIn<RpcOverhead>(isStatic: false)
-                                             .WithPropertyType<IModularRpcRemoteConnection>()
-                                             .WithNoSetter()
-                                         )}.");
+                    il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
 
-                    il.Emit(OpCodes.Ldarg, Array.IndexOf(paramArray, typeof(RpcOverhead)));
-
-                    il.Emit(getConn.GetCallRuntime(), getConn);
+                    il.Emit(CommonReflectionCache.RpcOverheadGetSendingConnection.GetCallRuntime(), CommonReflectionCache.RpcOverheadGetSendingConnection);
 
                     if (!injectionType.IsAssignableFrom(typeof(IModularRpcRemoteConnection)))
+                        il.Emit(OpCodes.Castclass, injectionType);
+                }
+                il.Emit(OpCodes.Stloc, lcl);
+            }
+            else if (typeof(IEnumerable<IModularRpcConnection>).IsAssignableFrom(injectionType))
+            {
+                if (typeof(IEnumerable<IModularRpcLocalConnection>).IsAssignableFrom(injectionType))
+                {
+                    il.Emit(OpCodes.Ldc_I4_1);
+                    il.Emit(OpCodes.Newarr, typeof(IModularRpcLocalConnection));
+                    il.Emit(OpCodes.Dup);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
+                    il.Emit(CommonReflectionCache.RpcOverheadGetReceivingConnection.GetCallRuntime(), CommonReflectionCache.RpcOverheadGetReceivingConnection);
+                    il.Emit(OpCodes.Stelem_Ref);
+
+                    if (!injectionType.IsAssignableFrom(typeof(IModularRpcLocalConnection[])))
+                        il.Emit(OpCodes.Castclass, injectionType);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldc_I4_1);
+                    il.Emit(OpCodes.Newarr, typeof(IModularRpcRemoteConnection));
+                    il.Emit(OpCodes.Dup);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(paramArray, typeof(RpcOverhead)) ));
+                    il.Emit(CommonReflectionCache.RpcOverheadGetSendingConnection.GetCallRuntime(), CommonReflectionCache.RpcOverheadGetSendingConnection);
+                    il.Emit(OpCodes.Stelem_Ref);
+
+                    if (!injectionType.IsAssignableFrom(typeof(IModularRpcRemoteConnection[])))
                         il.Emit(OpCodes.Castclass, injectionType);
                 }
                 il.Emit(OpCodes.Stloc, lcl);
@@ -1007,26 +925,12 @@ internal sealed class SerializerGenerator
                 Label next = il.DefineLabel();
                 il.Emit(OpCodes.Brtrue, next);
 
-                MethodInfo stringFormat3 = typeof(string).GetMethod(nameof(string.Format), BindingFlags.Public | BindingFlags.Static, null, CallingConventions.Any, [ typeof(string), typeof(object), typeof(object), typeof(object) ], null)
-                                           ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(string.Format))
-                                               .WithParameter<string>("format")
-                                               .WithParameter<object>("arg0")
-                                               .WithParameter<object>("arg1")
-                                               .WithParameter<object>("arg2")
-                                               .Returning<string>()
-                                           )}");
-
-                ConstructorInfo typeNotFoundCtor = typeof(RpcInjectionException).GetConstructor([ typeof(string) ])
-                                                   ?? throw new MemberAccessException($"Failed to find {Accessor.Formatter.Format(new MethodDefinition(typeof(RpcInjectionException))
-                                                       .WithParameter<string>("message")
-                                                   )}.");
-
                 il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionInfo);
                 il.Emit(OpCodes.Ldstr, param.Name);
                 il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(injectionType));
                 il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(method));
-                il.Emit(OpCodes.Call, stringFormat3);
-                il.Emit(OpCodes.Newobj, typeNotFoundCtor);
+                il.Emit(OpCodes.Call, CommonReflectionCache.StringFormat3);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
                 il.Emit(OpCodes.Throw);
 
                 il.MarkLabel(next);
@@ -1112,19 +1016,6 @@ internal sealed class SerializerGenerator
             {
                 if (method.DeclaringType.IsClass)
                 {
-                    MethodInfo stringFormat2 = typeof(string).GetMethod(nameof(string.Format), BindingFlags.Public | BindingFlags.Static, null, CallingConventions.Any, [ typeof(string), typeof(object), typeof(object) ], null)
-                                               ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(string.Format))
-                                                   .WithParameter<string>("format")
-                                                   .WithParameter<object>("arg0")
-                                                   .WithParameter<object>("arg1")
-                                                   .Returning<string>()
-                                               )}");
-
-                    ConstructorInfo typeNotFoundCtor = typeof(RpcInjectionException).GetConstructor([ typeof(string) ])
-                                                       ?? throw new MemberAccessException($"Failed to find {Accessor.Formatter.Format(new MethodDefinition(typeof(RpcInjectionException))
-                                                           .WithParameter<string>("message")
-                                                       )}.");
-
                     il.Emit(OpCodes.Castclass, method.DeclaringType);
                     il.Emit(OpCodes.Dup);
                     Label lblDontThrowNullRef = il.DefineLabel();
@@ -1133,8 +1024,8 @@ internal sealed class SerializerGenerator
                     il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionInstanceNull);
                     il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(method.DeclaringType));
                     il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(method));
-                    il.Emit(OpCodes.Call, stringFormat2);
-                    il.Emit(OpCodes.Newobj, typeNotFoundCtor);
+                    il.Emit(OpCodes.Call, CommonReflectionCache.StringFormat2);
+                    il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
                     il.Emit(OpCodes.Throw);
                     il.MarkLabel(lblDontThrowNullRef);
                 }
@@ -1166,6 +1057,11 @@ internal sealed class SerializerGenerator
         }
 
         il.Emit(method.GetCallRuntime(), method);
+        if (method.ReturnType == typeof(void))
+            il.Emit(OpCodes.Ldnull);
+        else if (method.ReturnType.IsValueType)
+            il.Emit(OpCodes.Box, method.ReturnType);
+
     }
     internal void GenerateInvokeBytes(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
     {
@@ -1176,51 +1072,10 @@ internal sealed class SerializerGenerator
         LocalBuilder lclPreCalc = il.DeclareLocal(typeof(bool));
         LocalBuilder lclReadInd = il.DeclareLocal(typeof(int));
         LocalBuilder lclTempByteCt = il.DeclareLocal(typeof(int));
-
-        MethodInfo getCanPreCalcPrimitives = typeof(IRpcSerializer).GetProperty(nameof(IRpcSerializer.CanFastReadPrimitives), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                                             ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(IRpcSerializer.CanFastReadPrimitives))
-                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                                 .WithPropertyType<bool>()
-                                                 .WithNoSetter()
-                                             )}");
-
-        MethodInfo getRpcSerializerReadMethodMkref = typeof(IRpcSerializer).GetMethod(nameof(IRpcSerializer.ReadObject), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                                        [ typeof(TypedReference), typeof(byte*), typeof(uint), typeof(int).MakeByRefType() ], null)
-                                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadObject))
-                                                        .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                                        .WithParameter(typeof(TypedReference), "refValue")
-                                                        .WithParameter(typeof(byte*), "bytes")
-                                                        .WithParameter(typeof(uint), "maxSize")
-                                                        .WithParameter(typeof(int), "maxSize", ByRefTypeMode.Out)
-                                                        .ReturningVoid()
-                                                    )}");
-
-        MethodInfo getRpcSerializerReadMethodNormal = typeof(IRpcSerializer).GetMethod(nameof(IRpcSerializer.ReadObject), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                                        [ typeof(byte*), typeof(uint), typeof(int).MakeByRefType() ], null)
-                                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadObject))
-                                                        .DeclaredIn<IRpcSerializer>(isStatic: false)
-                                                        .WithGenericParameterDefinition("T")
-                                                        .WithParameter(typeof(byte*), "bytes")
-                                                        .WithParameter(typeof(uint), "maxSize")
-                                                        .WithParameter(typeof(int), "maxSize", ByRefTypeMode.Out)
-                                                        .ReturningUsingGeneric("T")
-                                                    )}");
-
-        ConstructorInfo rpcParseExceptionError = typeof(RpcParseException).GetConstructor([ typeof(string) ])
-                                                 ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(typeof(RpcParseException))
-                                                     .WithParameter<string>("message")
-                                                 )}");
-
-        MethodInfo setErrorCode = typeof(RpcParseException).GetProperty(nameof(RpcParseException.ErrorCode), BindingFlags.Instance | BindingFlags.Public)?.GetSetMethod(true)
-                                  ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new PropertyDefinition(nameof(RpcParseException.ErrorCode))
-                                      .DeclaredIn<RpcParseException>(isStatic: false)
-                                      .WithPropertyType<int>()
-                                      .WithNoGetter()
-                                  )}");
-
+        
         il.CommentIfDebug("bool lclPreCalc = serializer.PreCalculatePrimitiveSizes;");
-        il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Callvirt, getCanPreCalcPrimitives);
+        il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
+        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerCanFastReadPrimitives);
         il.Emit(OpCodes.Stloc, lclPreCalc);
 
         il.CommentIfDebug("int lclReadInd = 0;");
@@ -1241,12 +1096,13 @@ internal sealed class SerializerGenerator
             bool isPrimitive = CanQuickSerializeType(type);
             bool shouldPassByRef = ShouldBePassedByReference(type);
             Label lblDoPrimitiveRead = default;
-            // 4: serializer, 5: bytes, 6: maxCt
+            Label lblDontPrimitiveRead = default;
 
             il.CommentIfDebug($"== Read {Accessor.Formatter.Format(type)} ==");
             if (isPrimitive)
             {
                 lblDoPrimitiveRead = il.DefineLabel();
+                lblDontPrimitiveRead = il.DefineLabel();
                 il.CommentIfDebug("if (lclPreCalc) goto lblDoPrimitiveRead;");
                 il.Emit(OpCodes.Ldloc, lclPreCalc);
                 il.Emit(OpCodes.Brtrue, lblDoPrimitiveRead);
@@ -1254,46 +1110,46 @@ internal sealed class SerializerGenerator
 
             Label continueRead = il.DefineLabel();
             il.CommentIfDebug($"if (maxCount - lclReadInd <= 0) throw new RpcParseException({Properties.Exceptions.RpcParseExceptionBufferRunOut}) {{ ErrorCode = 1 }};");
-            il.Emit(OpCodes.Ldarg, 6);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
             il.Emit(OpCodes.Ldloc, lclReadInd);
             il.Emit(OpCodes.Sub);
             il.Emit(OpCodes.Ldc_I4_0);
             il.Emit(OpCodes.Bgt, continueRead);
             il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcParseExceptionBufferRunOut);
-            il.Emit(OpCodes.Newobj, rpcParseExceptionError);
+            il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcParseExceptionCtorMessage);
             il.Emit(OpCodes.Dup);
             il.Emit(OpCodes.Ldc_I4_1);
-            il.Emit(setErrorCode.GetCallRuntime(), setErrorCode);
+            il.Emit(CommonReflectionCache.SetRpcParseExceptionErrorCode.GetCallRuntime(), CommonReflectionCache.SetRpcParseExceptionErrorCode);
             il.Emit(OpCodes.Throw);
 
             il.MarkLabel(continueRead);
             if (shouldPassByRef)
             {
                 il.CommentIfDebug($"serializer.ReadObject(__makeref(bindLcl{i}), bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, 4);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
                 il.Emit(OpCodes.Ldloca, bindLcls[i]);
                 il.Emit(OpCodes.Mkrefany, type);
-                il.Emit(OpCodes.Ldarg, 5);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, 6);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Sub);
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, getRpcSerializerReadMethodMkref);
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByTRefBytes);
             }
             else
             {
                 il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, 4);
-                il.Emit(OpCodes.Ldarg, 5);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, 6);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Sub);
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, getRpcSerializerReadMethodNormal.MakeGenericMethod(type));
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValBytes.MakeGenericMethod(type));
                 il.Emit(OpCodes.Stloc, bindLcls[i]);
             }
 
@@ -1305,32 +1161,35 @@ internal sealed class SerializerGenerator
 
             if (!isPrimitive)
                 continue;
-            
+
+            il.CommentIfDebug("goto lblDontPrimitiveRead;");
+            il.Emit(OpCodes.Br, lblDontPrimitiveRead);
+
             il.CommentIfDebug("lblDoPrimitiveRead:");
             il.MarkLabel(lblDoPrimitiveRead);
 
             continueRead = il.DefineLabel();
             int primSize = GetPrimitiveTypeSize(type);
             il.CommentIfDebug($"if (maxCount - lclReadInd < {primSize}) throw new RpcParseException({Properties.Exceptions.RpcParseExceptionBufferRunOut}) {{ ErrorCode = 1 }};");
-            il.Emit(OpCodes.Ldarg, 6);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
             il.Emit(OpCodes.Ldloc, lclReadInd);
             il.Emit(OpCodes.Sub);
             il.Emit(OpCodes.Ldc_I4, primSize);
             il.Emit(OpCodes.Bge, continueRead);
             il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcParseExceptionBufferRunOut);
-            il.Emit(OpCodes.Newobj, rpcParseExceptionError);
+            il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcParseExceptionCtorMessage);
             il.Emit(OpCodes.Dup);
             il.Emit(OpCodes.Ldc_I4_1);
-            il.Emit(setErrorCode.GetCallRuntime(), setErrorCode);
+            il.Emit(CommonReflectionCache.SetRpcParseExceptionErrorCode.GetCallRuntime(), CommonReflectionCache.SetRpcParseExceptionErrorCode);
             il.Emit(OpCodes.Throw);
 
             il.MarkLabel(continueRead);
 
             il.CommentIfDebug($"bindLcl{i} = *({Accessor.Formatter.Format(type)}*)(bytes + lclReadInd);");
-            il.Emit(OpCodes.Ldarg, 5);
+            il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
             il.Emit(OpCodes.Ldloc, lclReadInd);
             il.Emit(OpCodes.Add);
-            il.Emit(OpCodes.Unaligned, type);
+            il.Emit(OpCodes.Unaligned, (byte)1);
             LoadFromRef(type, il);
             il.Emit(OpCodes.Stloc, bindLcls[i]);
 
@@ -1339,6 +1198,9 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Ldc_I4, primSize);
             il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Stloc, lclReadInd);
+
+            il.CommentIfDebug("lblDontPrimitiveRead:");
+            il.MarkLabel(lblDontPrimitiveRead);
         }
 
         il.EmitWriteLine("Read bytes:");
@@ -1348,7 +1210,7 @@ internal sealed class SerializerGenerator
         il.Emit(OpCodes.Ret);
     }
     
-    internal void GenerateInvokeStream(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
+    internal void GenerateInvokeStream(MethodInfo method, IOpCodeEmitter il)
     {
         ParameterInfo[] parameters = method.GetParameters();
         BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
@@ -1361,6 +1223,7 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < toBind.Count; ++i)
         {
             bindLcls[i] = il.DeclareLocal(toBind.Array![i + toBind.Offset].ParameterType);
+            // todo
         }
 
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);

@@ -273,4 +273,37 @@
   <data name="MethodNotReceiveMethod" xml:space="preserve">
     <value>The given method '{0}' was not a receive method. It must be decorated with the RpcReceiveAttribute.</value>
   </data>
+  <data name="RpcInvalidParameterInvalidInjection" xml:space="preserve">
+    <value>Type '{0}' can not be injected in this context</value>
+  </data>
+  <data name="RpcInvalidParameterMultipleConnectionsInvokeMethod" xml:space="preserve">
+    <value>There can not be more than one connection arguments. If you need more than one, pass an IEnumerable&lt;IModularRpcRemoteConnection&gt;</value>
+  </data>
+  <data name="RpcFireAndForgetExceptionMultipleConnections" xml:space="preserve">
+    <value>Unable to invoke this RPC ({0}) because returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void.</value>
+  </data>
+  <data name="InvokeRpcConnectionsInvalidType" xml:space="preserve">
+    <value>Must be of type 'IModularRpcRemoteConnection', 'IEnumerable&lt;IModularRpcRemoteConnection&gt;', or null.</value>
+  </data>
+  <data name="RpcNoConnectionsException" xml:space="preserve">
+    <value>There are no connections available to perform the given action.</value>
+  </data>
+  <data name="RpcNoConnectionsExceptionConnectionLifetime" xml:space="preserve">
+    <value>There are no connections available in the connection lifetime when trying to invoke {0}.</value>
+  </data>
+  <data name="UnexpectedMemberAccessExceptionFailedToFind" xml:space="preserve">
+    <value>There was an unexpected error trying to find a known member: {0}.</value>
+  </data>
+  <data name="RpcOverflowExceptionMethodNameTooLong" xml:space="preserve">
+    <value>Failed to encode endpoint for type '{0}'. The method name was longer than 65535 UTF8 bytes.</value>
+  </data>
+  <data name="RpcOverflowExceptionTypeNameTooLong" xml:space="preserve">
+    <value>Failed to encode endpoint for method '{0}'. The type name was longer than 65535 UTF8 bytes.</value>
+  </data>
+  <data name="RpcOverflowExceptionTooManyArguments" xml:space="preserve">
+    <value>Failed to encode endpoint for type '{0}', method '{0}'. There were more than 65535 arguments.</value>
+  </data>
+  <data name="RpcOverflowExceptionParameterTypeNameTooLong" xml:space="preserve">
+    <value>Failed to encode endpoint for type '{0}', method '{0}'. A parameter type was longer than 65535 UTF8 bytes.</value>
+  </data>
 </root>

@@ -15,10 +15,5 @@ public enum RpcFlags : ushort
     /// <summary>
     /// The endpoint is declared using the known ID but also has an identifier.
     /// </summary>
-    EndpointCodeIncludesIdentifier = 1 << 1,
-    
-    /// <summary>
-    /// Number of arguments goes above 255.
-    /// </summary>
-    ArgCt16 = 1 << 2
+    EndpointCodeIncludesIdentifier = 1 << 1
 }

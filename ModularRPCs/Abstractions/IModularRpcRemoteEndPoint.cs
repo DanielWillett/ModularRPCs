@@ -14,5 +14,5 @@ public interface IModularRpcRemoteEndpoint
     /// Attempt to start a connection with this endpoint.
     /// </summary>
     /// <returns>That connection that was started.</returns>
-    Task<IModularRpcLocalConnection> RequestConnectionAsync(IRpcRouter router, IRpcSerializer serializer, CancellationToken token = default);
+    Task<IModularRpcRemoteConnection> RequestConnectionAsync(IRpcRouter router, IRpcConnectionLifetime connectionLifetime, IRpcSerializer serializer, CancellationToken token = default);
 }

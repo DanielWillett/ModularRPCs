@@ -1,21 +1,22 @@
 ﻿using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Examples.Samples;
-using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Loopback;
 
 // ReSharper disable LocalizableElement
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
-        Run(args);
+        await Run(args);
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 
@@ -23,7 +24,7 @@ public class Program
 
         Console.ReadLine();
     }
-    public static unsafe void Run(string[] args)
+    public static async Task Run(string[] args)
     {
         Accessor.LogILTraceMessages = true;
         Accessor.LogDebugMessages = true;
@@ -31,31 +32,24 @@ public class Program
         Accessor.LogWarningMessages = true;
         Accessor.LogErrorMessages = true;
 
-        IRpcRouter router = new DefaultRpcRouter(new DefaultSerializer());
-        
-        SampleClass sc0 = ProxyGenerator.Instance.CreateProxy<SampleClass>(router);
+        IModularRpcRemoteEndpoint clientEndpoint = new LoopbackEndpoint(false);
+        IModularRpcRemoteEndpoint serverEndpoint = new LoopbackEndpoint(true);
 
-        byte* ptr = stackalloc byte[4];
+        DefaultRpcRouter clientRouter = new DefaultRpcRouter(new DefaultSerializer(), new ClientRpcConnectionLifetime());
+        DefaultRpcRouter serverRouter = new DefaultRpcRouter(new DefaultSerializer(), new ServerRpcConnectionLifetime());
 
-        ref byte b = ref ptr[0];
+        IModularRpcRemoteConnection loopbackRemote = await clientEndpoint.RequestConnectionAsync(clientRouter, clientRouter.ConnectionLifetime, clientRouter.Serializer, CancellationToken.None);
+
+        SampleClass sc0 = ProxyGenerator.Instance.CreateProxy<SampleClass>(clientRouter);
 
         int i = 3;
         nint val = 5;
         string str = "test";
         DateTime dt = DateTime.UtcNow;
-        //Type serializerType = ProxyGenerator.Instance.SerializerGenerator.GetSerializerType(3).MakeGenericType(typeof(int), typeof(SpinLock), typeof(string));
-        //
-        //RuntimeHelpers.RunClassConstructor(serializerType.TypeHandle);
-        //
-        //FieldInfo field = serializerType.GetFields(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static).FirstOrDefault();
-        //Delegate method = (Delegate)field.GetValue(null);
-        //MethodInfo actualMethod = method.Method;
-        //actualMethod = (DynamicMethod)actualMethod.GetType().GetField("m_owner", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(actualMethod);
-        //
-        //int size = (int)actualMethod.Invoke(method, [ new Serializer(), 3, default(SpinLock), "test" ]);
 
         RpcTask task = sc0.CallRpcOne(i);
 
+        await task;
         //bool didRelease = sc0.Release();
         //Console.WriteLine($"released: {didRelease}.");
         //

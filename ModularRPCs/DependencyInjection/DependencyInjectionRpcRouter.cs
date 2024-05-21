@@ -8,7 +8,7 @@ namespace DanielWillett.ModularRpcs.DependencyInjection;
 public class DependencyInjectionRpcRouter : DefaultRpcRouter
 {
     public IServiceProvider ServiceProvider { get; }
-    public DependencyInjectionRpcRouter(IServiceProvider serviceProvider) : base(serviceProvider.GetRequiredService<IRpcSerializer>())
+    public DependencyInjectionRpcRouter(IServiceProvider serviceProvider) : base(serviceProvider.GetRequiredService<IRpcSerializer>(), serviceProvider.GetRequiredService<IRpcConnectionLifetime>())
     {
         ServiceProvider = serviceProvider;
     }

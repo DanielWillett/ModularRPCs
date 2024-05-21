@@ -1,11 +1,15 @@
 ﻿using DanielWillett.ModularRpcs.Annotations;
 using System;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask
 {
     private protected RpcTaskAwaiter Awaiter = null!;
     internal Exception? Exception;
+    internal ConcurrentBag<Exception>? Exceptions;
+    internal int CompleteCount = 1;
 
     /// <summary>
     /// An instance of <see cref="RpcTask"/> that instantly completes, skipping any context switching.
@@ -36,7 +40,30 @@ public class RpcTask
     public RpcTaskAwaiter GetAwaiter() => Awaiter;
     internal void TriggerComplete(Exception? exception)
     {
-        Exception = exception;
+        if (exception == null)
+        {
+            Awaiter.TriggerComplete();
+            return;
+        }
+
+        ConcurrentBag<Exception>? bag = null;
+        if (Exception == null)
+        {
+            Exception? alreadyThereException = Interlocked.CompareExchange(ref Exception, exception, null);
+            if (alreadyThereException != null)
+            {
+                if (Exceptions == null)
+                    bag = Interlocked.CompareExchange(ref Exceptions, new ConcurrentBag<Exception>(), null) ?? Exceptions;
+                else
+                    bag = Exceptions;
+            }
+        }
+        else if (Exceptions == null)
+            bag = Interlocked.CompareExchange(ref Exceptions, new ConcurrentBag<Exception>(), null) ?? Exceptions;
+        else
+            bag = Exceptions;
+
+        bag?.Add(exception);
         Awaiter.TriggerComplete();
     }
 

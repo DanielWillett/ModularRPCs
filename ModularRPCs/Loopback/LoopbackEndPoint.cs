@@ -1,8 +1,8 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Loopback;
 
@@ -22,20 +22,34 @@ public class LoopbackEndpoint(bool isServer) : IModularRpcRemoteEndpoint
     public LoopbackEndpoint CreateOtherSide() => new LoopbackEndpoint(!IsServer);
 
     /// <summary>
-    /// Get a local connection with a remote and server counterpart.
+    /// Get a remote connection with a local and server counterpart.
     /// </summary>
     /// <returns>Either <see cref="LoopbackRpcClientsideLocalConnection"/> or <see cref="LoopbackRpcServersideLocalConnection"/>, depending on the value of <see cref="IsServer"/>.</returns>
-    public Task<IModularRpcLocalConnection> RequestConnectionAsync(IRpcRouter router, IRpcSerializer serializer, CancellationToken token = default)
+    public async Task<IModularRpcRemoteConnection> RequestConnectionAsync(IRpcRouter router, IRpcConnectionLifetime connectionLifetime, IRpcSerializer serializer, CancellationToken token = default)
     {
         if (IsServer)
         {
             LoopbackRpcServersideRemoteConnection serverConnection = new LoopbackRpcServersideRemoteConnection(this, router, serializer);
             _ = new LoopbackRpcClientsideRemoteConnection(CreateOtherSide(), router, serverConnection);
-            return Task.FromResult<IModularRpcLocalConnection>(serverConnection.Local);
+
+            serverConnection.IsClosed = false;
+            serverConnection.Local.IsClosed = false;
+            serverConnection.Client.IsClosed = false;
+            serverConnection.Client.Local.IsClosed = false;
+
+            await connectionLifetime.TryAddNewConnection(serverConnection, token);
+            return serverConnection;
         }
 
         LoopbackRpcServersideRemoteConnection serverRemote = new LoopbackRpcServersideRemoteConnection(CreateOtherSide(), router, serializer);
         LoopbackRpcClientsideRemoteConnection clientConnection = new LoopbackRpcClientsideRemoteConnection(this, router, serverRemote);
-        return Task.FromResult<IModularRpcLocalConnection>(clientConnection.Local);
+
+        clientConnection.IsClosed = false;
+        clientConnection.Local.IsClosed = false;
+        clientConnection.Server.IsClosed = false;
+        clientConnection.Server.Local.IsClosed = false;
+
+        await connectionLifetime.TryAddNewConnection(clientConnection, token);
+        return clientConnection;
     }
 }

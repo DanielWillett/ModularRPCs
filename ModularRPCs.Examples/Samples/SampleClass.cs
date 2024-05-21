@@ -1,10 +1,11 @@
 ﻿using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Routing;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Abstractions;
 
 // ReSharper disable LocalizableElement
 
@@ -33,11 +34,13 @@ public class SampleClass : IRpcObject<int>
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
     [RpcSend(nameof(RpcOne))]
+    [RpcFireAndForget]
     internal virtual RpcTask CallRpcOne(int arg1) => RpcTask.NotImplemented;
 
     [RpcReceive]
-    private async Task RpcOne(RpcOverhead ctx, IRpcRouter router, int value, int dt, string str)
+    private async Task RpcOne(CancellationToken token, IModularRpcRemoteConnection connection, int value)
     {
+        Console.WriteLine($"Value: {value}");
         Console.WriteLine("Start");
         await Task.Delay(TimeSpan.FromSeconds(5d));
         Console.WriteLine("Done");

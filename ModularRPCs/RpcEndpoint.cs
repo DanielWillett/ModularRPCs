@@ -101,6 +101,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         DeclaringType = other.DeclaringType;
         Size = _sizeWithoutIdentifier = other._sizeWithoutIdentifier;
         ParametersAreBindedParametersOnly = other.ParametersAreBindedParametersOnly;
+        SignatureHash = other.SignatureHash;
         if (identifier != null)
         {
             Size += CalculateIdentifierSize(serializer, identifier);
@@ -147,6 +148,7 @@ public class RpcEndpoint : IRpcInvocationPoint
     {
         IsStatic = false;
         DeclaringTypeName = declaringTypeName;
+        DeclaringType = Type.GetType(DeclaringTypeName, false, false);
         MethodName = methodName;
         SignatureHash = signatureHash;
         ParametersAreBindedParametersOnly = argsAreBindOnly;
@@ -273,23 +275,178 @@ public class RpcEndpoint : IRpcInvocationPoint
 
     private void CalculateSize()
     {
-        int size = sizeof(uint) + sizeof(ushort) + sizeof(ushort) + 1;
-        size += Encoding.UTF8.GetByteCount(DeclaringTypeName)
-                + Encoding.UTF8.GetByteCount(MethodName);
+        int size = sizeof(uint) + sizeof(int) + sizeof(ushort) + sizeof(ushort) + 1;
+        size += Math.Min(Encoding.UTF8.GetByteCount(DeclaringTypeName), ushort.MaxValue)
+                + Math.Min(Encoding.UTF8.GetByteCount(MethodName), ushort.MaxValue);
         if (ParameterTypeNames != null)
         {
             size += sizeof(ushort);
-            for (int i = 0; i < ParameterTypeNames.Length; ++i)
-                size += Encoding.UTF8.GetByteCount(ParameterTypeNames[i]);
+            int c = Math.Min(ParameterTypeNames.Length, ushort.MaxValue);
+            for (int i = 0; i < c; ++i)
+                size += Math.Min(Encoding.UTF8.GetByteCount(ParameterTypeNames[i]), ushort.MaxValue);
         }
 
         _sizeWithoutIdentifier = size;
         Size = size;
     }
 
+    internal unsafe int WriteToBytes(IRpcSerializer serializer, IRpcRouter router, byte* bytes, uint maxCt)
+    {
+        if (maxCt < 13)
+            throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
+
+        bool isLittleEndian = BitConverter.IsLittleEndian;
+
+        EndpointFlags flags = ParametersAreBindedParametersOnly ? EndpointFlags.ArgsAreBindOnly : 0;
+        flags |= ParameterTypeNames != null ? EndpointFlags.DefinesParameters : 0;
+
+        *bytes = (byte)flags;
+        ++bytes;
+        
+        uint enpId = EndpointId.GetValueOrDefault();
+        if (isLittleEndian)
+        {
+            Unsafe.WriteUnaligned(bytes, enpId);
+        }
+        else
+        {
+            bytes[3] = unchecked( (byte) enpId );
+            bytes[2] = unchecked( (byte)(enpId >>> 8)  );
+            bytes[1] = unchecked( (byte)(enpId >>> 16) );
+            *bytes   = unchecked( (byte)(enpId >>> 24) );
+        }
+
+        bytes += 4;
+
+        if (isLittleEndian)
+        {
+            Unsafe.WriteUnaligned(bytes, SignatureHash);
+        }
+        else
+        {
+            bytes[3] = unchecked( (byte) SignatureHash );
+            bytes[2] = unchecked( (byte)(SignatureHash >>> 8)  );
+            bytes[1] = unchecked( (byte)(SignatureHash >>> 16) );
+            *bytes   = unchecked( (byte)(SignatureHash >>> 24) );
+        }
+
+        bytes += 4;
+
+        int typeNameLenCt = Encoding.UTF8.GetByteCount(DeclaringTypeName);
+        int methodNameLenCt = Encoding.UTF8.GetByteCount(MethodName);
+
+        if (typeNameLenCt > ushort.MaxValue)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionTypeNameTooLong, MethodName)) { ErrorCode = 2 };
+
+        if (methodNameLenCt > ushort.MaxValue)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionMethodNameTooLong, DeclaringTypeName)) { ErrorCode = 3 };
+
+        if (isLittleEndian)
+        {
+            Unsafe.WriteUnaligned(bytes, (ushort)typeNameLenCt);
+        }
+        else
+        {
+            bytes[1] = unchecked( (byte) (ushort)typeNameLenCt );
+            *bytes   = unchecked( (byte)((ushort)typeNameLenCt >>> 8)  );
+        }
+
+        bytes += 2;
+
+        if (isLittleEndian)
+        {
+            Unsafe.WriteUnaligned(bytes, (ushort)methodNameLenCt);
+        }
+        else
+        {
+            bytes[1] = unchecked( (byte) (ushort)methodNameLenCt );
+            *bytes   = unchecked( (byte)((ushort)methodNameLenCt >>> 8)  );
+        }
+
+        bytes += 2;
+        int size = 13 + typeNameLenCt + methodNameLenCt;
+        if (maxCt < size)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        fixed (char* ptr = DeclaringTypeName)
+            Encoding.UTF8.GetBytes(ptr, DeclaringTypeName.Length, bytes, typeNameLenCt);
+        bytes += typeNameLenCt;
+
+        fixed (char* ptr = MethodName)
+            Encoding.UTF8.GetBytes(ptr, MethodName.Length, bytes, methodNameLenCt);
+        bytes += methodNameLenCt;
+
+        if ((flags & EndpointFlags.DefinesParameters) == 0)
+            return size;
+
+        size += sizeof(ushort);
+
+        if (maxCt < size)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        int argCt = ParameterTypeNames!.Length;
+        if (argCt > ushort.MaxValue)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionTooManyArguments, DeclaringTypeName, MethodName)) { ErrorCode = 4 };
+
+        size += argCt * 2;
+        if (maxCt < size)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        if (isLittleEndian)
+        {
+            Unsafe.WriteUnaligned(bytes, (ushort)argCt);
+        }
+        else
+        {
+            bytes[1] = unchecked( (byte) (ushort)argCt );
+            *bytes   = unchecked( (byte)((ushort)argCt >>> 8) );
+        }
+
+        bytes += 2;
+
+        Span<ushort> argLens = stackalloc ushort[argCt];
+
+        int ttlLen = 0;
+        for (int i = 0; i < argCt; ++i)
+        {
+            int utf8Len = Encoding.UTF8.GetByteCount(ParameterTypeNames[i]);
+            if (argCt > ushort.MaxValue)
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionParameterTypeNameTooLong, DeclaringTypeName, MethodName)) { ErrorCode = 5 };
+
+            argLens[i] = (ushort)utf8Len;
+            if (isLittleEndian)
+            {
+                Unsafe.WriteUnaligned(bytes, (ushort)utf8Len);
+            }
+            else
+            {
+                bytes[1] = unchecked( (byte) (ushort)utf8Len );
+                *bytes   = unchecked( (byte)((ushort)utf8Len >>> 8) );
+            }
+
+            bytes += 2;
+
+            ttlLen += utf8Len;
+        }
+
+        size += ttlLen;
+        if (maxCt < size)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        for (int i = 0; i < argCt; ++i)
+        {
+            string typeName = ParameterTypeNames[i];
+            fixed (char* ptr = typeName)
+                Encoding.UTF8.GetBytes(ptr, typeName.Length, bytes, argLens[i]);
+            bytes += argLens[i];
+        }
+
+        return size;
+    }
+
     internal static unsafe IRpcInvocationPoint ReadFromBytes(IRpcSerializer serializer, IRpcRouter router, byte* bytes, uint maxCt, out int bytesRead)
     {
-        if (maxCt < 9)
+        if (maxCt < 13)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
         bool isLittleEndian = BitConverter.IsLittleEndian;
@@ -321,7 +478,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             : (ushort)(*bytes << 8 | bytes[1]);
 
         bytes += sizeof(ushort);
-        int size = 10 + rpcTypeLength + rpcMethodLength;
+        int size = 13 + rpcTypeLength + rpcMethodLength;
         if (maxCt < size)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
@@ -331,9 +488,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         bytes += rpcMethodLength;
 
         string[] args;
-        byte v = *bytes;
-        ++bytes;
-        if (v != 0)
+        if ((flags1 & EndpointFlags.DefinesParameters) != 0)
         {
             size += sizeof(ushort);
 
@@ -350,11 +505,11 @@ public class RpcEndpoint : IRpcInvocationPoint
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
             args = new string[argCt];
-            Span<int> argLens = stackalloc int[argCt];
+            Span<ushort> argLens = stackalloc ushort[argCt];
             int ttlLen = 0;
             for (int i = 0; i < argCt; ++i)
             {
-                int len = isLittleEndian
+                ushort len = isLittleEndian
                     ? Unsafe.ReadUnaligned<ushort>(bytes)
                     : (ushort)(*bytes << 8 | bytes[1]);
                 argLens[i] = len;
@@ -374,13 +529,9 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
         else args = null!;
 
-        object? identifier = null;
-        if ((flags1 & EndpointFlags.HasIdentifier) != 0)
-        {
-            identifier = ReadIdentifierFromBytes(serializer, bytes, maxCt - (uint)size, out int bytesReadIdentifier);
-            // size += bytesReadIdentifier;
-            bytes += bytesReadIdentifier;
-        }
+        object? identifier = ReadIdentifierFromBytes(serializer, bytes, maxCt - (uint)size, out int bytesReadIdentifier);
+        // size += bytesReadIdentifier;
+        bytes += bytesReadIdentifier;
 
         bytesRead = checked( (int)(bytes - originalPtr) );
         return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, signatureHash, bytesRead, identifier);
@@ -393,17 +544,16 @@ public class RpcEndpoint : IRpcInvocationPoint
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = new byte[64];
 
-        int byteCt = stream.Read(bytes, 0, 13);
+        int byteCt = stream.Read(bytes, 0, 17);
 #else
         Span<byte> bytes = stackalloc byte[64];
 
-        int byteCt = stream.Read(bytes[..13]);
+        int byteCt = stream.Read(bytes[..17]);
 #endif
-        if (byteCt < 13)
+        if (byteCt < 17)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
         EndpointFlags flags1 = (EndpointFlags)bytes[0];
-        bool hasIdentifier = (flags1 & EndpointFlags.HasIdentifier) != 0;
 
         uint knownRpcShortcutId = isLittleEndian
             ? Unsafe.ReadUnaligned<uint>(ref bytes[1])
@@ -472,11 +622,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         index += rpcMethodLength;
 
         string[] args;
-        int b = stream.ReadByte();
-        if (b == -1)
-            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
-        ++index;
-        if (b != 0)
+        if ((flags1 & EndpointFlags.DefinesParameters) != 0)
         {
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
             byteCt = stream.Read(bytes, 0, 2);
@@ -552,12 +698,8 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
         else args = null!;
 
-        object? identifier = null;
-        if (hasIdentifier)
-        {
-            identifier = ReadIdentifierFromStream(serializer, stream, out int bytesReadIdentifier);
-            index += bytesReadIdentifier;
-        }
+        object? identifier = ReadIdentifierFromStream(serializer, stream, out int bytesReadIdentifier);
+        index += bytesReadIdentifier;
 
         bytesRead = index;
         return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, signatureHash, bytesRead, identifier);
@@ -569,38 +711,41 @@ public class RpcEndpoint : IRpcInvocationPoint
     internal static int CalculateIdentifierSize(IRpcSerializer serializer, object identifier)
     {
         Type idType = identifier.GetType();
-        TypeCode tc = Type.GetTypeCode(idType);
-        if (tc is <= TypeCode.DBNull or > TypeUtility.MaxUsedTypeCode)
+        TypeCode tc = TypeUtility.GetTypeCode(idType);
+        if (tc == TypeCode.Object)
         {
-            int size = 1 + serializer.GetSize(identifier);
+            int size = 2 + serializer.GetSize(identifier);
             if (serializer.TryGetKnownTypeId(idType, out _))
                 return 4 + size;
 
-            return size + serializer.GetSize(idType.FullName + ", " + idType.Assembly.GetName().Name);
+            return size + serializer.GetSize(TypeUtility.GetAssemblyQualifiedNameNoVersion(idType));
         }
 
-        if (serializer.CanFastReadPrimitives)
-            return 2 + TypeUtility.GetTypeCodeSize(tc);
-        
-        return 2 + serializer.GetSize(identifier);
+        if (tc == TypeCode.DBNull)
+            return 1;
+
+        if (tc != TypeCode.String && serializer.CanFastReadPrimitives)
+            return 1 + TypeUtility.GetTypeCodeSize(tc);
+
+        return 1 + serializer.GetSize(identifier);
     }
-    internal static unsafe object ReadIdentifierFromBytes(IRpcSerializer serializer, byte* bytes, uint maxCt, out int bytesRead)
+    internal static unsafe object? ReadIdentifierFromBytes(IRpcSerializer serializer, byte* bytes, uint maxCt, out int bytesRead)
     {
         int size = 1;
         if (maxCt < size)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        IdentifierFlags flags = (IdentifierFlags)(*bytes);
-        ++bytes;
-        if ((flags & IdentifierFlags.IsTypeCode) != 0)
+        TypeCode typeCode = (TypeCode)(*bytes);
+        if (typeCode == 0)
         {
-            ++size;
-            if (maxCt < size)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
-            TypeCode typeCode = (TypeCode)(*bytes);
-            ++bytes;
+            bytesRead = 1;
+            return null;
+        }
 
-            if (typeCode is > TypeUtility.MaxUsedTypeCode or <= TypeCode.DBNull)
+        ++bytes;
+        if (typeCode != TypeCode.Object)
+        {
+            if (typeCode > TypeUtility.MaxUsedTypeCode)
                 throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionInvalidTypeCode, typeCode.ToString())) { ErrorCode = 7 };
 
             if (typeCode == TypeCode.String)
@@ -608,6 +753,12 @@ public class RpcEndpoint : IRpcInvocationPoint
                 string str = serializer.ReadObject<string>(bytes, maxCt - (uint)size, out int strBytesRead);
                 bytesRead = size + strBytesRead;
                 return str;
+            }
+
+            if (typeCode == TypeCode.DBNull)
+            {
+                bytesRead = 1;
+                return DBNull.Value;
             }
 
             object identifier;
@@ -773,6 +924,11 @@ public class RpcEndpoint : IRpcInvocationPoint
         }
         else
         {
+            ++size;
+            if (maxCt < size)
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+            IdentifierFlags flags = (IdentifierFlags)(*bytes);
+            ++bytes;
             uint? knownTypeId = null;
             string? typeName = null;
             if ((flags & IdentifierFlags.IsTypeNameOnly) == 0)
@@ -802,26 +958,39 @@ public class RpcEndpoint : IRpcInvocationPoint
             return identifier;
         }
     }
-    internal static unsafe object ReadIdentifierFromStream(IRpcSerializer serializer, Stream stream, out int bytesRead)
+    internal static unsafe object? ReadIdentifierFromStream(IRpcSerializer serializer, Stream stream, out int bytesRead)
     {
         int size = 1;
 
         int b = stream.ReadByte();
         if (b == -1)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
-        IdentifierFlags flags = (IdentifierFlags)b;
-        if ((flags & IdentifierFlags.IsTypeCode) != 0)
+        if (b == 0)
         {
-            ++size;
-            b = stream.ReadByte();
-            if (b == -1)
-                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
-            TypeCode typeCode = (TypeCode)b;
+            bytesRead = 0;
+            return null;
+        }
 
-            if (typeCode is > TypeUtility.MaxUsedTypeCode or <= TypeCode.DBNull)
+        TypeCode typeCode = (TypeCode)b;
+        if (typeCode != TypeCode.Object)
+        {
+            if (typeCode > TypeUtility.MaxUsedTypeCode)
                 throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcOverheadParseExceptionInvalidTypeCode, typeCode.ToString())) { ErrorCode = 7 };
 
             object identifier;
+
+            if (typeCode == TypeCode.String)
+            {
+                string value = serializer.ReadObject<string>(stream, out int strBytesRead);
+                bytesRead = size + strBytesRead;
+                return value;
+            }
+
+            if (typeCode == TypeCode.DBNull)
+            {
+                bytesRead = 1;
+                return DBNull.Value;
+            }
 
             if (serializer.CanFastReadPrimitives)
             {
@@ -832,12 +1001,6 @@ public class RpcEndpoint : IRpcInvocationPoint
 #else
                 scoped Span<byte> bytes;
 #endif
-                if (typeCode == TypeCode.String)
-                {
-                    string value = serializer.ReadObject<string>(stream, out int strBytesRead);
-                    bytesRead = size + strBytesRead;
-                    return value;
-                }
                 int tcsz = TypeUtility.GetTypeCodeSize(typeCode);
                 size += tcsz;
                 if (size != 1)
@@ -1000,6 +1163,12 @@ public class RpcEndpoint : IRpcInvocationPoint
         {
             uint? knownTypeId = null;
             string? typeName = null;
+            b = stream.ReadByte();
+
+            if (b == -1)
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+            IdentifierFlags flags = (IdentifierFlags)b;
             int sz = (flags & IdentifierFlags.IsTypeNameOnly) == 0 ? sizeof(uint) : 0;
             sz += (flags & IdentifierFlags.IsKnownTypeOnly) == 0 ? sizeof(ushort) : 0;
             int arrSize = (flags & IdentifierFlags.IsTypeNameOnly) == 0 ? sz + 32 : sz;
@@ -1087,15 +1256,14 @@ public class RpcEndpoint : IRpcInvocationPoint
     [Flags]
     protected internal enum IdentifierFlags : byte
     {
-        IsTypeCode = 1,
-        IsKnownTypeOnly = 1 << 3,
-        IsTypeNameOnly = 1 << 4
+        IsKnownTypeOnly = 1,
+        IsTypeNameOnly = 1 << 1
     }
 
     [Flags]
     protected internal enum EndpointFlags
     {
-        HasIdentifier = 1,
+        DefinesParameters = 1,
         ArgsAreBindOnly = 1 << 1
     }
 }

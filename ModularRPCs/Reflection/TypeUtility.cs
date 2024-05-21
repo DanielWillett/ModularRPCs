@@ -9,9 +9,49 @@ namespace DanielWillett.ModularRpcs.Reflection;
 internal static class TypeUtility
 {
     public const TypeCode MaxUsedTypeCode = (TypeCode)19;
-
     public const TypeCode TypeCodeTimeSpan = (TypeCode)17;
     public const TypeCode TypeCodeGuid = (TypeCode)19;
+    public static TypeCode GetTypeCode(Type tc)
+    {
+        if (tc == typeof(DBNull))
+            return TypeCode.DBNull;
+        if (tc == typeof(bool))
+            return TypeCode.Boolean;
+        if (tc == typeof(char))
+            return TypeCode.Char;
+        if (tc == typeof(sbyte))
+            return TypeCode.SByte;
+        if (tc == typeof(byte))
+            return TypeCode.Byte;
+        if (tc == typeof(short))
+            return TypeCode.Int16;
+        if (tc == typeof(ushort))
+            return TypeCode.UInt16;
+        if (tc == typeof(int))
+            return TypeCode.Int32;
+        if (tc == typeof(uint))
+            return TypeCode.UInt32;
+        if (tc == typeof(long))
+            return TypeCode.Int64;
+        if (tc == typeof(ulong))
+            return TypeCode.UInt64;
+        if (tc == typeof(float))
+            return TypeCode.Single;
+        if (tc == typeof(double))
+            return TypeCode.Double;
+        if (tc == typeof(decimal))
+            return TypeCode.Decimal;
+        if (tc == typeof(DateTime))
+            return TypeCode.DateTime;
+        if (tc == typeof(TimeSpan))
+            return TypeCodeTimeSpan;
+        if (tc == typeof(string))
+            return TypeCode.String;
+        if (tc == typeof(Guid))
+            return TypeCodeGuid;
+
+        return TypeCode.Object;
+    }
     public static Type GetType(TypeCode tc)
     {
         return tc switch
@@ -56,7 +96,7 @@ internal static class TypeUtility
             TypeCode.Decimal => sizeof(int) * 4,
             TypeCode.DateTime => sizeof(long),
             TypeCodeTimeSpan => sizeof(long),
-            TypeCode.String => 1,
+            TypeCode.String => 2,
             TypeCodeGuid => 16,
             _ => throw new ArgumentOutOfRangeException(nameof(tc), tc, null)
         };
