@@ -15,5 +15,10 @@ public enum RpcFlags : ushort
     /// <summary>
     /// The endpoint is declared using the known ID but also has an identifier.
     /// </summary>
-    EndpointCodeIncludesIdentifier = 1 << 1
+    EndpointCodeIncludesIdentifier = 1 << 1,
+
+    /// <summary>
+    /// There is no listener waiting for a response from this RPC.
+    /// </summary>
+    FireAndForget = 1 << 2,
 }

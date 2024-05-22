@@ -4,6 +4,10 @@ using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Protocol;
 
 namespace DanielWillett.ModularRpcs.Routing;
 
@@ -50,4 +54,14 @@ public interface IRpcRouter
     /// Get the default interface implementations for a proxy class.
     /// </summary>
     void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
+
+    /// <summary>
+    /// Invoke an RPC by it's invocation point.
+    /// </summary>
+    ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token);
+
+    /// <summary>
+    /// Invoke an RPC by it's invocation point. If context switching would occur, <paramref name="bytes"/> MUST BE COPIED.
+    /// </summary>
+    ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlySpan<byte> bytes, CancellationToken token);
 }

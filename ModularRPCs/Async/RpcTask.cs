@@ -27,6 +27,16 @@ public class RpcTask
     /// Is this task explicitly set to be in fire-and-forget mode due to a <see cref="RpcFireAndForgetAttribute"/>.
     /// </summary>
     public bool IsFireAndForget { get; }
+
+    /// <summary>
+    /// The unique (to the sender) id of this message.
+    /// </summary>
+    public ulong MessageId { get; internal set; }
+    
+    /// <summary>
+    /// The sub-message id used to differentiate between the original message and it's responses.
+    /// </summary>
+    public byte SubMessageId { get; internal set; }
     internal RpcTask(bool isFireAndForget)
     {
         if (GetType() == typeof(RpcTask))

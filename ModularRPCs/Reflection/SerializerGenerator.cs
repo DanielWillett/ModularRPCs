@@ -754,6 +754,8 @@ internal sealed class SerializerGenerator
                 toInject = new ArraySegment<ParameterInfo>(parameters, swapIndex, parameters.Length - swapIndex);
                 toBind = new ArraySegment<ParameterInfo>(parameters, 0, swapIndex);
             }
+
+            return;
         }
 
         if (numBindToInjTransitions + numInjToBindTransitions == 2)
@@ -784,6 +786,8 @@ internal sealed class SerializerGenerator
                 toBind = new ArraySegment<ParameterInfo>(halfArr);
                 toInject = new ArraySegment<ParameterInfo>(parameters, swapIndex, lenWhole);
             }
+
+            return;
         }
 
         ParameterInfo[] toInj = new ParameterInfo[injectionParams];

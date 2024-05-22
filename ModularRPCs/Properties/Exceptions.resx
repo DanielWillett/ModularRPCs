@@ -306,4 +306,10 @@
   <data name="RpcOverflowExceptionParameterTypeNameTooLong" xml:space="preserve">
     <value>Failed to encode endpoint for type '{0}', method '{0}'. A parameter type was longer than 65535 UTF8 bytes.</value>
   </data>
+  <data name="RpcInvocationException" xml:space="preserve">
+    <value>There was an error invoking the RPC.</value>
+  </data>
+  <data name="RpcInvocationExceptionWithInvocationPointMessage" xml:space="preserve">
+    <value>There was a {1} invoking RPC '{0}'. {2}.</value>
+  </data>
 </root>

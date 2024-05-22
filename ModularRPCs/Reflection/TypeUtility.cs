@@ -8,9 +8,10 @@ using System.Diagnostics.CodeAnalysis;
 namespace DanielWillett.ModularRpcs.Reflection;
 internal static class TypeUtility
 {
-    public const TypeCode MaxUsedTypeCode = (TypeCode)19;
+    public const TypeCode MaxUsedTypeCode = (TypeCode)20;
     public const TypeCode TypeCodeTimeSpan = (TypeCode)17;
     public const TypeCode TypeCodeGuid = (TypeCode)19;
+    public const TypeCode TypeCodeDateTimeOffset = (TypeCode)20;
     public static TypeCode GetTypeCode(Type tc)
     {
         if (tc == typeof(DBNull))
@@ -49,6 +50,8 @@ internal static class TypeUtility
             return TypeCode.String;
         if (tc == typeof(Guid))
             return TypeCodeGuid;
+        if (tc == typeof(DateTimeOffset))
+            return TypeCodeDateTimeOffset;
 
         return TypeCode.Object;
     }
@@ -76,6 +79,7 @@ internal static class TypeUtility
             TypeCodeTimeSpan => typeof(TimeSpan),
             TypeCode.String => typeof(string),
             TypeCodeGuid => typeof(Guid),
+            TypeCodeDateTimeOffset => typeof(DateTimeOffset),
             _ => throw new ArgumentOutOfRangeException(nameof(tc))
         };
     }
@@ -83,6 +87,7 @@ internal static class TypeUtility
     {
         return tc switch
         {
+            TypeCode.DBNull => 0,
             TypeCode.Boolean or TypeCode.SByte or TypeCode.Byte => 1,
             TypeCode.Char => sizeof(char),
             TypeCode.Int16 => sizeof(short),
@@ -95,6 +100,7 @@ internal static class TypeUtility
             TypeCode.Double => sizeof(double),
             TypeCode.Decimal => sizeof(int) * 4,
             TypeCode.DateTime => sizeof(long),
+            TypeCodeDateTimeOffset => sizeof(long) + sizeof(short),
             TypeCodeTimeSpan => sizeof(long),
             TypeCode.String => 2,
             TypeCodeGuid => 16,

@@ -7,12 +7,14 @@ using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ReflectionTools.Formatting;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -163,6 +165,31 @@ public class RpcEndpoint : IRpcInvocationPoint
         CalculateSize();
     }
 
+    public override string ToString()
+    {
+        if (Method != null)
+            return Accessor.ExceptionFormatter.Format(Method);
+
+        MethodDefinition def = new MethodDefinition(MethodName ?? string.Empty);
+        if (DeclaringType != null)
+            def.DeclaredIn(DeclaringType, IsStatic);
+        else
+            def.DeclaredIn(DeclaringTypeName, IsStatic);
+        
+        if (ParameterTypes != null)
+        {
+            for (int i = 0; i < ParameterTypes.Length; ++i)
+                def.WithParameter(ParameterTypes[i]!, "arg" + i.ToString(CultureInfo.InvariantCulture));
+        }
+        else if (ParameterTypeNames != null)
+        {
+            for (int i = 0; i < ParameterTypeNames.Length; ++i)
+                def.WithParameter(ParameterTypeNames[i], "arg" + i.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return Accessor.ExceptionFormatter.Format(def);
+    }
+
     private protected virtual unsafe object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerBytes handlerBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, byte* bytes, uint maxSize, CancellationToken token)
     {
         return handlerBytes(null, targetObject, overhead, router, serializer, bytes, maxSize, token);
@@ -217,6 +244,7 @@ public class RpcEndpoint : IRpcInvocationPoint
     }
     protected virtual ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
     {
+        // todo optimize
         switch (returnedValue)
         {
             case null:
@@ -443,7 +471,6 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         return size;
     }
-
     internal static unsafe IRpcInvocationPoint ReadFromBytes(IRpcSerializer serializer, IRpcRouter router, byte* bytes, uint maxCt, out int bytesRead)
     {
         if (maxCt < 13)
@@ -536,7 +563,6 @@ public class RpcEndpoint : IRpcInvocationPoint
         bytesRead = checked( (int)(bytes - originalPtr) );
         return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, signatureHash, bytesRead, identifier);
     }
-
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcSerializer serializer, IRpcRouter router, Stream stream, out int bytesRead)
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
@@ -889,6 +915,18 @@ public class RpcEndpoint : IRpcInvocationPoint
                         identifier = new TimeSpan(z64);
                         break;
 
+                    case TypeUtility.TypeCodeDateTimeOffset:
+                        z64 = BitConverter.IsLittleEndian
+                            ? Unsafe.ReadUnaligned<long>(bytes)
+                            : ((long)((uint)*bytes << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3]) << 32) | ((uint)bytes[4] << 24 | (uint)bytes[5] << 16 | (uint)bytes[6] << 8 | bytes[7]);
+                        
+                        short offset = BitConverter.IsLittleEndian
+                            ? Unsafe.ReadUnaligned<short>(bytes + 8)
+                            : (short)(bytes[8] << 8 | bytes[9]);
+
+                        identifier = new DateTimeOffset(z64, TimeSpan.FromMinutes(offset));
+                        break;
+
                     case TypeUtility.TypeCodeGuid:
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
                         identifier = new Guid(new ReadOnlySpan<byte>(bytes, 16));
@@ -1129,6 +1167,18 @@ public class RpcEndpoint : IRpcInvocationPoint
                             ? Unsafe.ReadUnaligned<long>(ref bytes[0])
                             : ((long)((uint)bytes[0] << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3]) << 32) | ((uint)bytes[4] << 24 | (uint)bytes[5] << 16 | (uint)bytes[6] << 8 | bytes[7]);
                         identifier = new TimeSpan(z64);
+                        break;
+
+                    case TypeUtility.TypeCodeDateTimeOffset:
+                        z64 = BitConverter.IsLittleEndian
+                            ? Unsafe.ReadUnaligned<long>(ref bytes[0])
+                            : ((long)((uint)bytes[0] << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3]) << 32) | ((uint)bytes[4] << 24 | (uint)bytes[5] << 16 | (uint)bytes[6] << 8 | bytes[7]);
+
+                        short offset = BitConverter.IsLittleEndian
+                            ? Unsafe.ReadUnaligned<short>(ref bytes[8])
+                            : (short)(bytes[8] << 8 | bytes[9]);
+
+                        identifier = new DateTimeOffset(z64, TimeSpan.FromMinutes(offset));
                         break;
 
                     case TypeUtility.TypeCodeGuid:

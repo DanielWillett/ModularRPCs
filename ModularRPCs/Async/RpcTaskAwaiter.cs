@@ -39,9 +39,7 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
     /// <exception cref="RpcGetResultUsageException">Task has yet to complete.</exception>
     public void GetResult()
     {
-        if (Task.IsFireAndForget)
-            return;
-        if (!IsCompleted)
+        if (!Task.IsFireAndForget && !IsCompleted)
             throw new RpcGetResultUsageException();
 
         if (Task.Exception == null && Task.Exceptions == null)

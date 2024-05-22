@@ -376,6 +376,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to There was an error invoking the RPC..
+        /// </summary>
+        public static string RpcInvocationException {
+            get {
+                return ResourceManager.GetString("RpcInvocationException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There was a {1} invoking RPC &apos;{0}&apos;. {2}..
+        /// </summary>
+        public static string RpcInvocationExceptionWithInvocationPointMessage {
+            get {
+                return ResourceManager.GetString("RpcInvocationExceptionWithInvocationPointMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to There are no connections available to perform the given action..
         /// </summary>
         public static string RpcNoConnectionsException {

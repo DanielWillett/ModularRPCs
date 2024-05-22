@@ -16,6 +16,9 @@ public class RpcEndpointNotFoundException : RpcException
     public IRpcInvocationPoint? InvocationPoint { get; }
 
     /// <inheritdoc />
+    public RpcEndpointNotFoundException() { }
+
+    /// <inheritdoc />
     public RpcEndpointNotFoundException(IRpcInvocationPoint invocationPoint) : base(Properties.Exceptions.RpcEndpointNotFoundException)
     {
         InvocationPoint = invocationPoint;

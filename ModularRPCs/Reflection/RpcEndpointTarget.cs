@@ -48,6 +48,7 @@ public struct RpcEndpointTarget
 
         RpcEndpointTarget target = default;
 
+        target.SignatureHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
         if (sendAttribute.TryResolveMethod(method, out MethodInfo? resolvedMethod, out ResolveMethodResult result))
         {
             target.IsDeclaringSendMethod = result == ResolveMethodResult.IsSelfTarget;
@@ -84,8 +85,7 @@ public struct RpcEndpointTarget
     {
         target.MethodName = method.Name ?? string.Empty;
         target.DeclaringTypeName = method.DeclaringType == null ? string.Empty : TypeUtility.GetAssemblyQualifiedNameNoVersion(method.DeclaringType);
-        target.SignatureHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
-
+        
         if (!(forceSignatureCheck || 
             method.DeclaringType != null && method.DeclaringType
                 .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
@@ -145,8 +145,6 @@ public struct RpcEndpointTarget
                 needsSigCheck = true;
             }
         }
-
-        target.SignatureHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(decoratingMethod);
 
         if (!needsSigCheck)
             return;

@@ -47,16 +47,8 @@ public class Program
         string str = "test";
         DateTime dt = DateTime.UtcNow;
 
-        RpcTask task = sc0.CallRpcOne(i);
-
-        await task;
-        //bool didRelease = sc0.Release();
-        //Console.WriteLine($"released: {didRelease}.");
-        //
-        //didRelease = sc0.Release();
-        //Console.WriteLine($"released: {didRelease}.");
-
-        Console.WriteLine("over");
+        int result = await sc0.CallRpcOne(loopbackRemote, i, val, str, dt);
+        Console.WriteLine($"over: {result}.");
     }
 
     //public static void Run(string[] args)

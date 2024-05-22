@@ -34,16 +34,16 @@ public class SampleClass : IRpcObject<int>
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
     [RpcSend(nameof(RpcOne))]
-    [RpcFireAndForget]
-    internal virtual RpcTask CallRpcOne(int arg1) => RpcTask.NotImplemented;
+    internal virtual RpcTask<int> CallRpcOne(IModularRpcRemoteConnection connection, int arg1, nint arg2, string arg3, DateTime arg4) => RpcTask<int>.NotImplemented;
 
     [RpcReceive]
-    private async Task RpcOne(CancellationToken token, IModularRpcRemoteConnection connection, int value)
+    private async Task<int> RpcOne(IModularRpcRemoteConnection connection, int value, CancellationToken token)
     {
         Console.WriteLine($"Value: {value}");
         Console.WriteLine("Start");
-        await Task.Delay(TimeSpan.FromSeconds(5d));
+        await Task.Delay(TimeSpan.FromSeconds(5d), token);
         Console.WriteLine("Done");
+        return 4;
     }
     protected virtual bool Release()
     {

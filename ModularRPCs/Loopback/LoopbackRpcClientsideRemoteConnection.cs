@@ -42,7 +42,7 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
             overhead = RpcOverhead.ReadFromBytes(Server, serializer, ptr, (uint)rawData.Length);
         }
 
-        return overhead.Rpc.Invoke(overhead, serializer, rawData.Length == overhead.OverheadSize ? default : rawData.Slice(overhead.OverheadSize), token);
+        return Local.Router.InvokeInvocationPoint(overhead.Rpc, overhead, serializer, rawData.Length == overhead.OverheadSize ? default : rawData.Slice(overhead.OverheadSize), token);
     }
     ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {
@@ -51,7 +51,7 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
 
         RpcOverhead overhead = RpcOverhead.ReadFromStream(Server, serializer, streamData);
 
-        return overhead.Rpc.Invoke(overhead, serializer, streamData, token);
+        return Local.Router.InvokeInvocationPoint(overhead.Rpc, overhead, serializer, streamData, token);
     }
 
     public ValueTask DisposeAsync() => CloseAsync();

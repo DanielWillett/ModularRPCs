@@ -10,6 +10,7 @@ using DanielWillett.ModularRpcs.Routing;
 namespace DanielWillett.ModularRpcs.Protocol;
 public class RpcOverhead
 {
+    internal const byte OvhCodeId = 1;
     private readonly uint _size2Check;
     internal const int MinimumSize = 23;
 
@@ -31,6 +32,7 @@ public class RpcOverhead
     /// <summary>
     /// Sub-message id within the unique <see cref="MessageId"/>. Ex. responses have the same message id but will have a different sub-message id.
     /// </summary>
+    /// <remarks>Submessage ID 0 represents the 'first contact'. 1 is the response. More may be used later.</remarks>
     public byte SubMessageId { get; }
 
     /// <summary>
@@ -247,6 +249,10 @@ public class RpcOverhead
         else if (callMethodInfo.HasIdentifier)
         {
             flags |= RpcFlags.EndpointCodeIncludesIdentifier;
+        }
+        if (callMethodInfo.IsFireAndForget)
+        {
+            flags |= RpcFlags.FireAndForget;
         }
 
         if (isLittleEndian)

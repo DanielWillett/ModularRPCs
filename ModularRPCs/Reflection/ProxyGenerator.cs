@@ -1105,16 +1105,6 @@ public sealed class ProxyGenerator
             }
 
             ParameterInfo[] parameters = method.GetParameters();
-            Type[] types = new Type[parameters.Length];
-            Type[][] reqMods = new Type[parameters.Length][];
-            Type[][] optMods = new Type[parameters.Length][];
-            for (int i = 0; i < parameters.Length; ++i)
-            {
-                ParameterInfo p = parameters[i];
-                types[i] = p.ParameterType;
-                reqMods[i] = p.GetRequiredCustomModifiers();
-                optMods[i] = p.GetOptionalCustomModifiers();
-            }
 
             MethodAttributes privacyAttributes = method.Attributes & (
                 MethodAttributes.Public
@@ -1124,7 +1114,6 @@ public sealed class ProxyGenerator
                 | MethodAttributes.FamANDAssem
                 | MethodAttributes.FamORAssem);
 
-            Type serializerCache = SerializerGenerator.GetSerializerType(parameters.Length);
             SerializerGenerator.BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
             Type[] genericArguments = new Type[toBind.Count];
             for (int i = 0; i < toBind.Count; ++i)
@@ -1144,6 +1133,7 @@ public sealed class ProxyGenerator
                 }
                 genericArguments[i] = param.ParameterType;
             }
+            Type serializerCache = SerializerGenerator.GetSerializerType(genericArguments.Length);
 
             bool injectedConnection = false;
             ushort injectedConnectionArgNum = 0;
@@ -1231,6 +1221,17 @@ public sealed class ProxyGenerator
             typeInitIl.Emit(OpCodes.Ldsflda, methodInfoField);
             rpcCall.EmitToAddress(typeInitIl);
 
+            Type[] types = new Type[parameters.Length];
+            Type[][] reqMods = new Type[parameters.Length][];
+            Type[][] optMods = new Type[parameters.Length][];
+            for (int i = 0; i < parameters.Length; ++i)
+            {
+                ParameterInfo p = parameters[i];
+                types[i] = p.ParameterType;
+                reqMods[i] = p.GetRequiredCustomModifiers();
+                optMods[i] = p.GetOptionalCustomModifiers();
+            }
+
             MethodBuilder methodBuilder = builder.DefineMethod(method.Name,
                 privacyAttributes | MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final,
                 method.CallingConvention,
@@ -1262,7 +1263,6 @@ public sealed class ProxyGenerator
             LocalBuilder? lclIdTypeSize = null;
             LocalBuilder? lclKnownTypeId = null;
             LocalBuilder? lclHasKnownTypeId = null;
-            MethodInfo[]? iRpcSerializerMethods = null;
             bool canQuickSerialize = false;
             bool passByRef = false;
 
@@ -1284,7 +1284,7 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Ldloc, lclSerializer);
             for (int i = 0; i < genericArguments.Length; ++i)
             {
-                il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, checked ( (ushort)(i + 1) ));
+                il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, checked ( (ushort)(toBind.Array![i + toBind.Offset].Position + 1) ));
             }
 
             il.Emit(OpCodes.Callvirt, getSizeInvokeMethod);
@@ -1658,7 +1658,7 @@ public sealed class ProxyGenerator
             il.Emit(OpCodes.Conv_Ovf_U4);
             for (int i = 0; i < genericArguments.Length; ++i)
             {
-                il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, checked ( (ushort)(i + 1) ));
+                il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, checked ( (ushort)(toBind.Array![i + toBind.Offset].Position + 1) ));
             }
 
             il.Emit(OpCodes.Callvirt, writeBytesInvokeMethod);
