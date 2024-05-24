@@ -1,6 +1,9 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+using System.Diagnostics.CodeAnalysis;
+#endif
 
 namespace DanielWillett.ModularRpcs.Serialization;
 public interface IRpcSerializer
@@ -15,13 +18,20 @@ public interface IRpcSerializer
     /// Get the size of an object in bytes.
     /// </summary>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSize<T>(T value);
+    int GetSize<T>(T? value);
+
+    /// <summary>
+    /// Get the size of a nullable object in bytes.
+    /// </summary>
+    /// <typeparam name="T">Underlying type of the nullable type.</typeparam>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int GetSize<T>(in T? value) where T : struct;
 
     /// <summary>
     /// Get the size of an object in bytes.
     /// </summary>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSize(object value);
+    int GetSize(object? value);
 
     /// <summary>
     /// Get the size of an object in bytes.
@@ -41,24 +51,35 @@ public interface IRpcSerializer
     /// <param name="isFixedSize">Will the amount of bytes written always be the same, no matter the value?</param>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     int GetMinimumSize(Type type, out bool isFixedSize);
-    unsafe int WriteObject<T>(T value, byte* bytes, uint maxSize);
-    unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize);
-    unsafe int WriteObject(object value, byte* bytes, uint maxSize);
-    int WriteObject<T>(T value, Stream stream);
-    int WriteObject(TypedReference value, Stream stream);
-    int WriteObject(object value, Stream stream);
 
-    unsafe T ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead);
+    unsafe int WriteObject<T>(in T? value, byte* bytes, uint maxSize) where T : struct;
+    unsafe int WriteObject<T>(T? value, byte* bytes, uint maxSize);
+    unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize);
+    unsafe int WriteObject(object? value, byte* bytes, uint maxSize);
+    int WriteObject<T>(in T? value, Stream stream) where T : struct;
+    int WriteObject<T>(T? value, Stream stream);
+    int WriteObject(TypedReference value, Stream stream);
+    int WriteObject(object? value, Stream stream);
+
+    unsafe T? ReadNullable<T>(byte* bytes, uint maxSize, out int bytesRead) where T : struct;
+    unsafe void ReadNullable<T>(TypedReference refOut, byte* bytes, uint maxSize, out int bytesRead) where T : struct;
+    unsafe T? ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead);
     unsafe void ReadObject(TypedReference refValue, byte* bytes, uint maxSize, out int bytesRead);
-    unsafe object ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead);
-    T ReadObject<T>(Stream stream, out int bytesRead);
+    unsafe object? ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead);
+    T? ReadNullable<T>(Stream stream, out int bytesRead) where T : struct;
+    void ReadNullable<T>(TypedReference refOut, Stream stream, out int bytesRead) where T : struct;
+    T? ReadObject<T>(Stream stream, out int bytesRead);
     void ReadObject(TypedReference refValue, Stream stream, out int bytesRead);
-    object ReadObject(Type objectType, Stream stream, out int bytesRead);
+    object? ReadObject(Type objectType, Stream stream, out int bytesRead);
 
     /// <summary>
     /// Tries to find a recognized type by it's unique unsigned 32 bit id.
     /// </summary>
-    bool TryGetKnownType(uint knownTypeId, out Type knownType);
+    bool TryGetKnownType(uint knownTypeId,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]
+#endif
+        out Type knownType);
 
     /// <summary>
     /// Tries to find a unique unsigned 32 bit id by it's type.

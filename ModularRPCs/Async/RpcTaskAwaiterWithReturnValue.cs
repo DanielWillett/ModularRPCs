@@ -12,6 +12,6 @@ public class RpcTaskAwaiter<T> : RpcTaskAwaiter
     public new T GetResult()
     {
         base.GetResult();
-        return ((RpcTask<T>)Task).Result!;
+        return ((RpcTask<T>)Task).ResultIntl!;
     }
 }

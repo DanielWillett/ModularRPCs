@@ -19,7 +19,7 @@ public class GuidParser : BinaryTypeParser<Guid>
         value.TryWriteBytes(new Span<byte>(bytes, 16));
 #else
         byte[] data = value.ToByteArray();
-        Unsafe.CopyBlock(ref Unsafe.AsRef<byte>(bytes), ref data[0], 16u);
+        Unsafe.CopyBlockUnaligned(ref Unsafe.AsRef<byte>(bytes), ref data[0], 16u);
 #endif
 
         return 16;

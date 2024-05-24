@@ -56,12 +56,12 @@ public interface IRpcRouter
     void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
 
     /// <summary>
-    /// Invoke an RPC by it's invocation point.
-    /// </summary>
-    ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token);
-
-    /// <summary>
     /// Invoke an RPC by it's invocation point. If context switching would occur, <paramref name="bytes"/> MUST BE COPIED.
     /// </summary>
-    ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlySpan<byte> bytes, CancellationToken token);
+    ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token = default);
+
+    /// <summary>
+    /// Invoke an RPC by it's invocation point.
+    /// </summary>
+    ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
 }

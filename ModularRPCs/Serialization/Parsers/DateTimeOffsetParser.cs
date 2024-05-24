@@ -21,17 +21,17 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
         }
         else
         {
-            bytes[7] = unchecked((byte)ticks);
-            bytes[6] = unchecked((byte)(ticks >>> 8));
-            bytes[5] = unchecked((byte)(ticks >>> 16));
-            bytes[4] = unchecked((byte)(ticks >>> 24));
-            bytes[3] = unchecked((byte)(ticks >>> 32));
-            bytes[2] = unchecked((byte)(ticks >>> 40));
-            bytes[1] = unchecked((byte)(ticks >>> 48));
-            *bytes   = unchecked((byte)(ticks >>> 56));
+            bytes[7] = unchecked( (byte) ticks );
+            bytes[6] = unchecked( (byte)(ticks >>> 8) );
+            bytes[5] = unchecked( (byte)(ticks >>> 16) );
+            bytes[4] = unchecked( (byte)(ticks >>> 24) );
+            bytes[3] = unchecked( (byte)(ticks >>> 32) );
+            bytes[2] = unchecked( (byte)(ticks >>> 40) );
+            bytes[1] = unchecked( (byte)(ticks >>> 48) );
+            *bytes   = unchecked( (byte)(ticks >>> 56) );
 
-            bytes[9] = unchecked((byte)offset);
-            bytes[8] = unchecked((byte)(offset >>> 8));
+            bytes[9] = unchecked( (byte)offset);
+            bytes[8] = unchecked( (byte)(offset >>> 8) );
         }
         
         return 10;
@@ -54,17 +54,17 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
         }
         else
         {
-            span[7] = unchecked((byte)ticks);
-            span[6] = unchecked((byte)(ticks >>> 8));
-            span[5] = unchecked((byte)(ticks >>> 16));
-            span[4] = unchecked((byte)(ticks >>> 24));
-            span[3] = unchecked((byte)(ticks >>> 32));
-            span[2] = unchecked((byte)(ticks >>> 40));
-            span[1] = unchecked((byte)(ticks >>> 48));
-            span[0] = unchecked((byte)(ticks >>> 56));
+            span[7] = unchecked( (byte) ticks );
+            span[6] = unchecked( (byte)(ticks >>> 8) );
+            span[5] = unchecked( (byte)(ticks >>> 16) );
+            span[4] = unchecked( (byte)(ticks >>> 24) );
+            span[3] = unchecked( (byte)(ticks >>> 32) );
+            span[2] = unchecked( (byte)(ticks >>> 40) );
+            span[1] = unchecked( (byte)(ticks >>> 48) );
+            span[0] = unchecked( (byte)(ticks >>> 56) );
 
-            span[9] = unchecked((byte)offset);
-            span[8] = unchecked((byte)(offset >>> 8));
+            span[9] = unchecked( (byte) offset);
+            span[8] = unchecked( (byte)(offset >>> 8) );
         }
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK

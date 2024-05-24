@@ -142,6 +142,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The type &apos;{0}&apos; is not a valid type for the binary type parser: &apos;{1}&apos;..
+        /// </summary>
+        public static string InvalidCastExceptionInvalidType {
+            get {
+                return ResourceManager.GetString("InvalidCastExceptionInvalidType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Must be of type &apos;IModularRpcRemoteConnection&apos;, &apos;IEnumerable&lt;IModularRpcRemoteConnection&gt;&apos;, or null..
         /// </summary>
         public static string InvokeRpcConnectionsInvalidType {
@@ -201,6 +210,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string ObjectNotIdentifyableType {
             get {
                 return ResourceManager.GetString("ObjectNotIdentifyableType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The given output buffer is not big enough to put all elements in after reading in the binary type parser: &apos;{0}&apos;..
+        /// </summary>
+        public static string OutputListOutOfRangeIBinaryParser {
+            get {
+                return ResourceManager.GetString("OutputListOutOfRangeIBinaryParser", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The passed output list is readonly while reading in binary type parser: &apos;{0}&apos;..
+        /// </summary>
+        public static string OutputListReadOnlyIBinaryParser {
+            get {
+                return ResourceManager.GetString("OutputListReadOnlyIBinaryParser", resourceCulture);
             }
         }
         
@@ -318,6 +345,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcInvalidParameterExceptionInfo {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionInfo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Parameter of nullable type {0} is not serializable. {1}..
+        /// </summary>
+        public static string RpcInvalidParameterExceptionInfoNoNullableParamInfo {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterExceptionInfoNoNullableParamInfo", resourceCulture);
             }
         }
         
@@ -592,6 +628,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to RPC returned a value of type &apos;{0}&apos; when local expected it to return &apos;{1}&apos;..
+        /// </summary>
+        public static string RpcParseExceptionInvalidReturnType {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionInvalidReturnType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the stream ended too early..
         /// </summary>
         public static string RpcParseExceptionStreamRunOut {
@@ -606,6 +651,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string RpcParseExceptionStreamRunOutIBinaryTypeParser {
             get {
                 return ResourceManager.GetString("RpcParseExceptionStreamRunOutIBinaryTypeParser", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to RPC returned a value of type &apos;{0}&apos;, which could not be identified. Local expected it to return &apos;{1}&apos;..
+        /// </summary>
+        public static string RpcParseExceptionUnknownReturnType {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionUnknownReturnType", resourceCulture);
             }
         }
         
@@ -633,6 +687,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         public static string TypeNotReferenceType {
             get {
                 return ResourceManager.GetString("TypeNotReferenceType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Unity message method &apos;{0}&apos; must be non-sealed, non-private, and virtual or abstract so the proxy class can override it..
+        /// </summary>
+        public static string TypeUnityMessageMethodNotVirtualOrAbstract {
+            get {
+                return ResourceManager.GetString("TypeUnityMessageMethodNotVirtualOrAbstract", resourceCulture);
             }
         }
         

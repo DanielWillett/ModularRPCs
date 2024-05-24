@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Globalization;
 using System.Runtime.Serialization;
 
 namespace DanielWillett.ModularRpcs.Exceptions;
@@ -36,13 +37,18 @@ public class RpcInvocationException : Exception
     /// </summary>
     public string? RemoteMessage { get; }
 
+    /// <summary>
+    /// Optional list of inner exceptions. This will only have a value if there's more than one, otherwise the inner exception will be in <see cref="Exception.InnerException"/>.
+    /// </summary>
+    public RpcInvocationException[]? InnerExceptions { get; }
+
     /// <inheritdoc />
     public RpcInvocationException() : base(Properties.Exceptions.RpcInvocationException) { }
 
     /// <summary>
     /// Create a new <see cref="RpcInvocationException"/> around the given <see cref="IRpcInvocationPoint"/>.
     /// </summary>
-    public RpcInvocationException(IRpcInvocationPoint invocationPoint, object remoteExceptionType, string? remoteMessage, string? remoteStackTrace)
+    public RpcInvocationException(IRpcInvocationPoint? invocationPoint, object remoteExceptionType, string? remoteMessage, string? remoteStackTrace, RpcInvocationException? inner, RpcInvocationException[]? inners)
         : base(string.Format(
             Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
             invocationPoint,
@@ -50,7 +56,7 @@ public class RpcInvocationException : Exception
                 ? Accessor.ExceptionFormatter.Format(t)
                 : (remoteExceptionType?.ToString() ?? Accessor.ExceptionFormatter.Format(typeof(Exception))),
             remoteMessage ?? string.Empty)
-        )
+            , inner)
     {
         if (remoteExceptionType is Type exType)
         {
@@ -67,6 +73,8 @@ public class RpcInvocationException : Exception
         RemoteStackTrace = remoteStackTrace;
 
         InvocationPoint = invocationPoint;
+        if (InnerException == null)
+            InnerExceptions = inners;
     }
 
     /// <inheritdoc />
@@ -79,6 +87,17 @@ public class RpcInvocationException : Exception
         RemoteExceptionType = (Type?)info.GetValue("RemoteExceptionType", typeof(Type));
         RemoteStackTrace = (string?)info.GetValue("RemoteStackTrace", typeof(string));
         RemoteMessage = (string?)info.GetValue("RemoteMessage", typeof(string));
+        
+        int ct = info.GetInt32("InnerExceptionCt");
+        if (ct == 1)
+            return;
+
+        InnerExceptions = new RpcInvocationException[ct];
+        for (int i = 0; i < ct; i++)
+        {
+            InnerExceptions[i] = (RpcInvocationException?)info.GetValue("InnerException_" + i.ToString(CultureInfo.InvariantCulture), typeof(RpcInjectionException))
+                                 ?? throw new SerializationException($"Inner exception {i} is null.");
+        }
     }
 
 #if NET8_0_OR_GREATER
@@ -90,5 +109,13 @@ public class RpcInvocationException : Exception
         info.AddValue("RemoteExceptionType", RemoteExceptionType);
         info.AddValue("RemoteStackTrace", RemoteStackTrace);
         info.AddValue("RemoteMessage", RemoteMessage);
+        int ct = InnerException == null ? InnerExceptions?.Length ?? 0 : 1;
+        if (ct == 1)
+            return;
+
+        for (int i = 0; i < ct; i++)
+        {
+            info.AddValue("InnerException_" + i.ToString(CultureInfo.InvariantCulture), InnerExceptions![i]);
+        }
     }
 }

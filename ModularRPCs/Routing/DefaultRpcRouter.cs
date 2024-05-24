@@ -9,6 +9,7 @@ using DanielWillett.SpeedBytes.Formatting;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -29,9 +30,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
     /// </summary>
     protected readonly ConcurrentDictionary<uint, IRpcInvocationPoint> CachedDescriptors = new ConcurrentDictionary<uint, IRpcInvocationPoint>();
 
-    internal const int OvhCodeIdVoidRtnSuccess = 4;
-    internal const int OvhCodeIdValueRtnSuccess = 3;
-    internal const int OvhCodeIdException = 2;
+    protected internal const byte OvhCodeIdVoidRtnSuccess = 4;
+    protected internal const byte OvhCodeIdValueRtnSuccess = 3;
+    protected internal const byte OvhCodeIdException = 2;
 
     /// <summary>
     /// Manages which connections are available to send to and receive from.
@@ -53,7 +54,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
     }
     public int GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo)
     {
-        int size = 19;
+        int size = 20;
         if (callMethodInfo.KnownId != 0)
             return size + 4;
 
@@ -67,9 +68,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
     }
     protected virtual unsafe int WriteOverhead(RuntimeMethodHandle sourceMethodHandle, IRpcSerializer serializer, ref RpcCallMethodInfo callMethodInfo, byte* bytes, int byteCt, uint dataCt, ulong messageId, byte subMsgId)
     {
-        return RpcOverhead.WriteToBytes(serializer, this, sourceMethodHandle, ref callMethodInfo, bytes, byteCt, dataCt, messageId, subMsgId);
+        int ct = RpcOverhead.WriteToBytes(serializer, this, sourceMethodHandle, ref callMethodInfo, bytes + 1, byteCt - 1, dataCt, messageId, subMsgId);
+        bytes[0] = RpcOverhead.OvhCodeId;
+        return ct + 1;
     }
-    public async ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    protected virtual async ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
     {
         try
         {
@@ -94,7 +97,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             {
                 try
                 {
-                    await ReplyRpcError(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection, ex, serializer);
+                    await ReplyRpcException(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection, ex, serializer);
                 }
                 catch (Exception ex2)
                 {
@@ -105,7 +108,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             HandleInvokeException(overhead, ex);
         }
     }
-    public ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlySpan<byte> bytes, CancellationToken token)
+    protected virtual ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlySpan<byte> bytes, CancellationToken token = default)
     {
         try
         {
@@ -133,7 +136,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             {
                 try
                 {
-                    ValueTask vt = ReplyRpcError(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection, ex, serializer);
+                    ValueTask vt = ReplyRpcException(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection, ex, serializer);
                     return vt.IsCompleted ? default : new ValueTask(FinishExVtTask(vt, overhead));
                 }
                 catch (Exception ex2)
@@ -170,7 +173,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
                 {
                     try
                     {
-                        await ReplyRpcError(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection, ex, serializer);
+                        await ReplyRpcException(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection, ex, serializer);
                     }
                     catch (Exception ex2)
                     {
@@ -193,6 +196,97 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             }
         }
     }
+    public virtual unsafe ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token = default)
+    {
+        if (rawData.Length <= 1)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        byte codeId = rawData[0];
+        switch (codeId)
+        {
+            case RpcOverhead.OvhCodeId:
+                RpcOverhead overhead;
+                fixed (byte* ptr = &rawData[1])
+                {
+                    overhead = RpcOverhead.ReadFromBytes(sendingConnection, serializer, ptr, (uint)rawData.Length - 1);
+                }
+
+                return InvokeInvocationPoint(overhead.Rpc, overhead, serializer, rawData.Length == overhead.OverheadSize + 1 ? default : rawData.Slice(overhead.OverheadSize + 1), token);
+
+            case OvhCodeIdException:
+                uint index;
+                RpcTask? task;
+                ulong messageId;
+                Exception? ex;
+                fixed (byte* ptr = &rawData[1])
+                {
+                    index = ReadSimpleMessagePrefix(serializer, ptr, rawData.Length - 1, out messageId, out _);
+                    _listeningTasks.TryGetValue(messageId, out task);
+                    IRpcInvocationPoint? invPt = task?.Endpoint;
+                    ex = ReadException(invPt, ptr, (uint)rawData.Length - 1, ref index, serializer);
+                }
+
+                task?.TriggerComplete(ex);
+                break;
+
+            case OvhCodeIdValueRtnSuccess:
+                object? rtn;
+                fixed (byte* ptr = &rawData[1])
+                {
+                    index = ReadSimpleMessagePrefix(serializer, ptr, rawData.Length - 1, out messageId, out _);
+                    _listeningTasks.TryGetValue(messageId, out task);
+                    rtn = ReadReturnValue(serializer, task, ptr, rawData.Length - 1, ref index);
+                }
+
+                if (rtn == null || task == null)
+                    break;
+
+                if (task.TrySetResult(rtn))
+                    task.TriggerComplete(null);
+                else
+                {
+                    Type taskType = task.GetType();
+                    taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
+                    task.TriggerComplete(new RpcParseException(
+                        string.Format(Properties.Exceptions.RpcParseExceptionInvalidReturnType,
+                        Accessor.ExceptionFormatter.Format(rtn.GetType()),
+                        Accessor.ExceptionFormatter.Format(taskType))
+                    ));
+                }
+
+                break;
+
+            case OvhCodeIdVoidRtnSuccess:
+                fixed (byte* ptr = &rawData[1])
+                {
+                    ReadSimpleMessagePrefix(serializer, ptr, rawData.Length - 1, out messageId, out _);
+                }
+
+                _listeningTasks.TryGetValue(messageId, out task);
+                task?.TriggerComplete(null);
+                break;
+        }
+
+        return default;
+    }
+    public virtual ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+    {
+        int codeId = stream.ReadByte();
+        if (codeId == -1)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+        switch (codeId)
+        {
+            case RpcOverhead.OvhCodeId:
+                RpcOverhead overhead = RpcOverhead.ReadFromStream(sendingConnection, serializer, stream);
+                return InvokeInvocationPoint(overhead.Rpc, overhead, serializer, stream, token);
+
+            case OvhCodeIdException:
+                break;
+        }
+
+        return default;
+    }
     public void HandleInvokeException(RpcOverhead overhead, Exception ex)
     {
         Console.WriteLine($"Error invoking {overhead.MessageId} {overhead.SubMessageId}:{Environment.NewLine}" + ex);
@@ -202,8 +296,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
     {
         ulong messageId = GetNewMessageId();
         int ovhSize = (int)((uint)byteCt - dataCt);
-        const byte subMsgId = 0;
-        int ovhEnd = WriteOverhead(sourceMethodHandle, serializer, ref callMethodInfo, bytes, ovhSize, dataCt, messageId, subMsgId);
+        int ovhEnd = WriteOverhead(sourceMethodHandle, serializer, ref callMethodInfo, bytes, ovhSize, dataCt, messageId, 0);
         WriteEndpoint(sourceMethodHandle, serializer, ref callMethodInfo, callMethodInfo.Endpoint.GetEndpoint(), bytes + ovhEnd, ovhSize - ovhEnd);
 
 #if DEBUG
@@ -218,7 +311,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
                 throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
 
             rpcTask = !callMethodInfo.IsFireAndForget
-                ? CreateRpcTaskListener(sourceMethodHandle, messageId, subMsgId + 1) 
+                ? CreateRpcTaskListener(sourceMethodHandle, messageId) 
                 : new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
 
             int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
@@ -256,7 +349,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
         if (connections is IModularRpcRemoteConnection remote1)
         {
             rpcTask = !callMethodInfo.IsFireAndForget
-                ? CreateRpcTaskListener(sourceMethodHandle, messageId, subMsgId + 1)
+                ? CreateRpcTaskListener(sourceMethodHandle, messageId)
                 : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
 
             try
@@ -284,7 +377,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
 
         foreach (IModularRpcRemoteConnection connection in remotes)
         {
-            rpcTask ??= new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = subMsgId };
+            rpcTask ??= new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
             Interlocked.Increment(ref ((RpcBroadcastTask)rpcTask).ConnectionCountIntl);
             Interlocked.Increment(ref rpcTask.CompleteCount);
             try
@@ -313,16 +406,16 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
         Task task = valueTask.AsTask();
         
         if (task == Task.CompletedTask)
-            return ReplyRpcVoidSuccessRtn(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection!, Serializer);
+            return ReplyRpcVoidSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, Serializer);
 
         Type taskType = task.GetType();
         if (!taskType.IsGenericType)
-            return ReplyRpcVoidSuccessRtn(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection!, Serializer);
+            return ReplyRpcVoidSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, Serializer);
         
         // todo optimize
         MethodInfo? getResultMethod = taskType.GetProperty(nameof(Task<object>.Result), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true);
         object? result = getResultMethod?.Invoke(task, Array.Empty<object>());
-        return ReplyRpcValueSuccessRtn(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection!, result, Serializer);
+        return ReplyRpcValueSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, result, Serializer);
     }
     private Func<Task> WrapInvokeTaskInTryBlock(RuntimeMethodHandle sourceMethodHandle, ValueTask vt, RpcTask? rpcTask)
     {
@@ -343,7 +436,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             }
         };
     }
-    private RpcTask CreateRpcTaskListener(RuntimeMethodHandle sourceMethodHandle, ulong messageId, byte subMsgId)
+    private RpcTask CreateRpcTaskListener(RuntimeMethodHandle sourceMethodHandle, ulong messageId)
     {
         MethodInfo method = (MethodBase.GetMethodFromHandle(sourceMethodHandle) as MethodInfo)!;
 
@@ -352,20 +445,38 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             rpcTask = new RpcTask(false);
         else
             rpcTask = (RpcTask)Activator.CreateInstance(method.ReturnType, nonPublic: true);
-
-        StartListening(rpcTask, messageId, subMsgId);
+        
+        rpcTask.MessageId = messageId;
+        rpcTask.SubMessageId = 1;
+        StartListening(rpcTask, messageId);
         return rpcTask;
     }
-    private void StartListening(RpcTask rpcTask, ulong messageId, byte subMsgId)
+    private void StartListening(RpcTask rpcTask, ulong messageId)
     {
-        rpcTask.SubMessageId = subMsgId;
         _listeningTasks.TryAdd(messageId, rpcTask);
     }
-    private void HandleInvokeException(RuntimeMethodHandle sourceMethodHandle, Exception ex)
+    private static void HandleInvokeException(RuntimeMethodHandle sourceMethodHandle, Exception ex)
     {
         Console.WriteLine("Error invoking " + Accessor.Formatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)));
     }
-    private unsafe ValueTask ReplyRpcError(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, Exception ex, IRpcSerializer serializer)
+    private static unsafe uint ReadSimpleMessagePrefix(IRpcSerializer serializer, byte* ptr, int maxSize, out ulong messageId, out byte subMessageId)
+    {
+        if (!serializer.CanFastReadPrimitives)
+        {
+            messageId = serializer.ReadObject<ulong>(ptr, (uint)maxSize, out int bytesRead);
+            uint index = (uint)bytesRead;
+            subMessageId = serializer.ReadObject<byte>(ptr + bytesRead, (uint)maxSize - index, out bytesRead);
+            return index + (uint)bytesRead;
+        }
+
+        messageId = BitConverter.IsLittleEndian
+            ? Unsafe.ReadUnaligned<ulong>(ptr)
+            : ((ulong)((uint)*ptr << 24 | (uint)ptr[1] << 16 | (uint)ptr[2] << 8 | ptr[3]) << 32) | ((uint)ptr[4] << 24 | (uint)ptr[5] << 16 | (uint)ptr[6] << 8 | ptr[7]);
+
+        subMessageId = ptr[8];
+        return 9u;
+    }
+    private static unsafe ValueTask ReplyRpcException(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, Exception ex, IRpcSerializer serializer)
     {
         uint size = GetExceptionSize(ex, serializer);
         size += GetPrefixSize(serializer);
@@ -381,7 +492,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
 
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
-    private unsafe ValueTask ReplyRpcVoidSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)
+    private static unsafe ValueTask ReplyRpcVoidSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)
     {
         uint size = GetPrefixSize(serializer);
 
@@ -395,7 +506,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
 
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
-    private unsafe ValueTask ReplyRpcValueSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, object? value, IRpcSerializer serializer)
+    private static unsafe ValueTask ReplyRpcValueSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, object? value, IRpcSerializer serializer)
     {
         uint size = GetPrefixSize(serializer);
         uint knownTypeId = 0;
@@ -497,258 +608,91 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
             }
             else
             {
-                switch (tc)
-                {
-                    case TypeCode.String:
-                        index += (uint)serializer.WriteObject((string)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.SByte:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            ptr[index] = unchecked( (byte)(sbyte)value! );
-                            ++index;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((sbyte)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.Byte:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            ptr[index] = (byte)value!;
-                            ++index;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((byte)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.Boolean:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            ptr[index] = (bool)value! ? (byte)1 : (byte)0;
-                            ++index;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((byte)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.Int16:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            short i16 = (short)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, i16);
-                            else
-                            {
-                                ptr[index + 1] = unchecked( (byte)i16);
-                                ptr[index]     = unchecked( (byte)(i16 >>> 8) );
-                            }
-
-                            index += 2;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((short)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.UInt16:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            ushort ui16 = (ushort)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, ui16);
-                            else
-                            {
-                                ptr[index + 1] = unchecked( (byte)ui16);
-                                ptr[index]     = unchecked( (byte)(ui16 >>> 8) );
-                            }
-
-                            index += 2;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((ushort)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.Char:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            char c = (char)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, c);
-                            else
-                            {
-                                ptr[index + 1] = unchecked( (byte)c);
-                                ptr[index]     = unchecked( (byte)(c >>> 8) );
-                            }
-
-                            index += 2;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((char)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.Int32:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            int i32 = (int)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, i32);
-                            else
-                            {
-                                ptr[index + 3] = unchecked( (byte) i32 );
-                                ptr[index + 2] = unchecked( (byte)(i32 >>> 8) );
-                                ptr[index + 1] = unchecked( (byte)(i32 >>> 16) );
-                                ptr[index]     = unchecked( (byte)(i32 >>> 24) );
-                            }
-
-                            index += 4;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((int)value!, ptr + index, size - index);
-                        break;
-                        
-                    case TypeCode.UInt32:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            uint ui32 = (uint)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, ui32);
-                            else
-                            {
-                                ptr[index + 3] = unchecked( (byte) ui32 );
-                                ptr[index + 2] = unchecked( (byte)(ui32 >>> 8) );
-                                ptr[index + 1] = unchecked( (byte)(ui32 >>> 16) );
-                                ptr[index]     = unchecked( (byte)(ui32 >>> 24) );
-                            }
-
-                            index += 4;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((uint)value!, ptr + index, size - index);
-                            
-                        break;
-
-                    case TypeCode.Int64:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            long i64 = (long)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, i64);
-                            else
-                            {
-                                ptr[index + 7] = unchecked( (byte) i64 );
-                                ptr[index + 6] = unchecked( (byte)(i64 >>> 8) );
-                                ptr[index + 5] = unchecked( (byte)(i64 >>> 16) );
-                                ptr[index + 4] = unchecked( (byte)(i64 >>> 24) );
-                                ptr[index + 3] = unchecked( (byte)(i64 >>> 32) );
-                                ptr[index + 2] = unchecked( (byte)(i64 >>> 40) );
-                                ptr[index + 1] = unchecked( (byte)(i64 >>> 48) );
-                                ptr[index]     = unchecked( (byte)(i64 >>> 56) );
-                            }
-
-                            index += 8;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((long)value!, ptr + index, size - index);
-                        break;
-                        
-                    case TypeCode.UInt64:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            ulong ui64 = (ulong)value!;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, ui64);
-                            else
-                            {
-                                ptr[index + 7] = unchecked( (byte) ui64 );
-                                ptr[index + 6] = unchecked( (byte)(ui64 >>> 8) );
-                                ptr[index + 5] = unchecked( (byte)(ui64 >>> 16) );
-                                ptr[index + 4] = unchecked( (byte)(ui64 >>> 24) );
-                                ptr[index + 3] = unchecked( (byte)(ui64 >>> 32) );
-                                ptr[index + 2] = unchecked( (byte)(ui64 >>> 40) );
-                                ptr[index + 1] = unchecked( (byte)(ui64 >>> 48) );
-                                ptr[index]     = unchecked( (byte)(ui64 >>> 56) );
-                            }
-
-                            index += 8;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((ulong)value!, ptr + index, size - index);
-                            
-                        break;
-
-                    case TypeCode.Single:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            float fl = (float)value!;
-                            int i32 = *(int*)&fl;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, i32);
-                            else
-                            {
-                                ptr[index + 3] = unchecked( (byte) i32 );
-                                ptr[index + 2] = unchecked( (byte)(i32 >>> 8) );
-                                ptr[index + 1] = unchecked( (byte)(i32 >>> 16) );
-                                ptr[index]     = unchecked( (byte)(i32 >>> 24) );
-                            }
-
-                            index += 4;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((float)value!, ptr + index, size - index);
-
-                        break;
-
-                    case TypeCode.Double:
-                        if (serializer.CanFastReadPrimitives)
-                        {
-                            double dl = (double)value!;
-                            long i64 = *(long*)&dl;
-                            if (BitConverter.IsLittleEndian)
-                                Unsafe.WriteUnaligned(ptr + index, i64);
-                            else
-                            {
-                                ptr[index + 7] = unchecked( (byte) i64);
-                                ptr[index + 6] = unchecked( (byte)(i64 >>> 8) );
-                                ptr[index + 5] = unchecked( (byte)(i64 >>> 16) );
-                                ptr[index + 4] = unchecked( (byte)(i64 >>> 24) );
-                                ptr[index + 3] = unchecked( (byte)(i64 >>> 32) );
-                                ptr[index + 2] = unchecked( (byte)(i64 >>> 40) );
-                                ptr[index + 1] = unchecked( (byte)(i64 >>> 48) );
-                                ptr[index]     = unchecked( (byte)(i64 >>> 56) );
-                            }
-
-                            index += 8;
-                        }
-                        else
-                            index += (uint)serializer.WriteObject((double)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.Decimal:
-                        index += (uint)serializer.WriteObject((decimal)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeCode.DateTime:
-                        index += (uint)serializer.WriteObject((DateTime)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeUtility.TypeCodeTimeSpan:
-                        index += (uint)serializer.WriteObject((TimeSpan)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeUtility.TypeCodeGuid:
-                        index += (uint)serializer.WriteObject((Guid)value!, ptr + index, size - index);
-                        break;
-
-                    case TypeUtility.TypeCodeDateTimeOffset:
-                        index += (uint)serializer.WriteObject((DateTimeOffset)value!, ptr + index, size - index);
-                        break;
-
-                }
+                TypeUtility.WriteTypeCode(tc, serializer, value!, ptr, ref index, size);
             }
         }
 
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
+    }
+    private static unsafe object? ReadReturnValue(IRpcSerializer serializer, RpcTask? task, byte* data, int maxSize, ref uint index)
+    {
+        if (maxSize - index < 1)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        TypeCode tc = (TypeCode)data[index];
+        ++index;
+
+        object? rtnValue;
+        int bytesRead;
+        if (tc == TypeCode.Object)
+        {
+            if (maxSize - index < 1)
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+            RpcEndpoint.IdentifierFlags f = (RpcEndpoint.IdentifierFlags)data[index];
+            ++index;
+
+            bool hasName = (f & RpcEndpoint.IdentifierFlags.IsKnownTypeOnly) == 0;
+            bool hasId   = (f & RpcEndpoint.IdentifierFlags.IsTypeNameOnly) == 0;
+
+            string? typeName = null;
+            uint typeId = 0u;
+            if (hasId)
+            {
+                if (maxSize - index < 4)
+                    throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+                typeId = BitConverter.IsLittleEndian
+                    ? Unsafe.ReadUnaligned<uint>(ref data[index])
+                    : unchecked( (uint)(data[index] << 24 | data[index + 1] << 16 | data[index + 2] << 8 | data[index + 3]) );
+                index += 4;
+            }
+
+            if (hasName)
+            {
+                typeName = serializer.ReadObject<string>(data, (uint)maxSize - index, out bytesRead);
+                index += (uint)bytesRead;
+            }
+
+            Type? type = null;
+            if (hasId)
+                serializer.TryGetKnownType(typeId, out type);
+
+            if (hasName && type == null)
+                type = Type.GetType(typeName!, false, false);
+
+            if (type == null && task != null)
+            {
+                Type taskType = task.GetType();
+                taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
+                task.TriggerComplete(new RpcParseException(
+                    string.Format(Properties.Exceptions.RpcParseExceptionUnknownReturnType,
+                        !hasName ? hasId ? typeId.ToString(CultureInfo.InvariantCulture) : "unknown type" : typeName,
+                        Accessor.ExceptionFormatter.Format(taskType)))
+                );
+            }
+
+            if (type == null)
+                return null;
+
+            rtnValue = serializer.ReadObject(type, data + index, (uint)maxSize - index, out bytesRead);
+            index += (uint)bytesRead;
+            return rtnValue;
+        }
+
+        rtnValue = TypeUtility.ReadTypeCode(tc, serializer, data, maxSize, ref index, out bytesRead);
+
+        if (rtnValue == null && task != null)
+        {
+            Type taskType = task.GetType();
+            taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
+            task.TriggerComplete(new RpcParseException(
+                string.Format(Properties.Exceptions.RpcParseExceptionUnknownReturnType, tc.ToString(), Accessor.ExceptionFormatter.Format(taskType))
+            ));
+        }
+
+        index += (uint)bytesRead;
+        return rtnValue;
     }
 
     /// <summary>
@@ -800,7 +744,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
         context.DefaultSerializer = _defaultSerializer;
         context.Router = this;
     }
-
     private static uint GetPrefixSize(IRpcSerializer serializer)
     {
         if (serializer.CanFastReadPrimitives)
@@ -836,9 +779,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
         }
 
         ptr[9] = subMessageId;
-        return 9;
+        return 10;
     }
-    private uint GetExceptionSize(Exception ex, IRpcSerializer serializer)
+    private static uint GetExceptionSize(Exception ex, IRpcSerializer serializer)
     {
         uint size = (uint)(serializer.GetSize(TypeUtility.GetAssemblyQualifiedNameNoVersion(ex.GetType()))
                            + serializer.GetSize(ex.Message ?? string.Empty)
@@ -870,7 +813,79 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
         size += serializer.CanFastReadPrimitives ? sizeof(int) : (uint)serializer.GetSize(exSz);
         return size;
     }
-    private unsafe void WriteException(Exception ex, byte* ptr, uint size, ref uint index, IRpcSerializer serializer)
+    private static unsafe RpcInvocationException ReadException(IRpcInvocationPoint? rpc, byte* ptr, uint size, ref uint index, IRpcSerializer serializer)
+    {
+        int exSz;
+        int bytesRead;
+        if (serializer.CanFastReadPrimitives)
+        {
+            if (size - index < 4)
+                throw new RpcParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+            exSz = BitConverter.IsLittleEndian
+                ? Unsafe.ReadUnaligned<int>(ptr + index)
+                : ptr[index] << 24 | ptr[index + 1] << 16 | ptr[index + 2] << 8 | ptr[index + 3];
+            index += sizeof(int);
+        }
+        else
+        {
+            exSz = serializer.ReadObject<int>(ptr + index, size - index, out bytesRead);
+            index += (uint)bytesRead;
+        }
+
+        string typeName = serializer.ReadObject<string>(ptr + index, size - index, out bytesRead);
+        index += (uint)bytesRead;
+        string message = serializer.ReadObject<string>(ptr + index, size - index, out bytesRead);
+        index += (uint)bytesRead;
+        string stackTrace = serializer.ReadObject<string>(ptr + index, size - index, out bytesRead);
+        index += (uint)bytesRead;
+
+        object exType = (object?)Type.GetType(typeName, false, false) ?? typeName;
+
+        if (exSz == 0)
+            return new RpcInvocationException(rpc, exType, message, stackTrace, null, null);
+        
+        if (exSz == 1)
+        {
+            RpcInvocationException innerEx = ReadException(rpc, ptr + index, size - index, ref index, serializer);
+            return new RpcInvocationException(rpc, exType, message, stackTrace, innerEx, null);
+        }
+
+        RpcInvocationException[] inners = new RpcInvocationException[exSz];
+        for (int i = 0; i < exSz; ++i)
+            inners[i] = ReadException(rpc, ptr + index, size - index, ref index, serializer);
+
+        return new RpcInvocationException(rpc, exType, message, stackTrace, null, inners);
+    }
+    private static RpcInvocationException ReadException(IRpcInvocationPoint? rpc, Stream stream, ref uint index, IRpcSerializer serializer)
+    {
+        int exSz = serializer.ReadObject<int>(stream, out int bytesRead);
+        index += (uint)bytesRead;
+        string typeName = serializer.ReadObject<string>(stream, out bytesRead);
+        index += (uint)bytesRead;
+        string message = serializer.ReadObject<string>(stream, out bytesRead);
+        index += (uint)bytesRead;
+        string stackTrace = serializer.ReadObject<string>(stream, out bytesRead);
+        index += (uint)bytesRead;
+
+        object exType = (object?)Type.GetType(typeName, false, false) ?? typeName;
+
+        if (exSz == 0)
+            return new RpcInvocationException(rpc, exType, message, stackTrace, null, null);
+
+        if (exSz == 1)
+        {
+            RpcInvocationException innerEx = ReadException(rpc, stream, ref index, serializer);
+            return new RpcInvocationException(rpc, exType, message, stackTrace, innerEx, null);
+        }
+
+        RpcInvocationException[] inners = new RpcInvocationException[exSz];
+        for (int i = 0; i < exSz; ++i)
+            inners[i] = ReadException(rpc, stream, ref index, serializer);
+
+        return new RpcInvocationException(rpc, exType, message, stackTrace, null, inners);
+    }
+    private static unsafe void WriteException(Exception ex, byte* ptr, uint size, ref uint index, IRpcSerializer serializer)
     {
         string typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(ex.GetType());
 
@@ -922,7 +937,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable
                 break;
         }
     }
-
     public void Dispose()
     {
         try

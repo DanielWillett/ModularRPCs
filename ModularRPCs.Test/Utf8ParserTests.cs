@@ -163,7 +163,7 @@ public class Utf8ParserTests
         string readValue = parser.ReadObject(memStream, out int bytesRead);
 
         Assert.That(bytesRead, Is.EqualTo(1));
-        Assert.That(readValue, Is.EqualTo(string.Empty));
+        Assert.That(readValue, Is.EqualTo(null));
     }
 
     [Test]
@@ -179,7 +179,7 @@ public class Utf8ParserTests
         string readValue = parser.ReadObject(buffer, 64, out int bytesRead);
 
         Assert.That(bytesRead, Is.EqualTo(1));
-        Assert.That(readValue, Is.EqualTo(string.Empty));
+        Assert.That(readValue, Is.EqualTo(null));
     }
 
     [Test]

@@ -33,4 +33,13 @@ public class RpcTask<T> : RpcTask
         Exception = exception;
         Awaiter.TriggerComplete();
     }
+
+    protected internal override bool TrySetResult(object? value)
+    {
+        if (value is not T convValue)
+            return false;
+
+        ResultIntl = convValue;
+        return true;
+    }
 }

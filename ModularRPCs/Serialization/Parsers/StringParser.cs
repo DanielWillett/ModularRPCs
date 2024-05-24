@@ -5,31 +5,35 @@ using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
-public class StringParser(Encoding encoding) : BinaryTypeParser<string>
+public class StringParser : BinaryTypeParser<string?>
 {
-    private readonly Encoding _encoding = encoding;
+    private readonly Encoding _encoding;
+    public StringParser(Encoding encoding)
+    {
+        _encoding = encoding;
+    }
 
     /*
      * Header format:
      * [ 1 byte - flags                                                                                         ] [ byte count ] [ char count ] [ data...            ]
-     * | 0000AABB            mask   meaning                                                                     | | variable sizes, see flags | | length: byte count |
-     * |     11   char count 0b1100 0 = same as byte ct, 1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length | |                           | |                    |
-     * |       11 byte count 0b0011 0 = empty string,    1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length | |                           | |                    |
+     * | 1000AABB            mask   meaning                                                                     | | variable sizes, see flags | | length: byte count |
+     * | ^   11   char count 0b1100 0 = same as byte ct, 1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length | |                           | |                    |
+     * | null  11 byte count 0b0011 0 = empty string,    1 = 8 bit length, 2 = 16 bit length, 3 = 32 bit length | |                           | |                    |
      */
     public override bool IsVariableSize => true;
     public override int MinimumSize => 1;
-    public override unsafe int WriteObject(string value, byte* bytes, uint maxSize)
+    public override unsafe int WriteObject(string? value, byte* bytes, uint maxSize)
     {
         if (string.IsNullOrEmpty(value))
         {
             if (maxSize < 1)
                 throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
-            *bytes = 0;
+            *bytes = (byte)(value == null ? 0b10000000 : 0);
             return 1;
         }
 
-        int charLen = value.Length;
+        int charLen = value!.Length;
 
         fixed (char* ptr = value)
         {
@@ -82,7 +86,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
                     break;
             }
 
-            switch (lenFlag >> 2)
+            switch ((lenFlag >> 2) & 3)
             {
                 case 0:
                     break;
@@ -128,17 +132,17 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
             return ttlSize;
         }
     }
-    public override unsafe int WriteObject(string value, Stream stream)
+    public override unsafe int WriteObject(string? value, Stream stream)
     {
         if (string.IsNullOrEmpty(value))
         {
-            stream.WriteByte(0);
+            stream.WriteByte((byte)(value == null ? 0b10000000 : 0));
             return 1;
         }
 
         int size = _encoding.GetByteCount(value);
 
-        int charLen = value.Length;
+        int charLen = value!.Length;
 
         byte lenFlag = GetLengthFlag(size, charLen);
         int lenSize = GetLengthSize(lenFlag);
@@ -192,7 +196,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
                 break;
         }
 
-        switch (lenFlag >> 2)
+        switch ((lenFlag >> 2) & 3)
         {
             case 0:
                 break;
@@ -271,7 +275,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
             fixed (char* ptr = value)
             fixed (byte* newData = utf8)
             {
-                encoding.GetBytes(ptr, charLen, newData, size);
+                _encoding.GetBytes(ptr, charLen, newData, size);
             }
 
             stream.Write(utf8, 0, utf8.Length);
@@ -286,16 +290,21 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
 
         return ttlSize;
     }
-    public override unsafe string ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    public override unsafe string? ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 1)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
-        byte lenFlag = *bytes;
+        byte lenFlag = (byte)(*bytes & 0b10001111);
         if (lenFlag == 0)
         {
             bytesRead = 1;
             return string.Empty;
+        }
+        if ((lenFlag & 0b10000000) != 0)
+        {
+            bytesRead = 1;
+            return null;
         }
 
         int size;
@@ -335,7 +344,7 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
         int charLen;
 #endif
         int charHdrSize;
-        switch (lenFlag >> 2)
+        switch ((lenFlag >> 2) & 3)
         {
             case 0:
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
@@ -400,22 +409,28 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
             str = _encoding.GetString(bytes, size);
         }
 #else
-        string str = encoding.GetString(bytes, size);
+        string str = _encoding.GetString(bytes, size);
 #endif
         bytesRead = size + hdrSize + charHdrSize;
         return str;
     }
-    public override unsafe string ReadObject(Stream stream, out int bytesRead)
+    // ReSharper disable once RedundantUnsafeContext
+    public override unsafe string? ReadObject(Stream stream, out int bytesRead)
     {
         int b = stream.ReadByte();
         if (b == -1)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
-        byte lenFlag = (byte)b;
+        byte lenFlag = (byte)((byte)b & 0b10001111);
         if (lenFlag == 0)
         {
             bytesRead = 1;
             return string.Empty;
+        }
+        if ((lenFlag & 0b10000000) != 0)
+        {
+            bytesRead = 1;
+            return null;
         }
 
 
@@ -441,31 +456,39 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
         if (ct != hdrSize)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         int ind;
+#endif
         switch (lenFlag & 3)
         {
             case 1:
                 size = span[0];
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 ind = 1;
+#endif
                 break;
 
             case 2:
                 size = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<ushort>(ref span[0])
                     : span[0] << 8 | span[1];
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 ind = 2;
+#endif
                 break;
 
             default:
                 size = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<int>(ref span[0])
                     : span[0] << 24 | span[1] << 16 | span[2] << 8 | span[3];
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 ind = 4;
+#endif
                 break;
         }
 
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-        switch (lenFlag >> 2)
+        switch ((lenFlag >> 2) & 3)
         {
             case 0:
                 charLen = size;
@@ -608,20 +631,20 @@ public class StringParser(Encoding encoding) : BinaryTypeParser<string>
         1 => 1,
         2 => 2,
         _ => 4
-    } + (lenFlag >> 2) switch
+    } + ((lenFlag >> 2) & 3) switch
     {
         0 => 0,
         1 => 1,
         2 => 2,
         _ => 4
     };
-    public override int GetSize(string value)
+    public override int GetSize(string? value)
     {
         if (string.IsNullOrEmpty(value))
             return 1;
 
         int byteCt = _encoding.GetByteCount(value);
-        byte flag = GetLengthFlag(byteCt, value.Length);
+        byte flag = GetLengthFlag(byteCt, value!.Length);
         return 1 + GetLengthSize(flag) + byteCt;
     }
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER

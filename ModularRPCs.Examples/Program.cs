@@ -1,5 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Async;
+﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Examples.Samples;
+using DanielWillett.ModularRpcs.Loopback;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
@@ -7,8 +8,6 @@ using DanielWillett.ReflectionTools;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Abstractions;
-using DanielWillett.ModularRpcs.Loopback;
 
 // ReSharper disable LocalizableElement
 
@@ -47,8 +46,8 @@ public class Program
         string str = "test";
         DateTime dt = DateTime.UtcNow;
 
-        int result = await sc0.CallRpcOne(loopbackRemote, i, val, str, dt);
-        Console.WriteLine($"over: {result}.");
+        int result = await sc0.CallRpcOne(loopbackRemote, null, val, null, dt);
+        Console.WriteLine($"Result: {result}.");
     }
 
     //public static void Run(string[] args)

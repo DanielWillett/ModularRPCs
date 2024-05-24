@@ -1,28 +1,76 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using DanielWillett.ReflectionTools;
+using DanielWillett.ReflectionTools.Formatting;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using DanielWillett.ReflectionTools.Formatting;
+using System.Runtime.CompilerServices;
+using System.Buffers;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+using System.Diagnostics.CodeAnalysis;
+#endif
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_0_OR_GREATER
 using System.Collections;
-#endif
-#if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
-using System.Buffers;
 #endif
 
 namespace DanielWillett.ModularRpcs.Serialization;
 public class DefaultSerializer : IRpcSerializer
 {
-#if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
-    internal static ArrayPool<byte> ArrayPool = ArrayPool<byte>.Create(19, 6);
-#endif
+    internal const int MaxArrayPoolSize = 19;
+    internal static ArrayPool<byte> ArrayPool = ArrayPool<byte>.Create(MaxArrayPoolSize, 6);
     protected readonly ConcurrentDictionary<uint, Type> KnownTypes = new ConcurrentDictionary<uint, Type>();
     protected readonly ConcurrentDictionary<Type, uint> KnownTypeIds = new ConcurrentDictionary<Type, uint>();
+    private readonly ConcurrentDictionary<Type, InstanceGetter<object, bool>> _getNullableHasValueByBox = new ConcurrentDictionary<Type, InstanceGetter<object, bool>>();
+    private readonly ConcurrentDictionary<Type, InstanceGetter<object, object>> _getNullableValueByBox = new ConcurrentDictionary<Type, InstanceGetter<object, object>>();
+    private readonly ConcurrentDictionary<Type, NullableHasValueTypeRef> _getNullableHasValueByRefAny = new ConcurrentDictionary<Type, NullableHasValueTypeRef>();
+    private readonly ConcurrentDictionary<Type, NullableValueTypeRef> _getNullableValueByRefAny = new ConcurrentDictionary<Type, NullableValueTypeRef>();
+    private readonly ConcurrentDictionary<Type, object> _nullableDefaults = new ConcurrentDictionary<Type, object>();
+    private readonly ConcurrentDictionary<Type, ReadNullableBytes> _nullableReadBytes = new ConcurrentDictionary<Type, ReadNullableBytes>();
+    private readonly ConcurrentDictionary<Type, ReadNullableStream> _nullableReadStream = new ConcurrentDictionary<Type, ReadNullableStream>();
+    private readonly ConcurrentDictionary<Type, ReadNullableBytesRefAny> _nullableReadBytesRefAny = new ConcurrentDictionary<Type, ReadNullableBytesRefAny>();
+    private readonly ConcurrentDictionary<Type, ReadNullableStreamRefAny> _nullableReadStreamRefAny = new ConcurrentDictionary<Type, ReadNullableStreamRefAny>();
+    private delegate bool NullableHasValueTypeRef(TypedReference value);
+    private delegate object NullableValueTypeRef(TypedReference value);
+    private unsafe delegate object ReadNullableBytes(byte* bytes, uint maxSize, out int bytesRead);
+    private delegate object ReadNullableStream(Stream stream, out int bytesRead);
+    private unsafe delegate void ReadNullableBytesRefAny(TypedReference value, byte* bytes, uint maxSize, out int bytesRead);
+    private delegate void ReadNullableStreamRefAny(TypedReference value, Stream stream, out int bytesRead);
     private readonly Dictionary<Type, IBinaryTypeParser> _parsers;
+    private static readonly MethodInfo MtdReadBoxedNullableBytes = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableBytes), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableBytes))
+                                                                       .WithGenericParameterDefinition("T")
+                                                                       .WithParameter(typeof(byte*), "bytes")
+                                                                       .WithParameter<uint>("maxSize")
+                                                                       .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                       .Returning<object>()
+                                                                   );
+    private static readonly MethodInfo MtdReadBoxedNullableStream = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableStream), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableStream))
+                                                                        .WithGenericParameterDefinition("T")
+                                                                        .WithParameter<Stream>("stream")
+                                                                        .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                        .Returning<object>()
+                                                                    );
+    private static readonly MethodInfo MtdReadBoxedNullableBytesRefAny = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableBytesRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                         ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableBytesRefAny))
+                                                                             .WithGenericParameterDefinition("T")
+                                                                             .WithParameter(typeof(TypedReference), "value")
+                                                                             .WithParameter(typeof(byte*), "bytes")
+                                                                             .WithParameter<uint>("maxSize")
+                                                                             .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                             .Returning<object>()
+                                                                         );
+    private static readonly MethodInfo MtdReadBoxedNullableStreamRefAny = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableStreamRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableStreamRefAny))
+                                                                              .WithGenericParameterDefinition("T")
+                                                                              .WithParameter(typeof(TypedReference), "value")
+                                                                              .WithParameter<Stream>("stream")
+                                                                              .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                              .Returning<object>()
+                                                                          );
 
     private readonly Dictionary<Type, IBinaryTypeParser> _primitiveParsers = new Dictionary<Type, IBinaryTypeParser>
     {
@@ -81,13 +129,22 @@ public class DefaultSerializer : IRpcSerializer
     public bool CanFastReadPrimitives { get; }
 
     /// <inheritdoc />
-    public bool TryGetKnownType(uint knownTypeId, out Type knownType) => KnownTypes.TryGetValue(knownTypeId, out knownType);
+    public bool TryGetKnownType(uint knownTypeId,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]
+#endif
+            out Type knownType) => KnownTypes.TryGetValue(knownTypeId, out knownType);
 
     /// <inheritdoc />
     public bool TryGetKnownTypeId(Type knownType, out uint knownTypeId) => KnownTypeIds.TryGetValue(knownType, out knownTypeId);
 
     /// <inheritdoc />
     public void SaveKnownType(uint knownTypeId, Type knownType) => KnownTypes[knownTypeId] = knownType;
+
+    private void AddDefaultNonPrimitiveSerializers()
+    {
+        _primitiveParsers.AddManySerializer(new BooleanParser.Many());
+    }
 
     /// <summary>
     /// Create a serializer and register custom parsers.
@@ -100,6 +157,7 @@ public class DefaultSerializer : IRpcSerializer
         registerParsers(dict);
         _parsers = new Dictionary<Type, IBinaryTypeParser>(dict);
         CanFastReadPrimitives = !IntlAnyCustomPrimitiveParsers();
+        AddDefaultNonPrimitiveSerializers();
     }
 
     /// <summary>
@@ -122,6 +180,7 @@ public class DefaultSerializer : IRpcSerializer
                 CanFastReadPrimitives = false;
         }
 #endif
+        AddDefaultNonPrimitiveSerializers();
     }
 
     private bool IntlAnyCustomPrimitiveParsers()
@@ -151,7 +210,19 @@ public class DefaultSerializer : IRpcSerializer
                 Properties.Exceptions.RpcInvalidParameterExceptionNoParserFound)
         );
     }
+    private static void ThrowNoNullableParserFound(Type type)
+    {
+        throw new RpcInvalidParameterException(
+            string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInfoNoNullableParamInfo,
+                Accessor.ExceptionFormatter.Format(type),
+                Properties.Exceptions.RpcInvalidParameterExceptionNoParserFound)
+        );
+    }
+
+    /// <inheritdoc />
     public int GetMinimumSize(Type type) => GetMinimumSize(type, out _);
+
+    /// <inheritdoc />
     public int GetMinimumSize(Type type, out bool isFixedSize)
     {
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
@@ -172,11 +243,74 @@ public class DefaultSerializer : IRpcSerializer
             return parser.MinimumSize;
         }
 
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType != null)
+        {
+            isFixedSize = false;
+            if (!_parsers.ContainsKey(nullableType) && !_primitiveSizes.ContainsKey(nullableType) && !_primitiveParsers.ContainsKey(nullableType))
+                ThrowNoParserFound(type);
+            return 1;
+        }
+
         ThrowNoParserFound(type);
         isFixedSize = false;
         return 0; // not reached
     }
-    public int GetSize<T>(T value)
+
+    /// <inheritdoc />
+    public int GetSize<T>(in T? value) where T : struct
+    {
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (!parser.IsVariableSize)
+                return parser.MinimumSize + 1;
+
+            if (parser is IBinaryTypeParser<T?> genParser)
+                return genParser.GetSize(value) + 1;
+
+            return parser.GetSize(__makeref(Unsafe.AsRef(in value))) + 1;
+        }
+
+        if (!value.HasValue)
+        {
+            return 1;
+        }
+
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            if (!parser.IsVariableSize)
+                return parser.MinimumSize + 1;
+
+            T v = value.Value;
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.GetSize(v) + 1;
+
+            return parser.GetSize(__makeref(v)) + 1;
+        }
+
+        if (_primitiveSizes.TryGetValue(type, out int size))
+            return size + 1;
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (!parser.IsVariableSize)
+                return parser.MinimumSize + 1;
+
+            T v = value.Value;
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.GetSize(v) + 1;
+
+            return parser.GetSize(__makeref(v)) + 1;
+        }
+
+        ThrowNoParserFound(type);
+        return 0;
+    }
+
+    /// <inheritdoc />
+    public int GetSize<T>(T? value)
     {
         Type type = typeof(T);
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
@@ -204,10 +338,18 @@ public class DefaultSerializer : IRpcSerializer
             return parser.GetSize(__makeref(value));
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return GetNullableSize(value!, underlyingType, type);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
-    public int GetSize(object value)
+
+    /// <inheritdoc />
+    public int GetSize(object? value)
     {
         Type origType = value.GetType();
         if (origType.IsValueType || origType == typeof(string))
@@ -244,9 +386,17 @@ public class DefaultSerializer : IRpcSerializer
             }
         }
 
+        Type? nullableType = Nullable.GetUnderlyingType(origType);
+        if (nullableType != null)
+        {
+            return GetNullableSize(value, nullableType, origType);
+        }
+
         ThrowNoParserFound(origType);
         return 0; // not reached
     }
+
+    /// <inheritdoc />
     public int GetSize(TypedReference value)
     {
         Type type = __reftype(value);
@@ -263,10 +413,175 @@ public class DefaultSerializer : IRpcSerializer
             return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
         }
 
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType != null)
+        {
+            return GetNullableSize(value, nullableType);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
-    public unsafe int WriteObject<T>(T value, byte* bytes, uint maxSize)
+    private int GetNullableSize(object? value, Type underlyingType, Type type)
+    {
+        if (value == null || !GetNullableHasValue(value, type))
+            return 1;
+
+        if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+        {
+            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value, type))) + 1;
+        }
+
+        if (_primitiveSizes.TryGetValue(underlyingType, out int size))
+            return size + 1;
+
+        if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+        {
+            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value, type))) + 1;
+        }
+
+        ThrowNoNullableParserFound(underlyingType);
+        return 0; // not reached
+    }
+    private int GetNullableSize(TypedReference value, Type underlyingType)
+    {
+        if (!GetNullableHasValue(value))
+            return 1;
+
+        if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+        {
+            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value))) + 1;
+        }
+
+        if (_primitiveSizes.TryGetValue(underlyingType, out int size))
+            return size + 1;
+
+        if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+        {
+            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value))) + 1;
+        }
+
+        ThrowNoNullableParserFound(underlyingType);
+        return 0; // not reached
+    }
+    protected bool GetNullableHasValue(object value, Type nullableType)
+    {
+        InstanceGetter<object, bool> getter = _getNullableHasValueByBox.GetOrAdd(nullableType, CreateNullableHasValueGetterByBox);
+        return getter(value);
+    }
+
+    protected object GetNullableValue(object value, Type nullableType)
+    {
+        InstanceGetter<object, object> getter = _getNullableValueByBox.GetOrAdd(nullableType, CreateNullableValueGetterByBox);
+        return getter(value);
+    }
+
+    protected bool GetNullableHasValue(TypedReference value)
+    {
+        NullableHasValueTypeRef getter = _getNullableHasValueByRefAny.GetOrAdd(__reftype(value), CreateNullableHasValueGetterByRefAny);
+        return getter(value);
+    }
+
+    protected object GetNullableValue(TypedReference value)
+    {
+        NullableValueTypeRef getter = _getNullableValueByRefAny.GetOrAdd(__reftype(value), CreateNullableValueGetterByRefAny);
+        return getter(value);
+    }
+
+    private InstanceGetter<object, bool> CreateNullableHasValueGetterByBox(Type nullableType)
+    {
+        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.HasValue))
+                                .DeclaredIn(nullableType, isStatic: false)
+                                .WithPropertyType<bool>()
+                                .WithNoSetter()
+                            );
+
+        return Accessor.GenerateInstanceCaller<InstanceGetter<object, bool>>(getter, true, allowUnsafeTypeBinding: true)!;
+    }
+    private InstanceGetter<object, object> CreateNullableValueGetterByBox(Type nullableType)
+    {
+        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.Value))
+                                .DeclaredIn(nullableType, isStatic: false)
+                                .WithPropertyType(Nullable.GetUnderlyingType(nullableType)!)
+                                .WithNoSetter()
+                            );
+
+        return Accessor.GenerateInstanceCaller<InstanceGetter<object, object>>(getter, true, allowUnsafeTypeBinding: true)!;
+    }
+    private NullableHasValueTypeRef CreateNullableHasValueGetterByRefAny(Type nullableType)
+    {
+        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.HasValue))
+                                .DeclaredIn(nullableType, isStatic: false)
+                                .WithPropertyType<bool>()
+                                .WithNoSetter()
+                            );
+
+        return Accessor.GenerateInstanceCaller<NullableHasValueTypeRef>(getter, true, allowUnsafeTypeBinding: true)!;
+    }
+    private NullableValueTypeRef CreateNullableValueGetterByRefAny(Type nullableType)
+    {
+        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.Value))
+                                .DeclaredIn(nullableType, isStatic: false)
+                                .WithPropertyType(Nullable.GetUnderlyingType(nullableType)!)
+                                .WithNoSetter()
+                            );
+
+        return Accessor.GenerateInstanceCaller<NullableValueTypeRef>(getter, true, allowUnsafeTypeBinding: true)!;
+    }
+
+
+    /// <inheritdoc />
+    public unsafe int WriteObject<T>(in T? value, byte* bytes, uint maxSize) where T : struct
+    {
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T?> genParser)
+                return genParser.WriteObject(value, bytes + 1, maxSize - 1) + 1;
+
+            return parser.WriteObject(__makeref(Unsafe.AsRef(in value)), bytes + 1, maxSize - 1) + 1;
+        }
+
+        if (maxSize < 1)
+            throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
+
+        if (!value.HasValue)
+        {
+            bytes[0] = 0;
+            return 1;
+        }
+
+        *bytes = 1;
+
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            T v = value.Value;
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(v, bytes + 1, maxSize - 1) + 1;
+
+            return parser.WriteObject(__makeref(v), bytes + 1, maxSize - 1) + 1;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            T v = value.Value;
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(v, bytes + 1, maxSize - 1) + 1;
+
+            return parser.WriteObject(__makeref(v), bytes + 1, maxSize - 1) + 1;
+        }
+
+        ThrowNoParserFound(type);
+        return 0; // not reached
+    }
+
+    /// <inheritdoc />
+    public unsafe int WriteObject<T>(T? value, byte* bytes, uint maxSize)
     {
         Type type = typeof(T);
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
@@ -285,9 +600,17 @@ public class DefaultSerializer : IRpcSerializer
             return parser.WriteObject(__makeref(value), bytes, maxSize);
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return WriteNullable(value!, bytes, maxSize, underlyingType, type);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
+
+    /// <inheritdoc />
     public unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize)
     {
         Type type = __reftype(value);
@@ -297,10 +620,18 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(type, out parser))
             return parser.WriteObject(value, bytes, maxSize);
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return WriteNullable(value, bytes, maxSize, underlyingType);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
-    public unsafe int WriteObject(object value, byte* bytes, uint maxSize)
+
+    /// <inheritdoc />
+    public unsafe int WriteObject(object? value, byte* bytes, uint maxSize)
     {
         Type origType = value.GetType();
         if (origType.IsValueType || origType == typeof(string))
@@ -323,10 +654,63 @@ public class DefaultSerializer : IRpcSerializer
             }
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(origType);
+        if (underlyingType != null)
+        {
+            return WriteNullable(value, bytes, maxSize, underlyingType, origType);
+        }
+
         ThrowNoParserFound(origType);
         return 0; // not reached
     }
-    public int WriteObject<T>(T value, Stream stream)
+
+    /// <inheritdoc />
+    public int WriteObject<T>(in T? value, Stream stream) where T : struct
+    {
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T?> genParser)
+                return genParser.WriteObject(value, stream);
+
+            return parser.WriteObject(__makeref(Unsafe.AsRef(in value)), stream);
+        }
+
+        if (!value.HasValue)
+        {
+            stream.WriteByte(0);
+            return 1;
+        }
+
+        stream.WriteByte(1);
+
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            T v = value.Value;
+
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(v, stream);
+
+            return parser.WriteObject(__makeref(v), stream);
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            T v = value.Value;
+
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(v, stream);
+
+            return parser.WriteObject(__makeref(v), stream);
+        }
+
+        ThrowNoParserFound(type);
+        return 0; // not reached
+    }
+
+    /// <inheritdoc />
+    public int WriteObject<T>(T? value, Stream stream)
     {
         Type type = typeof(T);
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
@@ -345,9 +729,17 @@ public class DefaultSerializer : IRpcSerializer
             return parser.WriteObject(__makeref(value), stream);
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return WriteNullable(value!, stream, underlyingType, type);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
+
+    /// <inheritdoc />
     public int WriteObject(TypedReference value, Stream stream)
     {
         Type type = __reftype(value);
@@ -357,10 +749,18 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(type, out parser))
             return parser.WriteObject(value, stream);
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return WriteNullable(value, stream, underlyingType);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
-    public int WriteObject(object value, Stream stream)
+
+    /// <inheritdoc />
+    public int WriteObject(object? value, Stream stream)
     {
         Type origType = value.GetType();
         if (origType.IsValueType || origType == typeof(string))
@@ -383,10 +783,228 @@ public class DefaultSerializer : IRpcSerializer
             }
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(origType);
+        if (underlyingType != null)
+        {
+            return WriteNullable(value, stream, underlyingType, origType);
+        }
+
         ThrowNoParserFound(origType);
         return 0; // not reached
     }
-    public unsafe T ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead)
+    private unsafe int WriteNullable(object? value, byte* bytes, uint maxSize, Type underlyingType, Type nullableType)
+    {
+        if (maxSize < 1)
+            throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
+
+        if (value == null || !GetNullableHasValue(value, nullableType))
+        {
+            bytes[0] = 0;
+            return 1;
+        }
+
+        bytes[1] = 1;
+
+        if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, bytes + 1, maxSize - 1) + 1;
+
+        if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+            return parser.WriteObject(value, bytes + 1, maxSize - 1) + 1;
+
+        ThrowNoParserFound(underlyingType);
+        return 0; // not reached
+    }
+    private unsafe int WriteNullable(TypedReference value, byte* bytes, uint maxSize, Type underlyingType)
+    {
+        if (maxSize < 1)
+            throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
+
+        if (!GetNullableHasValue(value))
+        {
+            bytes[0] = 0;
+            return 1;
+        }
+
+        bytes[1] = 1;
+
+        if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+            return parser.WriteObject(GetNullableValue(value), bytes + 1, maxSize - 1) + 1;
+
+        if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+            return parser.WriteObject(GetNullableValue(value), bytes + 1, maxSize - 1) + 1;
+
+        ThrowNoParserFound(underlyingType);
+        return 0; // not reached
+    }
+    private int WriteNullable(object? value, Stream stream, Type underlyingType, Type nullableType)
+    {
+        if (value == null || !GetNullableHasValue(value, nullableType))
+        {
+            stream.WriteByte(0);
+            return 1;
+        }
+
+        stream.WriteByte(1);
+
+        if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, stream) + 1;
+
+        if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+            return parser.WriteObject(value, stream) + 1;
+
+        ThrowNoParserFound(underlyingType);
+        return 0; // not reached
+    }
+    private int WriteNullable(TypedReference value, Stream stream, Type underlyingType)
+    {
+        if (!GetNullableHasValue(value))
+        {
+            stream.WriteByte(0);
+            return 1;
+        }
+
+        stream.WriteByte(1);
+
+        if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+            return parser.WriteObject(GetNullableValue(value), stream) + 1;
+
+        if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+            return parser.WriteObject(GetNullableValue(value), stream) + 1;
+
+        ThrowNoParserFound(underlyingType);
+        return 0; // not reached
+    }
+
+    /// <inheritdoc />
+    public unsafe T? ReadNullable<T>(byte* bytes, uint maxSize, out int bytesRead) where T : struct
+    {
+        if (maxSize < 1)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        if (*bytes == 0)
+        {
+            bytesRead = 1;
+            return default;
+        }
+
+        ++bytes;
+        --maxSize;
+
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T?> genParser)
+            {
+                T? v = genParser.ReadObject(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return v;
+            }
+
+            T? value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            ++bytesRead;
+            return value;
+        }
+
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+            {
+                T? v = genParser.ReadObject(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return v;
+            }
+
+            T value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            ++bytesRead;
+            return value;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+            {
+                T? v = genParser.ReadObject(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return v;
+            }
+
+            T value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            ++bytesRead;
+            return value;
+        }
+
+        ThrowNoParserFound(type);
+        bytesRead = 1; // not reached
+        return default!;
+    }
+
+    /// <inheritdoc />
+    public unsafe void ReadNullable<T>(TypedReference refOut, byte* bytes, uint maxSize, out int bytesRead) where T : struct
+    {
+        if (maxSize < 1)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+        if (*bytes == 0)
+        {
+            bytesRead = 1;
+            __refvalue(refOut, T?) = default;
+            return;
+        }
+
+        ++bytes;
+        --maxSize;
+
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            parser.ReadObject(bytes, maxSize, out bytesRead, refOut);
+            ++bytesRead;
+            return;
+        }
+
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+            {
+                __refvalue(refOut, T?) = genParser.ReadObject(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return;
+            }
+
+            T value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            ++bytesRead;
+            __refvalue(refOut, T?) = value;
+            return;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+            {
+                __refvalue(refOut, T?) = genParser.ReadObject(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return;
+            }
+
+            T value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            ++bytesRead;
+            __refvalue(refOut, T?) = value;
+            return;
+        }
+
+        ThrowNoParserFound(type);
+        bytesRead = 1; // not reached
+    }
+
+    /// <inheritdoc />
+    public unsafe T? ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead)
     {
         Type type = typeof(T);
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
@@ -409,10 +1027,18 @@ public class DefaultSerializer : IRpcSerializer
             return value!;
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return (T)ReadNullable(type, underlyingType, bytes, maxSize, out bytesRead);
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
         return default!;
     }
+
+    /// <inheritdoc />
     public unsafe void ReadObject(TypedReference refValue, byte* bytes, uint maxSize, out int bytesRead)
     {
         Type type = __reftype(refValue);
@@ -428,26 +1054,132 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            ReadNullable(refValue, type, underlyingType, bytes, maxSize, out bytesRead);
+            return;
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
     }
-    public unsafe object ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead)
+
+    /// <inheritdoc />
+    public unsafe object? ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead)
     {
         if (_parsers.TryGetValue(objectType, out IBinaryTypeParser? parser))
         {
-            return parser.ReadObject(bytes, maxSize, out bytesRead);
+            return parser.ReadObject(objectType, bytes, maxSize, out bytesRead);
         }
 
         if (_primitiveParsers.TryGetValue(objectType, out parser))
         {
-            return parser.ReadObject(bytes, maxSize, out bytesRead);
+            return parser.ReadObject(objectType, bytes, maxSize, out bytesRead);
         }
 
         ThrowNoParserFound(objectType);
         bytesRead = 0; // not reached
         return default!;
     }
-    public T ReadObject<T>(Stream stream, out int bytesRead)
+
+    /// <inheritdoc />
+    public T? ReadNullable<T>(Stream stream, out int bytesRead) where T : struct
+    {
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T?> genParser)
+                return genParser.ReadObject(stream, out bytesRead);
+
+            T? value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            return value;
+        }
+        
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(stream, out bytesRead);
+
+            T value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            return value;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(stream, out bytesRead);
+
+            T value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            return value;
+        }
+
+        ThrowNoParserFound(type);
+        bytesRead = 0; // not reached
+        return default!;
+    }
+
+    /// <inheritdoc />
+    public void ReadNullable<T>(TypedReference refOut, Stream stream, out int bytesRead) where T : struct
+    {
+        if (stream.ReadByte() == 0)
+        {
+            bytesRead = 1;
+            __refvalue(refOut, T?) = default;
+            return;
+        }
+
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            parser.ReadObject(stream, out bytesRead, refOut);
+            ++bytesRead;
+            return;
+        }
+
+        type = typeof(T);
+        if (_parsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+            {
+                __refvalue(refOut, T?) = genParser.ReadObject(stream, out bytesRead);
+                ++bytesRead;
+                return;
+            }
+
+            T value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            ++bytesRead;
+            __refvalue(refOut, T?) = value;
+            return;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+            {
+                __refvalue(refOut, T?) = genParser.ReadObject(stream, out bytesRead);
+                ++bytesRead;
+                return;
+            }
+
+            T value = default;
+            parser.ReadObject(stream, out bytesRead, __makeref(value));
+            ++bytesRead;
+            __refvalue(refOut, T?) = value;
+            return;
+        }
+
+        ThrowNoParserFound(type);
+        bytesRead = 1; // not reached
+    }
+
+    /// <inheritdoc />
+    public T? ReadObject<T>(Stream stream, out int bytesRead)
     {
         Type type = typeof(T);
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
@@ -470,10 +1202,18 @@ public class DefaultSerializer : IRpcSerializer
             return value!;
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            return (T)ReadNullable(type, underlyingType, stream, out bytesRead);
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
         return default!;
     }
+
+    /// <inheritdoc />
     public void ReadObject(TypedReference refValue, Stream stream, out int bytesRead)
     {
         Type type = __reftype(refValue);
@@ -489,23 +1229,82 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+        {
+            ReadNullable(refValue, type, underlyingType, stream, out bytesRead);
+            return;
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
     }
-    public object ReadObject(Type objectType, Stream stream, out int bytesRead)
+
+    /// <inheritdoc />
+    public object? ReadObject(Type objectType, Stream stream, out int bytesRead)
     {
         if (_parsers.TryGetValue(objectType, out IBinaryTypeParser? parser))
         {
-            return parser.ReadObject(stream, out bytesRead);
+            return parser.ReadObject(objectType, stream, out bytesRead);
         }
 
         if (_primitiveParsers.TryGetValue(objectType, out parser))
         {
-            return parser.ReadObject(stream, out bytesRead);
+            return parser.ReadObject(objectType, stream, out bytesRead);
+        }
+
+        Type? underlyingType = Nullable.GetUnderlyingType(objectType);
+        if (underlyingType != null)
+        {
+            return ReadNullable(objectType, underlyingType, stream, out bytesRead);
         }
 
         ThrowNoParserFound(objectType);
         bytesRead = 0; // not reached
         return default!;
+    }
+    protected object GetDefaultNullable(Type nullableType)
+    {
+        return _nullableDefaults.GetOrAdd(nullableType, Activator.CreateInstance!);
+    }
+    protected unsafe object ReadNullable(Type nullableType, Type underlyingType, byte* bytes, uint maxSize, out int bytesRead)
+    {
+        return _nullableReadBytes.GetOrAdd(nullableType,
+            _ => (ReadNullableBytes)MtdReadBoxedNullableBytes.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytes))
+        )(bytes, maxSize, out bytesRead);
+    }
+    protected object ReadNullable(Type nullableType, Type underlyingType, Stream stream, out int bytesRead)
+    {
+        return _nullableReadStream.GetOrAdd(nullableType,
+            _ => (ReadNullableStream)MtdReadBoxedNullableStream.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStream))
+        )(stream, out bytesRead);
+    }
+    protected unsafe void ReadNullable(TypedReference value, Type nullableType, Type underlyingType, byte* bytes, uint maxSize, out int bytesRead)
+    {
+        _nullableReadBytesRefAny.GetOrAdd(nullableType,
+            _ => (ReadNullableBytesRefAny)MtdReadBoxedNullableBytesRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytes))
+        )(value, bytes, maxSize, out bytesRead);
+    }
+    protected void ReadNullable(TypedReference value, Type nullableType, Type underlyingType, Stream stream, out int bytesRead)
+    {
+        _nullableReadStreamRefAny.GetOrAdd(nullableType,
+            _ => (ReadNullableStreamRefAny)MtdReadBoxedNullableStreamRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStream))
+        )(value, stream, out bytesRead);
+    }
+    private unsafe object ReadBoxedNullableBytes<T>(byte* bytes, uint maxSize, out int bytesRead) where T : struct
+    {
+        return ReadNullable<T>(bytes, maxSize, out bytesRead)!;
+    }
+    private object ReadBoxedNullableStream<T>(Stream stream, out int bytesRead) where T : struct
+    {
+        return ReadNullable<T>(stream, out bytesRead)!;
+    }
+    private unsafe void ReadBoxedNullableBytesRefAny<T>(TypedReference value, byte* bytes, uint maxSize, out int bytesRead) where T : struct
+    {
+        ReadNullable<T>(value, bytes, maxSize, out bytesRead);
+    }
+    private void ReadBoxedNullableStreamRefAny<T>(TypedReference value, Stream stream, out int bytesRead) where T : struct
+    {
+        ReadNullable<T>(value, stream, out bytesRead);
     }
 }

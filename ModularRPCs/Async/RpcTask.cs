@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
+using DanielWillett.ModularRpcs.Abstractions;
 
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask
@@ -37,6 +38,11 @@ public class RpcTask
     /// The sub-message id used to differentiate between the original message and it's responses.
     /// </summary>
     public byte SubMessageId { get; internal set; }
+
+    /// <summary>
+    /// The endpoint this rpc was meant to invoke.
+    /// </summary>
+    public IRpcInvocationPoint? Endpoint { get; internal set; }
     internal RpcTask(bool isFireAndForget)
     {
         if (GetType() == typeof(RpcTask))
@@ -48,6 +54,10 @@ public class RpcTask
         Awaiter = new RpcTaskAwaiter(this, true);
     }
     public RpcTaskAwaiter GetAwaiter() => Awaiter;
+    protected internal virtual bool TrySetResult(object? value)
+    {
+        return false;
+    }
     internal void TriggerComplete(Exception? exception)
     {
         if (exception == null)

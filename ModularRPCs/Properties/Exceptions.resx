@@ -312,4 +312,25 @@
   <data name="RpcInvocationExceptionWithInvocationPointMessage" xml:space="preserve">
     <value>There was a {1} invoking RPC '{0}'. {2}.</value>
   </data>
+  <data name="RpcParseExceptionInvalidReturnType" xml:space="preserve">
+    <value>RPC returned a value of type '{0}' when local expected it to return '{1}'.</value>
+  </data>
+  <data name="RpcParseExceptionUnknownReturnType" xml:space="preserve">
+    <value>RPC returned a value of type '{0}', which could not be identified. Local expected it to return '{1}'.</value>
+  </data>
+  <data name="TypeUnityMessageMethodNotVirtualOrAbstract" xml:space="preserve">
+    <value>Unity message method '{0}' must be non-sealed, non-private, and virtual or abstract so the proxy class can override it.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionInfoNoNullableParamInfo" xml:space="preserve">
+    <value>Parameter of nullable type {0} is not serializable. {1}.</value>
+  </data>
+  <data name="OutputListOutOfRangeIBinaryParser" xml:space="preserve">
+    <value>The given output buffer is not big enough to put all elements in after reading in the binary type parser: '{0}'.</value>
+  </data>
+  <data name="OutputListReadOnlyIBinaryParser" xml:space="preserve">
+    <value>The passed output list is readonly while reading in binary type parser: '{0}'.</value>
+  </data>
+  <data name="InvalidCastExceptionInvalidType" xml:space="preserve">
+    <value>The type '{0}' is not a valid type for the binary type parser: '{1}'.</value>
+  </data>
 </root>

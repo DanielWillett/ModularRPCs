@@ -4,7 +4,7 @@ using System;
 namespace DanielWillett.ModularRpcs.Annotations;
 
 /// <summary>
-/// Marks a property in an RPC receive method to be injected.
+/// Marks a parameter in an RPC receive method to be injected.
 /// If set up using dependency injection, that service provider can be used to inject other services as well.
 /// </summary>
 [MeansImplicitUse]

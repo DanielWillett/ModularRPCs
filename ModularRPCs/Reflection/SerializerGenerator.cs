@@ -169,6 +169,7 @@ internal sealed class SerializerGenerator
 #if NETSTANDARD2_0
         return typeBuilder.CreateTypeInfo()!;
 #else
+        // ReSharper disable once RedundantSuppressNullableWarningExpression
         return typeBuilder.CreateType()!;
 #endif
     }
@@ -236,7 +237,8 @@ internal sealed class SerializerGenerator
     internal static bool ShouldBePassedByReference(Type type)
     {
         return type.IsValueType
-               && (!IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal));
+               && (!IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal))
+               && Nullable.GetUnderlyingType(type) == null;
     }
     internal static int GetPrimitiveTypeSize(Type type)
     {
@@ -352,6 +354,7 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
+            Type? underlyingNullableType = Nullable.GetUnderlyingType(genType);
             il.CommentIfDebug($"== Write {Accessor.Formatter.Format(genType)} ==");
             if (lblNotPrimitive.HasValue)
             {
@@ -361,7 +364,7 @@ internal sealed class SerializerGenerator
             }
 
             Label? lblPrimitive;
-            if (CanQuickSerializeType(genType))
+            if (underlyingNullableType == null && CanQuickSerializeType(genType))
             {
                 il.CommentIfDebug("if (lclPreCalc) goto lblPrimitive;");
                 lblPrimitive = il.DefineLabel();
@@ -370,9 +373,9 @@ internal sealed class SerializerGenerator
             }
             else lblPrimitive = null;
 
-            bool isByRef = ShouldBePassedByReference(genType);
-            il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(genType) + ">" : string.Empty)}(" +
-                                $"arg{i.ToString(CultureInfo.InvariantCulture)}, bytes + lclSize, maxSize - lclSize);");
+            bool isByRef = underlyingNullableType == null && ShouldBePassedByReference(genType);
+            il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(underlyingNullableType ?? genType) + ">" : string.Empty)}(" + (underlyingNullableType != null ? "in " : string.Empty) +
+                              $"arg{i.ToString(CultureInfo.InvariantCulture)}, bytes + lclSize, maxSize - lclSize);");
 
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 3) ));
@@ -383,10 +386,14 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Mkrefany, genType);
                 writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByTRefBytes;
             }
-            else
+            else if (underlyingNullableType == null)
             {
                 LoadFromRef(genType, il);
                 writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValBytes.MakeGenericMethod(genType);
+            }
+            else
+            {
+                writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValBytes.MakeGenericMethod(underlyingNullableType);
             }
 
             il.Emit(OpCodes.Ldarg_1);
@@ -466,12 +473,13 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
+            Type? underlyingNullableType = Nullable.GetUnderlyingType(genType);
             il.CommentIfDebug($"== Write {Accessor.Formatter.Format(genType)} ==");
 
-            bool isByRef = ShouldBePassedByReference(genType);
-            il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(genType) + ">" : string.Empty)}(" +
+            bool isByRef = underlyingNullableType == null && ShouldBePassedByReference(genType);
+            il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(underlyingNullableType ?? genType) + ">" : string.Empty)}(" + (underlyingNullableType != null ? "in " : string.Empty) +
                               $"arg{i.ToString(CultureInfo.InvariantCulture)}, stream);");
-        
+
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 2) ));
         
@@ -481,10 +489,14 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Mkrefany, genType);
                 writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByTRefStream;
             }
-            else
+            else if (underlyingNullableType == null)
             {
                 LoadFromRef(genType, il);
                 writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValStream.MakeGenericMethod(genType);
+            }
+            else
+            {
+                writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValStream.MakeGenericMethod(underlyingNullableType);
             }
         
             il.Emit(OpCodes.Ldarg_1);
@@ -603,6 +615,7 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
+            Type? underlyingNullableType = Nullable.GetUnderlyingType(genType);
             il.CommentIfDebug($"== Get size of {Accessor.Formatter.Format(genType)} ==");
             if (lblPrimitive.HasValue)
             {
@@ -618,9 +631,9 @@ internal sealed class SerializerGenerator
             }
             else lblPrimitive = null;
 
-            bool isByRef = ShouldBePassedByReference(genType);
+            bool isByRef = underlyingNullableType == null && ShouldBePassedByReference(genType);
 
-            il.CommentIfDebug($"size += serializer.GetSize{(!isByRef ? "<" + Accessor.Formatter.Format(genType) + ">" : string.Empty)}(" +
+            il.CommentIfDebug($"size += serializer.GetSize{(!isByRef ? "<" + Accessor.Formatter.Format(underlyingNullableType ?? genType) + ">" : string.Empty)}(" + (underlyingNullableType != null ? "in " : string.Empty) +
                               $"arg{i.ToString(CultureInfo.InvariantCulture)});");
 
             il.Emit(OpCodes.Ldloc, lclSize);
@@ -632,10 +645,14 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Mkrefany, genType);
                 il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByTRef);
             }
-            else
+            else if (underlyingNullableType == null)
             {
                 LoadFromRef(genType, il);
                 il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByVal.MakeGenericMethod(genType));
+            }
+            else
+            {
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeNullableByVal.MakeGenericMethod(underlyingNullableType));
             }
 
             il.Emit(OpCodes.Add);
@@ -1048,13 +1065,13 @@ internal sealed class SerializerGenerator
             {
                 int ind = Array.IndexOf(toBind.Array!, param, toBind.Offset, toBind.Count);
                 if (ind != -1)
-                    lcl = bindLcls[ind];
+                    lcl = bindLcls[ind - toBind.Offset];
             }
 
             if (lcl == null)
             {
                 int ind = Array.IndexOf(toInject.Array!, param, toInject.Offset, toInject.Count);
-                lcl = injectionLcls[ind];
+                lcl = injectionLcls[ind - toInject.Offset];
             }
 
             il.Emit(param.ParameterType.IsByRef ? OpCodes.Ldloca : OpCodes.Ldloc, lcl);
@@ -1095,10 +1112,11 @@ internal sealed class SerializerGenerator
         {
             ParameterInfo parameter = toBind.Array![i + toBind.Offset];
             Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+            Type? underlyingNullableType = Nullable.GetUnderlyingType(type);
             bindLcls[i] = il.DeclareLocal(type);
 
             bool isPrimitive = CanQuickSerializeType(type);
-            bool shouldPassByRef = ShouldBePassedByReference(type);
+            bool shouldPassByRef = underlyingNullableType == null && ShouldBePassedByReference(type);
             Label lblDoPrimitiveRead = default;
             Label lblDontPrimitiveRead = default;
 
@@ -1142,7 +1160,7 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
                 il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByTRefBytes);
             }
-            else
+            else if (underlyingNullableType == null)
             {
                 il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
                 il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
@@ -1155,6 +1173,21 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
                 il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValBytes.MakeGenericMethod(type));
                 il.Emit(OpCodes.Stloc, bindLcls[i]);
+            }
+            else
+            {
+                il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullable<{Accessor.Formatter.Format(underlyingNullableType)}>(__makeref(bindLcl{i}), bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
+                il.Emit(OpCodes.Ldloca, bindLcls[i]);
+                il.Emit(OpCodes.Mkrefany, type);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
+                il.Emit(OpCodes.Ldloc, lclReadInd);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
+                il.Emit(OpCodes.Ldloc, lclReadInd);
+                il.Emit(OpCodes.Sub);
+                il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableObjectByTRefBytes.MakeGenericMethod(underlyingNullableType));
             }
 
             il.CommentIfDebug("lclReadInd += lclTempByteCt;");
