@@ -1,9 +1,11 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿//#define SIM_BIG_ENDIAN
+using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ReflectionTools;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using DanielWillett.ReflectionTools;
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class BooleanParser : BinaryTypeParser<bool>
@@ -60,6 +62,8 @@ public class BooleanParser : BinaryTypeParser<bool>
         private static readonly Type BoolRoListType = typeof(IReadOnlyList<bool>);
         private static readonly Type BoolSpanType = typeof(Span<bool>);
         private static readonly Type BoolRoSpanType = typeof(ReadOnlySpan<bool>);
+        private static readonly Type BoolSpanPtrType = typeof(Span<bool>*);
+        private static readonly Type BoolRoSpanPtrType = typeof(ReadOnlySpan<bool>*);
 
         /// <inheritdoc />
         public bool IsVariableSize => true;
@@ -68,6 +72,8 @@ public class BooleanParser : BinaryTypeParser<bool>
         public int MinimumSize => 1;
         private static int CalcLen(int length)
         {
+            if (length == 0)
+                return 1;
             byte lenFlag = SerializationHelper.GetLengthFlag(length, false);
             int hdrSize = SerializationHelper.GetHeaderSize(lenFlag);
             return hdrSize + (length - 1) / 8 + 1;
@@ -97,17 +103,19 @@ public class BooleanParser : BinaryTypeParser<bool>
                 return null;
             }
 
-            BitArray arr = new BitArray(length);
-
             if (length == 0)
             {
                 bytesRead = (int)index;
-                return arr;
+                return new BitArray(0);
             }
-            bytesRead = (int)index + (length - 1) / 8 + 1;
+
+            int size = (length - 1) / 8 + 1;
+            bytesRead = (int)index + size;
 
             if (maxSize < bytesRead)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+            BitArray arr = new BitArray(length);
 
             bytes += index;
             byte current = *bytes;
@@ -134,30 +142,92 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             int size = (length - 1) / 8 + 1;
 
-            byte[] newBytes = new byte[size];
-            int rdCt = stream.Read(newBytes, 0, size);
+            bool needsReturn = false;
+            int rdCt;
 
-            if (rdCt != size)
-                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+#if !SIM_BIG_ENDIAN
+            bool isLittleEndian = BitConverter.IsLittleEndian;
+#else
+            const bool isLittleEndian = false;
+#endif
 
-            if (BitConverter.IsLittleEndian)
+            if (isLittleEndian && size > DefaultSerializer.MaxArrayPoolSize)
             {
-                return new BitArray(newBytes);
+                byte[] bytes = new byte[size];
+
+                rdCt = stream.Read(bytes, 0, size);
+                bytesRead += rdCt;
+                if (rdCt != size)
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+                return new BitArray(bytes);
             }
-                
-            BitArray arr = new BitArray(length);
 
-            int index = 0;
-            byte current = newBytes[0];
-            for (int i = 0; i < length; i++)
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            scoped Span<byte> span;
+            byte[]? arrayToReturn = null;
+            if (size < 512)
             {
-                byte mod = (byte)(i % 8);
-                if (mod == 0 & i != 0)
+                span = stackalloc byte[size];
+            }
+            else if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                span = (arrayToReturn = DefaultSerializer.ArrayPool.Rent(size)).AsSpan(size);
+                needsReturn = true;
+            }
+            else
+            {
+                span = new byte[size];
+            }
+
+            rdCt = stream.Read(span);
+#else
+            byte[] span;
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                span = DefaultSerializer.ArrayPool.Rent(size);
+                needsReturn = true;
+            }
+            else
+            {
+                span = new byte[size];
+            }
+
+            rdCt = stream.Read(span, 0, size);
+#endif
+            BitArray arr;
+            try
+            {
+                if (rdCt != size)
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+                arr = new BitArray(length);
+
+                int index = 0;
+                byte current = span[0];
+                for (int i = 0; i < length; i++)
                 {
-                    ++index;
-                    current = newBytes[index];
+                    byte mod = (byte)(i % 8);
+                    if (mod == 0 & i != 0)
+                    {
+                        ++index;
+                        current = span[index];
+                    }
+                    arr[i] = (1 & (current >>> mod)) != 0;
                 }
-                arr[i] = (1 & (current >>> mod)) != 0;
+            }
+            finally
+            {
+                if (needsReturn)
+                {
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                    DefaultSerializer.ArrayPool.Return(arrayToReturn!);
+#else
+                    DefaultSerializer.ArrayPool.Return(span);
+#endif
+                }
+
+                bytesRead += rdCt;
             }
 
             return arr;
@@ -208,25 +278,72 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             int size = (length - 1) / 8 + 1;
 
-            byte[] newBytes = new byte[size];
-            int rdCt = stream.Read(newBytes, 0, size);
-
-            if (rdCt != size)
-                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
-
-            bool[] arr = new bool[length];
-
-            int index = 0;
-            byte current = newBytes[0];
-            for (int i = 0; i < length; i++)
+            bool needsToReturn = false;
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            scoped Span<byte> bytes;
+            byte[]? toReturn = null;
+            if (size < 512)
             {
-                byte mod = (byte)(i % 8);
-                if (mod == 0 & i != 0)
+                bytes = stackalloc byte[size];
+            }
+            else if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                bytes = (toReturn = DefaultSerializer.ArrayPool.Rent(size)).AsSpan(0, size);
+                needsToReturn = true;
+            }
+            else
+            {
+                bytes = new byte[size];
+            }
+
+            int rdCt = stream.Read(bytes);
+#else
+            byte[] bytes;
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                bytes = DefaultSerializer.ArrayPool.Rent(size);
+                needsToReturn = true;
+            }
+            else
+            {
+                bytes = new byte[size];
+            }
+
+            int rdCt = stream.Read(bytes, 0, size);
+#endif
+            bool[] arr;
+            try
+            {
+                if (rdCt != size)
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+                arr = new bool[length];
+
+                int index = 0;
+                byte current = bytes[0];
+                for (int i = 0; i < length; i++)
                 {
-                    ++index;
-                    current = newBytes[index];
+                    byte mod = (byte)(i % 8);
+                    if (mod == 0 & i != 0)
+                    {
+                        ++index;
+                        current = bytes[index];
+                    }
+                    arr[i] = (1 & (current >>> mod)) != 0;
                 }
-                arr[i] = (1 & (current >>> mod)) != 0;
+            }
+            finally
+            {
+                if (needsToReturn)
+                {
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                    DefaultSerializer.ArrayPool.Return(toReturn!);
+#else
+                    DefaultSerializer.ArrayPool.Return(bytes);
+#endif
+                }
+
+                bytesRead += rdCt;
             }
 
             return arr;
@@ -240,7 +357,12 @@ public class BooleanParser : BinaryTypeParser<bool>
             {
                 length = ReadArrayLength(bytes, maxSize, out bytesRead);
                 if (length > output.Length)
+                {
+                    int sz = (length - 1) / 8 + 1;
+                    if (maxSize >= bytesRead + sz)
+                        bytesRead += sz;
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                }
             }
             else bytesRead = 0;
 
@@ -290,8 +412,10 @@ public class BooleanParser : BinaryTypeParser<bool>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (length > output.Count)
+                    while (measuredCount > output.Count)
                         output.Add(false);
+
+                    length = measuredCount;
                 }
             }
 
@@ -346,7 +470,10 @@ public class BooleanParser : BinaryTypeParser<bool>
             {
                 length = ReadArrayLength(stream, out bytesRead);
                 if (length > output.Length)
+                {
+                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, (length - 1) / 8 + 1);
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                }
             }
             else bytesRead = 0;
 
@@ -355,23 +482,69 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             int size = (length - 1) / 8 + 1;
 
-            byte[] newBytes = new byte[size];
-            int rdCt = stream.Read(newBytes, 0, size);
-
-            if (rdCt != size)
-                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
-
-            int index = 0;
-            byte current = newBytes[0];
-            for (int i = 0; i < length; i++)
+            bool needsToReturn = false;
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            scoped Span<byte> bytes;
+            byte[]? toReturn = null;
+            if (size < 512)
             {
-                byte mod = (byte)(i % 8);
-                if (mod == 0 & i != 0)
+                bytes = stackalloc byte[size];
+            }
+            else if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                bytes = (toReturn = DefaultSerializer.ArrayPool.Rent(size)).AsSpan(0, size);
+                needsToReturn = true;
+            }
+            else
+            {
+                bytes = new byte[size];
+            }
+
+            int rdCt = stream.Read(bytes);
+#else
+            byte[] bytes;
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                bytes = DefaultSerializer.ArrayPool.Rent(size);
+                needsToReturn = true;
+            }
+            else
+            {
+                bytes = new byte[size];
+            }
+
+            int rdCt = stream.Read(bytes, 0, size);
+#endif
+            try
+            {
+                if (rdCt != size)
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+                int index = 0;
+                byte current = bytes[0];
+                for (int i = 0; i < length; i++)
                 {
-                    ++index;
-                    current = newBytes[index];
+                    byte mod = (byte)(i % 8);
+                    if (mod == 0 & i != 0)
+                    {
+                        ++index;
+                        current = bytes[index];
+                    }
+                    output[i] = (1 & (current >>> mod)) != 0;
                 }
-                output[i] = (1 & (current >>> mod)) != 0;
+            }
+            finally
+            {
+                if (needsToReturn)
+                {
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                    DefaultSerializer.ArrayPool.Return(toReturn!);
+#else
+                    DefaultSerializer.ArrayPool.Return(bytes);
+#endif
+                }
+
+                bytesRead += rdCt;
             }
 
             return length;
@@ -398,8 +571,10 @@ public class BooleanParser : BinaryTypeParser<bool>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (length > output.Count)
+                    while (measuredCount > output.Count)
                         output.Add(false);
+
+                    length = measuredCount;
                 }
             }
 
@@ -408,41 +583,87 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             int size = (length - 1) / 8 + 1;
 
-            byte[] newBytes = new byte[size];
-            int rdCt = stream.Read(newBytes, 0, size);
-
-            if (rdCt != size)
-                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
-
-            int index = 0;
-            byte current = newBytes[0];
-            if (setInsteadOfAdding)
+            bool needsToReturn = false;
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            scoped Span<byte> bytes;
+            byte[]? toReturn = null;
+            if (size < 512)
             {
-                for (int i = 0; i < length; i++)
-                {
-                    byte mod = (byte)(i % 8);
-                    if (mod == 0 & i != 0)
-                    {
-                        ++index;
-                        current = newBytes[index];
-                    }
-
-                    output[i] = (1 & (current >>> mod)) != 0;
-                }
+                bytes = stackalloc byte[size];
+            }
+            else if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                bytes = (toReturn = DefaultSerializer.ArrayPool.Rent(size)).AsSpan(0, size);
+                needsToReturn = true;
             }
             else
             {
-                for (int i = 0; i < length; i++)
-                {
-                    byte mod = (byte)(i % 8);
-                    if (mod == 0 & i != 0)
-                    {
-                        ++index;
-                        current = newBytes[index];
-                    }
+                bytes = new byte[size];
+            }
 
-                    output.Add((1 & (current >>> mod)) != 0);
+            int rdCt = stream.Read(bytes);
+#else
+            byte[] bytes;
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                bytes = DefaultSerializer.ArrayPool.Rent(size);
+                needsToReturn = true;
+            }
+            else
+            {
+                bytes = new byte[size];
+            }
+
+            int rdCt = stream.Read(bytes, 0, size);
+#endif
+            try
+            {
+                if (rdCt != size)
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+                int index = 0;
+                byte current = bytes[0];
+                if (setInsteadOfAdding)
+                {
+                    for (int i = 0; i < length; i++)
+                    {
+                        byte mod = (byte)(i % 8);
+                        if (mod == 0 & i != 0)
+                        {
+                            ++index;
+                            current = bytes[index];
+                        }
+
+                        output[i] = (1 & (current >>> mod)) != 0;
+                    }
                 }
+                else
+                {
+                    for (int i = 0; i < length; i++)
+                    {
+                        byte mod = (byte)(i % 8);
+                        if (mod == 0 & i != 0)
+                        {
+                            ++index;
+                            current = bytes[index];
+                        }
+
+                        output.Add((1 & (current >>> mod)) != 0);
+                    }
+                }
+            }
+            finally
+            {
+                if (needsToReturn)
+                {
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                    DefaultSerializer.ArrayPool.Return(toReturn!);
+#else
+                    DefaultSerializer.ArrayPool.Return(bytes);
+#endif
+                }
+
+                bytesRead += rdCt;
             }
 
             return length;
@@ -483,8 +704,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                *bytes = current;
+            *bytes = current;
 
             return hdrSize + byteSize;
         }
@@ -524,8 +744,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                *bytes = current;
+            *bytes = current;
 
             return hdrSize + byteSize;
         }
@@ -565,8 +784,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                *bytes = current;
+            *bytes = current;
 
             return hdrSize + byteSize;
         }
@@ -601,8 +819,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                *bytes = current;
+            *bytes = current;
 
             return hdrSize + byteSize;
         }
@@ -639,8 +856,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                buffer[index] = current;
+            buffer[index] = current;
 
             stream.Write(buffer, 0, byteSize);
             return hdrSize + byteSize;
@@ -678,8 +894,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                buffer[index] = current;
+            buffer[index] = current;
 
             stream.Write(buffer, 0, byteSize);
             return hdrSize + byteSize;
@@ -717,8 +932,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                buffer[index] = current;
+            buffer[index] = current;
 
             stream.Write(buffer, 0, byteSize);
             return hdrSize + byteSize;
@@ -751,8 +965,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                buffer[index] = current;
+            buffer[index] = current;
 
             stream.Write(buffer, 0, byteSize);
             return hdrSize + byteSize;
@@ -790,8 +1003,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else if (c) current |= (byte)(1 << mod);
             }
 
-            if (len % 8 != 0)
-                *bytes = current;
+            *bytes = current;
 
             return hdrSize + byteSize;
         }
@@ -813,7 +1025,12 @@ public class BooleanParser : BinaryTypeParser<bool>
             int byteSize = (len - 1) / 8 + 1;
             byte[] buffer = new byte[byteSize];
 
-            if (BitConverter.IsLittleEndian)
+#if !SIM_BIG_ENDIAN
+            bool isLittleEndian = BitConverter.IsLittleEndian;
+#else
+            const bool isLittleEndian = false;
+#endif
+            if (isLittleEndian)
             {
                 value.CopyTo(buffer, 0);
             }
@@ -834,8 +1051,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                     else if (c) current |= (byte)(1 << mod);
                 }
 
-                if (len % 8 != 0)
-                    buffer[index] = current;
+                buffer[index] = current;
             }
 
             stream.Write(buffer, 0, byteSize);
@@ -843,7 +1059,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int GetSize(TypedReference value)
+        public unsafe int GetSize(TypedReference value)
         {
             Type t = __reftype(value);
             int len;
@@ -859,6 +1075,10 @@ public class BooleanParser : BinaryTypeParser<bool>
                 len = __refvalue(value, ReadOnlySpan<bool>).Length;
             else if (t == BoolSpanType)
                 len = __refvalue(value, Span<bool>).Length;
+            else if (t == BoolRoSpanPtrType)
+                len = __refvalue(value, ReadOnlySpan<bool>*)->Length;
+            else if (t == BoolSpanPtrType)
+                len = __refvalue(value, Span<bool>*)->Length;
             else
                 throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
 
@@ -881,12 +1101,16 @@ public class BooleanParser : BinaryTypeParser<bool>
                 return WriteObject(__refvalue(value, ReadOnlySpan<bool>), bytes, maxSize);
             if (t == BoolSpanType)
                 return WriteObject(__refvalue(value, Span<bool>), bytes, maxSize);
+            if (t == BoolRoSpanPtrType)
+                return WriteObject(*__refvalue(value, ReadOnlySpan<bool>*), bytes, maxSize);
+            if (t == BoolSpanPtrType)
+                return WriteObject(*__refvalue(value, Span<bool>*), bytes, maxSize);
 
             throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
         }
 
         /// <inheritdoc />
-        public int WriteObject(TypedReference value, Stream stream)
+        public unsafe int WriteObject(TypedReference value, Stream stream)
         {
             Type t = __reftype(value);
             if (t == BitArrType)
@@ -901,6 +1125,10 @@ public class BooleanParser : BinaryTypeParser<bool>
                 return WriteObject(__refvalue(value, ReadOnlySpan<bool>), stream);
             if (t == BoolSpanType)
                 return WriteObject(__refvalue(value, Span<bool>), stream);
+            if (t == BoolRoSpanPtrType)
+                return WriteObject(*__refvalue(value, ReadOnlySpan<bool>*), stream);
+            if (t == BoolSpanPtrType)
+                return WriteObject(*__refvalue(value, Span<bool>*), stream);
 
             throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
         }
@@ -931,12 +1159,26 @@ public class BooleanParser : BinaryTypeParser<bool>
                     existingSpan = ReadBooleanArray(bytes, maxSize, out bytesRead).AsSpan();
                 }
             }
+            else if (t == BoolRoSpanPtrType)
+                *__refvalue(outObj, ReadOnlySpan<bool>*) = ReadBooleanArray(bytes, maxSize, out bytesRead).AsSpan();
+            else if (t == BoolSpanPtrType)
+            {
+                Span<bool>* existingSpan = __refvalue(outObj, Span<bool>*);
+                if (!existingSpan->IsEmpty)
+                {
+                    ReadObject(bytes, maxSize, *existingSpan, out bytesRead, false);
+                }
+                else
+                {
+                    *existingSpan = ReadBooleanArray(bytes, maxSize, out bytesRead).AsSpan();
+                }
+            }
             else
                 throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
         }
 
         /// <inheritdoc />
-        public void ReadObject(Stream stream, out int bytesRead, TypedReference outObj)
+        public unsafe void ReadObject(Stream stream, out int bytesRead, TypedReference outObj)
         {
             Type t = __reftype(outObj);
             if (t == BitArrType)
@@ -959,6 +1201,20 @@ public class BooleanParser : BinaryTypeParser<bool>
                 else
                 {
                     existingSpan = ReadBooleanArray(stream, out bytesRead).AsSpan();
+                }
+            }
+            else if (t == BoolRoSpanPtrType)
+                *__refvalue(outObj, ReadOnlySpan<bool>*) = ReadBooleanArray(stream, out bytesRead).AsSpan();
+            else if (t == BoolSpanPtrType)
+            {
+                Span<bool>* existingSpan = __refvalue(outObj, Span<bool>*);
+                if (!existingSpan->IsEmpty)
+                {
+                    ReadObject(stream, *existingSpan, out bytesRead, false);
+                }
+                else
+                {
+                    *existingSpan = ReadBooleanArray(stream, out bytesRead).AsSpan();
                 }
             }
             else

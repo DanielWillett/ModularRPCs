@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
 namespace DanielWillett.ModularRpcs.Serialization;
 public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T> where T : unmanaged
@@ -11,6 +12,8 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     private static readonly Type RoListType = typeof(IReadOnlyList<T>);
     private static readonly Type SpanType = typeof(Span<T>);
     private static readonly Type RoSpanType = typeof(ReadOnlySpan<T>);
+    private static readonly Type SpanPtrType = typeof(Span<T>*);
+    private static readonly Type RoSpanPtrType = typeof(ReadOnlySpan<T>*);
 
     /// <inheritdoc />
     public bool IsVariableSize => true;
@@ -20,6 +23,8 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     public virtual int ElementSize => sizeof(T);
     private int CalcLen(int length)
     {
+        if (length == 0)
+            return 1;
         byte lenFlag = SerializationHelper.GetLengthFlag(length, false);
         int hdrSize = SerializationHelper.GetHeaderSize(lenFlag);
         return hdrSize + length * ElementSize;
@@ -56,6 +61,10 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             len = __refvalue(value, ReadOnlySpan<T>).Length;
         else if (t == SpanType)
             len = __refvalue(value, Span<T>).Length;
+        else if (t == RoSpanPtrType)
+            len = __refvalue(value, ReadOnlySpan<T>*)->Length;
+        else if (t == SpanPtrType)
+            len = __refvalue(value, Span<T>*)->Length;
         else
             throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
 
@@ -76,6 +85,10 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             return WriteObject(__refvalue(value, ReadOnlySpan<T>), bytes, maxSize);
         if (t == SpanType)
             return WriteObject(__refvalue(value, Span<T>), bytes, maxSize);
+        if (t == RoSpanPtrType)
+            return WriteObject(*__refvalue(value, ReadOnlySpan<T>*), bytes, maxSize);
+        if (t == SpanPtrType)
+            return WriteObject(*__refvalue(value, Span<T>*), bytes, maxSize);
 
         throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
     }
@@ -94,6 +107,10 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             return WriteObject(__refvalue(value, ReadOnlySpan<T>), stream);
         if (t == SpanType)
             return WriteObject(__refvalue(value, Span<T>), stream);
+        if (t == RoSpanPtrType)
+            return WriteObject(*__refvalue(value, ReadOnlySpan<T>*), stream);
+        if (t == SpanPtrType)
+            return WriteObject(*__refvalue(value, Span<T>*), stream);
 
         throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
     }
@@ -122,6 +139,20 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
                 existingSpan = ReadObject(bytes, maxSize, out bytesRead).AsSpan();
             }
         }
+        else if (t == RoSpanPtrType)
+            *__refvalue(outObj, ReadOnlySpan<T>*) = ReadObject(bytes, maxSize, out bytesRead).AsSpan();
+        else if (t == SpanPtrType)
+        {
+            Span<T>* existingSpan = __refvalue(outObj, Span<T>*);
+            if (!existingSpan->IsEmpty)
+            {
+                ReadObject(bytes, maxSize, *existingSpan, out bytesRead, false);
+            }
+            else
+            {
+                *existingSpan = ReadObject(bytes, maxSize, out bytesRead).AsSpan();
+            }
+        }
         else
             throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
     }
@@ -148,6 +179,20 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             else
             {
                 existingSpan = ReadObject(stream, out bytesRead).AsSpan();
+            }
+        }
+        else if (t == RoSpanPtrType)
+            *__refvalue(outObj, ReadOnlySpan<T>*) = ReadObject(stream, out bytesRead).AsSpan();
+        else if (t == SpanPtrType)
+        {
+            Span<T>* existingSpan = __refvalue(outObj, Span<T>*);
+            if (!existingSpan->IsEmpty)
+            {
+                ReadObject(stream, *existingSpan, out bytesRead, false);
+            }
+            else
+            {
+                *existingSpan = ReadObject(stream, out bytesRead).AsSpan();
             }
         }
         else

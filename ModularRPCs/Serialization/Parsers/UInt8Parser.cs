@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -82,7 +83,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
             if (maxSize - hdrSize < length)
                 throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
 
-            Unsafe.CopyBlockUnaligned(ref Unsafe.AsRef<byte>(bytes), ref Unsafe.AsRef(in value[0]), (uint)length);
+            Unsafe.CopyBlockUnaligned(ref Unsafe.AsRef<byte>(bytes + hdrSize), ref Unsafe.AsRef(in value[0]), (uint)length);
 
             return length + hdrSize;
         }
@@ -127,7 +128,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                     break;
             }
 
-            return hdrSize + length;
+            return length + hdrSize;
         }
 
         /// <inheritdoc />
@@ -170,7 +171,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                     break;
             }
 
-            return hdrSize + length;
+            return length + hdrSize;
         }
 
         /// <inheritdoc />
@@ -188,7 +189,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 return hdrSize;
 
             stream.Write(value, 0, length);
-            return length;
+            return length + hdrSize;
         }
 
         /// <inheritdoc />
@@ -203,17 +204,36 @@ public class UInt8Parser : BinaryTypeParser<byte>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
             stream.Write(value);
 #else
-            // todo use temp buffer instead of full buffer
-            byte[] buffer = length <= DefaultSerializer.MaxArrayPoolSize ? DefaultSerializer.ArrayPool.Rent(length) : new byte[length];
-            try
+            if (length <= DefaultSerializer.MaxArrayPoolSize)
             {
+                byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                try
+                {
+                    Unsafe.CopyBlockUnaligned(ref buffer[0], ref Unsafe.AsRef(in value[0]), (uint)length);
+                    stream.Write(buffer, 0, length);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(buffer);
+                }
+            }
+            else if (length <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] buffer = new byte[length];
                 Unsafe.CopyBlockUnaligned(ref buffer[0], ref Unsafe.AsRef(in value[0]), (uint)length);
                 stream.Write(buffer, 0, length);
             }
-            finally
+            else
             {
-                if (length <= DefaultSerializer.MaxArrayPoolSize)
-                    DefaultSerializer.ArrayPool.Return(buffer);
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                int bytesLeft = length;
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    Unsafe.CopyBlockUnaligned(ref buffer[0], ref Unsafe.AsRef(in value[length - bytesLeft]), (uint)sizeToCopy);
+                    stream.Write(buffer, 0, sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
             }
 #endif
             return length + hdrSize;
@@ -244,17 +264,38 @@ public class UInt8Parser : BinaryTypeParser<byte>
                     break;
 
                 default:
-                    // todo use temp buffer instead of full buffer
-                    byte[] buffer = length <= DefaultSerializer.MaxArrayPoolSize ? DefaultSerializer.ArrayPool.Rent(length) : new byte[length];
-                    try
+                    if (length <= DefaultSerializer.MaxArrayPoolSize)
                     {
+                        byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                        try
+                        {
+                            value.CopyTo(buffer, 0);
+                            stream.Write(buffer, 0, length);
+                        }
+                        finally
+                        {
+                            DefaultSerializer.ArrayPool.Return(buffer);
+                        }
+                    }
+                    else if (length <= DefaultSerializer.MaxBufferSize)
+                    {
+                        byte[] buffer = new byte[length];
                         value.CopyTo(buffer, 0);
                         stream.Write(buffer, 0, length);
                     }
-                    finally
+                    else
                     {
-                        if (length <= DefaultSerializer.MaxArrayPoolSize)
-                            DefaultSerializer.ArrayPool.Return(buffer);
+                        byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                        int bytesLeft = length;
+                        do
+                        {
+                            int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                            int stInd = length - bytesLeft;
+                            for (int i = 0; i < sizeToCopy; ++i)
+                                buffer[i] = value[i + stInd];
+                            stream.Write(buffer, 0, sizeToCopy);
+                            bytesLeft -= sizeToCopy;
+                        } while (bytesLeft > 0);
                     }
 
                     break;
@@ -288,23 +329,54 @@ public class UInt8Parser : BinaryTypeParser<byte>
                     break;
 
                 default:
-                    // todo use temp buffer instead of full buffer
-                    byte[] buffer = length <= DefaultSerializer.MaxArrayPoolSize ? DefaultSerializer.ArrayPool.Rent(length) : new byte[length];
-                    try
+                    if (length <= DefaultSerializer.MaxArrayPoolSize)
                     {
+                        byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                        try
+                        {
+                            if (value is IList<byte> list)
+                                list.CopyTo(buffer, 0);
+                            else if (value is IList l2)
+                                l2.CopyTo(buffer, 0);
+                            else
+                            {
+                                for (int i = 0; i < length; ++i)
+                                    buffer[i] = value[i];
+                            }
+                            stream.Write(buffer, 0, length);
+                        }
+                        finally
+                        {
+                            DefaultSerializer.ArrayPool.Return(buffer);
+                        }
+                    }
+                    else if (length <= DefaultSerializer.MaxBufferSize)
+                    {
+                        byte[] buffer = new byte[length];
                         if (value is IList<byte> list)
                             list.CopyTo(buffer, 0);
+                        else if (value is IList l2)
+                            l2.CopyTo(buffer, 0);
                         else
                         {
-                            for (int i = 0; i < value.Count; ++i)
+                            for (int i = 0; i < length; ++i)
                                 buffer[i] = value[i];
                         }
                         stream.Write(buffer, 0, length);
                     }
-                    finally
+                    else
                     {
-                        if (length <= DefaultSerializer.MaxArrayPoolSize)
-                            DefaultSerializer.ArrayPool.Return(buffer);
+                        byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                        int bytesLeft = length;
+                        do
+                        {
+                            int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                            int stInd = length - bytesLeft;
+                            for (int i = 0; i < sizeToCopy; ++i)
+                                buffer[i] = value[i + stInd];
+                            stream.Write(buffer, 0, sizeToCopy);
+                            bytesLeft -= sizeToCopy;
+                        } while (bytesLeft > 0);
                     }
 
                     break;
@@ -330,14 +402,15 @@ public class UInt8Parser : BinaryTypeParser<byte>
             }
 
             byte[] arr = new byte[length];
-            bytesRead = (int)index + length;
+            int size = (int)index + length;
 
-            if (maxSize < bytesRead)
+            if (maxSize < size)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
+            bytesRead = size;
             fixed (byte* ptr = arr)
             {
-                Buffer.MemoryCopy(bytes, ptr, length, maxSize - index);
+                Buffer.MemoryCopy(bytes + index, ptr, maxSize - index, length);
             }
 
             return arr;
@@ -351,7 +424,11 @@ public class UInt8Parser : BinaryTypeParser<byte>
             {
                 length = ReadArrayLength(bytes, maxSize, out bytesRead);
                 if (length > output.Length)
+                {
+                    if (maxSize >= bytesRead)
+                        bytesRead += length;
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                }
             }
             else bytesRead = 0;
 
@@ -359,11 +436,12 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 return 0;
 
             bytes += bytesRead;
-            bytesRead += length;
+            int size = bytesRead + length;
 
-            if (maxSize < bytesRead)
+            if (maxSize < size)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
+            bytesRead = size;
             Unsafe.CopyBlockUnaligned(ref output[0], ref Unsafe.AsRef<byte>(bytes), (uint)length);
             return length;
         }
@@ -389,21 +467,23 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (length > output.Count)
+                    while (measuredCount > output.Count)
                         output.Add(0);
+
+                    length = measuredCount;
                 }
             }
 
             if (length <= 0)
                 return 0;
 
-            int size = (length - 1) / 8 + 1;
             bytes += bytesRead;
-            bytesRead += size;
+            int size = bytesRead + length;
 
-            if (maxSize < bytesRead)
+            if (maxSize < size)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
+            bytesRead = size;
             if (setInsteadOfAdding)
             {
                 if (output is byte[] arr || output is List<byte> list && Accessor.TryGetUnderlyingArray(list, out arr))
@@ -437,7 +517,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
 
             byte[] arr = new byte[length];
             int rdCt = stream.Read(arr, 0, length);
-
+            bytesRead += rdCt;
             if (rdCt != length)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
 
@@ -452,7 +532,10 @@ public class UInt8Parser : BinaryTypeParser<byte>
             {
                 length = ReadArrayLength(stream, out bytesRead);
                 if (length > output.Length)
+                {
+                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length);
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                }
             }
             else bytesRead = 0;
 
@@ -461,23 +544,60 @@ public class UInt8Parser : BinaryTypeParser<byte>
 
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
             int rdCt = stream.Read(output);
+            bytesRead += rdCt;
             if (rdCt != length)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
 
 #else
-            byte[] buffer = length <= DefaultSerializer.MaxArrayPoolSize ? DefaultSerializer.ArrayPool.Rent(length) : new byte[length];
-            try
+            if (length <= DefaultSerializer.MaxArrayPoolSize)
             {
+                byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                try
+                {
+                    int readCt = stream.Read(buffer, 0, length);
+                    if (readCt != length)
+                    {
+                        bytesRead += readCt;
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+                    }
+                    Unsafe.CopyBlockUnaligned(ref output[0], ref buffer[0], (uint)length);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(buffer);
+                }
+            }
+            else if (length <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] buffer = new byte[length];
                 int readCt = stream.Read(buffer, 0, length);
                 if (readCt != length)
+                {
+                    bytesRead += readCt;
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
-                Unsafe.CopyBlockUnaligned(ref output[0], ref buffer[0], (uint)length); // todo use temp buffer instead of full buffer
+                }
+                Unsafe.CopyBlockUnaligned(ref output[0], ref buffer[0], (uint)length);
             }
-            finally
+            else
             {
-                if (length <= DefaultSerializer.MaxArrayPoolSize)
-                    DefaultSerializer.ArrayPool.Return(buffer);
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                int bytesLeft = length;
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int readCt = stream.Read(buffer, 0, sizeToCopy);
+                    if (readCt != sizeToCopy)
+                    {
+                        bytesRead += bytesLeft - length + readCt;
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+                    }
+
+                    Unsafe.CopyBlockUnaligned(ref output[length - bytesLeft], ref buffer[0], (uint)sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
             }
+
+            bytesRead += length;
 #endif
             return length;
         }
@@ -503,8 +623,10 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (length > output.Count)
+                    while (measuredCount > output.Count)
                         output.Add(0);
+
+                    length = measuredCount;
                 }
             }
 
@@ -512,22 +634,69 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 return 0;
 
             int readCt;
-            if (setInsteadOfAdding && output is byte[] arr || output is List<byte> list && Accessor.TryGetUnderlyingArray(list, out arr))
+            if (setInsteadOfAdding && output is byte[] arr)
             {
                 readCt = stream.Read(arr, 0, length);
+                bytesRead += readCt;
                 if (readCt != length)
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
 
                 return length;
             }
-
-            // todo use temp buffer instead of full buffer
-            byte[] buffer = length <= DefaultSerializer.MaxArrayPoolSize ? DefaultSerializer.ArrayPool.Rent(length) : new byte[length];
-            try
+            if (output is List<byte> list)
             {
+                if (list.Capacity < length)
+                    list.Capacity = length;
+
+                if (Accessor.TryGetUnderlyingArray(list, out arr)
+                    && (list.Count >= length || list.TrySetUnderlyingArray(arr, length)))
+                {
+                    readCt = stream.Read(arr, 0, length);
+                    bytesRead += readCt;
+                    if (readCt != length)
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+                    return length;
+                }
+            }
+            
+            if (length <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                try
+                {
+                    readCt = stream.Read(buffer, 0, length);
+                    if (readCt != length)
+                    {
+                        bytesRead += readCt;
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+                    }
+
+                    if (setInsteadOfAdding)
+                    {
+                        for (int i = 0; i < length; ++i)
+                            output[i] = buffer[i];
+                    }
+                    else
+                    {
+                        for (int i = 0; i < length; ++i)
+                            output.Add(buffer[i]);
+                    }
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(buffer);
+                }
+            }
+            else if (length <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] buffer = new byte[length];
                 readCt = stream.Read(buffer, 0, length);
                 if (readCt != length)
+                {
+                    bytesRead += readCt;
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+                }
 
                 if (setInsteadOfAdding)
                 {
@@ -540,11 +709,37 @@ public class UInt8Parser : BinaryTypeParser<byte>
                         output.Add(buffer[i]);
                 }
             }
-            finally
+            else
             {
-                if (length <= DefaultSerializer.MaxArrayPoolSize)
-                    DefaultSerializer.ArrayPool.Return(buffer);
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                int bytesLeft = length;
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    readCt = stream.Read(buffer, 0, sizeToCopy);
+                    if (readCt != sizeToCopy)
+                    {
+                        bytesRead += bytesLeft - length + readCt;
+                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+                    }
+
+                    int stInd = length - bytesLeft;
+
+                    if (setInsteadOfAdding)
+                    {
+                        for (int i = 0; i < sizeToCopy; ++i)
+                            output[stInd + i] = buffer[i];
+                    }
+                    else
+                    {
+                        for (int i = 0; i < sizeToCopy; ++i)
+                            output.Add(buffer[i]);
+                    }
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
             }
+
+            bytesRead += length;
 
             return length;
         }

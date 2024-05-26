@@ -95,7 +95,7 @@ public static class SerializationHelper
             case 2:
                 if (BitConverter.IsLittleEndian)
                 {
-                    Unsafe.WriteUnaligned(bytes, (ushort)length);
+                    Unsafe.WriteUnaligned(bytes + index, (ushort)length);
                 }
                 else
                 {
@@ -109,7 +109,7 @@ public static class SerializationHelper
             default:
                 if (BitConverter.IsLittleEndian)
                 {
-                    Unsafe.WriteUnaligned(bytes, length);
+                    Unsafe.WriteUnaligned(bytes + index, length);
                 }
                 else
                 {
@@ -331,4 +331,21 @@ public static class SerializationHelper
             2 => 3,
             _ => 5
         };
+
+    public static void TryAdvanceStream(Stream stream, ref int bytesRead, int length)
+    {
+        if (!stream.CanSeek)
+            return;
+
+        try
+        {
+            long oldPos = stream.Position;
+            long newPos = stream.Seek(length, SeekOrigin.Current);
+            bytesRead += (int)(newPos - oldPos);
+        }
+        catch (NotSupportedException)
+        {
+            // ignored
+        }
+    }
 }

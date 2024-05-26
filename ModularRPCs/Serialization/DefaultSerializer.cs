@@ -20,6 +20,7 @@ namespace DanielWillett.ModularRpcs.Serialization;
 public class DefaultSerializer : IRpcSerializer
 {
     internal const int MaxArrayPoolSize = 19;
+    internal const int MaxBufferSize = 4096;
     internal static ArrayPool<byte> ArrayPool = ArrayPool<byte>.Create(MaxArrayPoolSize, 6);
     protected readonly ConcurrentDictionary<uint, Type> KnownTypes = new ConcurrentDictionary<uint, Type>();
     protected readonly ConcurrentDictionary<Type, uint> KnownTypeIds = new ConcurrentDictionary<Type, uint>();
@@ -144,6 +145,8 @@ public class DefaultSerializer : IRpcSerializer
     private void AddDefaultNonPrimitiveSerializers()
     {
         _primitiveParsers.AddManySerializer(new BooleanParser.Many());
+        _primitiveParsers.AddManySerializer(new UInt8Parser.Many());
+        _primitiveParsers.AddManySerializer(new Int8Parser.Many());
     }
 
     /// <summary>

@@ -13,6 +13,7 @@ namespace DanielWillett.ModularRpcs.Examples.Samples;
 [RpcClass]
 public class SampleClass : IRpcObject<int>
 {
+
     private static int _identifier;
     public int Identifier { get; set; }
     public SampleClass()
