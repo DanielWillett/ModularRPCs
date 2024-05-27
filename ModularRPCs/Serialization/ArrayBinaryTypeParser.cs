@@ -10,6 +10,7 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     private static readonly Type ArrType = typeof(T[]);
     private static readonly Type ListType = typeof(IList<T>);
     private static readonly Type RoListType = typeof(IReadOnlyList<T>);
+    private static readonly Type ArrSegmentType = typeof(ArraySegment<T>);
     private static readonly Type SpanType = typeof(Span<T>);
     private static readonly Type RoSpanType = typeof(ReadOnlySpan<T>);
     private static readonly Type SpanPtrType = typeof(Span<T>*);
@@ -29,7 +30,14 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
         int hdrSize = SerializationHelper.GetHeaderSize(lenFlag);
         return hdrSize + length * ElementSize;
     }
-
+    protected static ArraySegment<T> EmptySegment()
+    {
+#if NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        return ArraySegment<T>.Empty;
+#else
+        return new ArraySegment<T>(Array.Empty<T>());
+#endif
+    }
     /// <inheritdoc />
     public int ReadArrayLength(byte* bytes, uint maxSize, out int bytesRead)
     {
@@ -57,6 +65,8 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             len = __refvalue(value, IList<T>).Count;
         else if (t == RoListType)
             len = __refvalue(value, IReadOnlyList<T>).Count;
+        else if (t == ArrSegmentType)
+            len = __refvalue(value, ArraySegment<T>).Count;
         else if (t == RoSpanType)
             len = __refvalue(value, ReadOnlySpan<T>).Length;
         else if (t == SpanType)
@@ -81,6 +91,8 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             return WriteObject(__refvalue(value, IList<T>), bytes, maxSize);
         if (t == RoListType)
             return WriteObject(__refvalue(value, IReadOnlyList<T>), bytes, maxSize);
+        if (t == ArrSegmentType)
+            return WriteObject(__refvalue(value, ArraySegment<T>), bytes, maxSize);
         if (t == RoSpanType)
             return WriteObject(__refvalue(value, ReadOnlySpan<T>), bytes, maxSize);
         if (t == SpanType)
@@ -103,6 +115,8 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             return WriteObject(__refvalue(value, IList<T>), stream);
         if (t == RoListType)
             return WriteObject(__refvalue(value, IReadOnlyList<T>), stream);
+        if (t == ArrSegmentType)
+            return WriteObject(__refvalue(value, ArraySegment<T>), stream);
         if (t == RoSpanType)
             return WriteObject(__refvalue(value, ReadOnlySpan<T>), stream);
         if (t == SpanType)
@@ -125,6 +139,11 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             __refvalue(outObj, IList<T>?) = ReadObject(bytes, maxSize, out bytesRead);
         else if (t == RoListType)
             __refvalue(outObj, IReadOnlyList<T>?) = ReadObject(bytes, maxSize, out bytesRead);
+        else if (t == ArrSegmentType)
+        {
+            T[]? arr = ReadObject(bytes, maxSize, out bytesRead);
+            __refvalue(outObj, ArraySegment<T>) = arr == null ? EmptySegment() : new ArraySegment<T>(arr);
+        }
         else if (t == RoSpanType)
             __refvalue(outObj, ReadOnlySpan<T>) = ReadObject(bytes, maxSize, out bytesRead).AsSpan();
         else if (t == SpanType)
@@ -167,6 +186,11 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             __refvalue(outObj, IList<T>?) = ReadObject(stream, out bytesRead);
         else if (t == RoListType)
             __refvalue(outObj, IReadOnlyList<T>?) = ReadObject(stream, out bytesRead);
+        else if (t == ArrSegmentType)
+        {
+            T[]? arr = ReadObject(stream, out bytesRead);
+            __refvalue(outObj, ArraySegment<T>) = arr == null ? EmptySegment() : new ArraySegment<T>(arr);
+        }
         else if (t == RoSpanType)
             __refvalue(outObj, ReadOnlySpan<T>) = ReadObject(stream, out bytesRead).AsSpan();
         else if (t == SpanType)
@@ -208,6 +232,9 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
             case T[] arr:
                 len = arr.Length;
                 break;
+            case ArraySegment<T> seg:
+                len = seg.Count;
+                break;
             case IList<T> list:
                 len = list.Count;
                 break;
@@ -229,6 +256,7 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
         return value switch
         {
             T[] arr => WriteObject(arr, bytes, maxSize),
+            ArraySegment<T> seg => WriteObject(seg, bytes, maxSize),
             IList<T> list => WriteObject(list, bytes, maxSize),
             IReadOnlyList<T> list => WriteObject(list, bytes, maxSize),
             null => WriteObject(null, bytes, maxSize),
@@ -242,6 +270,7 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
         return value switch
         {
             T[] arr => WriteObject(arr, stream),
+            ArraySegment<T> seg => WriteObject(seg, stream),
             IList<T> list => WriteObject(list, stream),
             IReadOnlyList<T> list => WriteObject(list, stream),
             null => WriteObject(null!, stream),
@@ -255,6 +284,12 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
         if (type == ArrType || type == ListType || type == RoListType)
             return ReadObject(bytes, maxSize, out bytesRead);
 
+        if (type == ArrSegmentType)
+        {
+            T[]? arr = ReadObject(bytes, maxSize, out bytesRead);
+            return arr == null ? EmptySegment() : new ArraySegment<T>(arr);
+        }
+
         throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(type), Accessor.ExceptionFormatter.Format(GetType())));
     }
 
@@ -264,11 +299,20 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
         if (type == ArrType || type == ListType || type == RoListType)
             return ReadObject(stream, out bytesRead);
 
+        if (type == ArrSegmentType)
+        {
+            T[]? arr = ReadObject(stream, out bytesRead);
+            return arr == null ? EmptySegment() : new ArraySegment<T>(arr);
+        }
+
         throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(type), Accessor.ExceptionFormatter.Format(GetType())));
     }
 
     /// <inheritdoc />
     public int GetSize(T[]? value) => value == null ? 1 : CalcLen(value.Length);
+
+    /// <inheritdoc />
+    public int GetSize(ArraySegment<T> value) => value.Array == null ? 1 : CalcLen(value.Count);
 
     /// <inheritdoc />
     public int GetSize(IList<T>? value) => value == null ? 1 : CalcLen(value.Count);
@@ -280,7 +324,13 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     public int GetSize(ReadOnlySpan<T> value) => CalcLen(value.Length);
 
     /// <inheritdoc />
-    public abstract int WriteObject(T[]? value, byte* bytes, uint maxSize);
+    public int WriteObject(T[]? value, byte* bytes, uint maxSize)
+    {
+        return WriteObject(value == null ? default : new ArraySegment<T>(value), bytes, maxSize);
+    }
+
+    /// <inheritdoc />
+    public abstract int WriteObject(ArraySegment<T> value, byte* bytes, uint maxSize);
 
     /// <inheritdoc />
     public abstract int WriteObject(ReadOnlySpan<T> value, byte* bytes, uint maxSize);
@@ -292,7 +342,13 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     public abstract int WriteObject(IReadOnlyList<T> value, byte* bytes, uint maxSize);
 
     /// <inheritdoc />
-    public abstract int WriteObject(T[]? value, Stream stream);
+    public int WriteObject(T[]? value, Stream stream)
+    {
+        return WriteObject(value == null ? default : new ArraySegment<T>(value), stream);
+    }
+
+    /// <inheritdoc />
+    public abstract int WriteObject(ArraySegment<T> value, Stream stream);
 
     /// <inheritdoc />
     public abstract int WriteObject(ReadOnlySpan<T> value, Stream stream);
@@ -307,6 +363,9 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     public abstract T[]? ReadObject(byte* bytes, uint maxSize, out int bytesRead);
 
     /// <inheritdoc />
+    public abstract int ReadObject(byte* bytes, uint maxSize, ArraySegment<T> output, out int bytesRead, bool hasReadLength = true);
+
+    /// <inheritdoc />
     public abstract int ReadObject(byte* bytes, uint maxSize, Span<T> output, out int bytesRead, bool hasReadLength = true);
 
     /// <inheritdoc />
@@ -314,6 +373,9 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
 
     /// <inheritdoc />
     public abstract T[]? ReadObject(Stream stream, out int bytesRead);
+
+    /// <inheritdoc />
+    public abstract int ReadObject(Stream stream, ArraySegment<T> output, out int bytesRead, bool hasReadLength = true);
 
     /// <inheritdoc />
     public abstract int ReadObject(Stream stream, Span<T> output, out int bytesRead, bool hasReadLength = true);

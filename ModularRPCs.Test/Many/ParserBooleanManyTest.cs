@@ -7,7 +7,9 @@ partial class ParserManyTests
 {
     [Test]
     [TestCase(new bool[] { true, false, false, true, false, false, false, true, false, true, true, false })]
-    [TestCase(new bool[] { false, false, true, true, false, true, true, true })]
+    [TestCase(new bool[] { false, false, true, true, false, true, false, true })]
+    [TestCase(new bool[] { false, false, true, true, false, true, false })]
+    [TestCase(new bool[] { false, false, true, true, false, true, false, true, false })]
     [TestCase(new bool[0])]
     [TestCase(new byte[]
     {

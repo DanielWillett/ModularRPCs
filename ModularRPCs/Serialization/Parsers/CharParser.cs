@@ -102,4 +102,5 @@ public class CharParser : BinaryTypeParser<char>
         bytesRead = 2;
         return unchecked( (char)value );
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<char>;
 }

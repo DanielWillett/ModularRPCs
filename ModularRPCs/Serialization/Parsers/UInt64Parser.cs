@@ -115,4 +115,5 @@ public class UInt64Parser : BinaryTypeParser<ulong>
         bytesRead = 8;
         return value;
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<ulong>;
 }

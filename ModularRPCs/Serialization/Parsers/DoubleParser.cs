@@ -129,4 +129,5 @@ public class DoubleParser : BinaryTypeParser<double>
         bytesRead = 8;
         return value;
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<double>;
 }

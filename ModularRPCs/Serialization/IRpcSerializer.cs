@@ -6,6 +6,11 @@ using System.Diagnostics.CodeAnalysis;
 #endif
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+/// <summary>
+/// Manages reading and writing various types in various forms to and from streams or raw binary buffers.
+/// </summary>
+/// <remarks>Default implementation: <see cref="DefaultSerializer"/>.</remarks>
 public interface IRpcSerializer
 {
     /// <summary>
@@ -30,8 +35,16 @@ public interface IRpcSerializer
     /// <summary>
     /// Get the size of an object in bytes.
     /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>. Consider using <see cref="GetSize(Type, object)"/> instead.</exception>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSize(object? value);
+    int GetSize(object value);
+
+    /// <summary>
+    /// Get the size of an object of type <paramref name="valueType"/> in bytes.
+    /// </summary>
+    /// <exception cref="InvalidCastException"><paramref name="value"/> is not an instance of <paramref name="valueType"/>.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int GetSize(Type valueType, object? value);
 
     /// <summary>
     /// Get the size of an object in bytes.
@@ -52,24 +65,154 @@ public interface IRpcSerializer
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     int GetMinimumSize(Type type, out bool isFixedSize);
 
+    /// <summary>
+    /// Write a nullable value type to a raw binary buffer.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     unsafe int WriteObject<T>(in T? value, byte* bytes, uint maxSize) where T : struct;
-    unsafe int WriteObject<T>(T? value, byte* bytes, uint maxSize);
-    unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize);
-    unsafe int WriteObject(object? value, byte* bytes, uint maxSize);
-    int WriteObject<T>(in T? value, Stream stream) where T : struct;
-    int WriteObject<T>(T? value, Stream stream);
-    int WriteObject(TypedReference value, Stream stream);
-    int WriteObject(object? value, Stream stream);
 
+    /// <summary>
+    /// Write a nullable reference type or value type to a raw binary buffer.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    unsafe int WriteObject<T>(T? value, byte* bytes, uint maxSize);
+
+    /// <summary>
+    /// Write a nullable reference type or value type to a raw binary buffer via a <see cref="TypedReference"/>.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize);
+
+    /// <summary>
+    /// Write a reference type or value type to a raw binary buffer.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>. Consider using <see cref="WriteObject(Type, object, byte*, uint)"/> instead.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    unsafe int WriteObject(object value, byte* bytes, uint maxSize);
+
+    /// <summary>
+    /// Write a nullable reference type or value type of type <paramref name="valueType"/> to a raw binary buffer.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="InvalidCastException"><paramref name="value"/> is not an instance of <paramref name="valueType"/>.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    unsafe int WriteObject(Type valueType, object? value, byte* bytes, uint maxSize);
+
+    /// <summary>
+    /// Write a nullable value type to a stream.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteObject<T>(in T? value, Stream stream) where T : struct;
+
+    /// <summary>
+    /// Write a nullable reference type or value type to a stream.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteObject<T>(T? value, Stream stream);
+
+    /// <summary>
+    /// Write a nullable reference type or value type to a stream via a <see cref="TypedReference"/>.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteObject(TypedReference value, Stream stream);
+
+    /// <summary>
+    /// Write a reference type or value type to a stream.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>. Consider using <see cref="WriteObject(Type, object, Stream)"/> instead.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteObject(object value, Stream stream);
+
+    /// <summary>
+    /// Write a nullable reference type or value type of type <paramref name="valueType"/> to a stream.
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="InvalidCastException"><paramref name="value"/> is not an instance of <paramref name="valueType"/>.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteObject(Type valueType, object? value, Stream stream);
+
+    /// <summary>
+    /// Read a nullable value type from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value type read, or <see langword="null"/>.</returns>
     unsafe T? ReadNullable<T>(byte* bytes, uint maxSize, out int bytesRead) where T : struct;
+
+    /// <summary>
+    /// Read a nullable value type from a raw binary buffer to a <see cref="TypedReference"/>.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     unsafe void ReadNullable<T>(TypedReference refOut, byte* bytes, uint maxSize, out int bytesRead) where T : struct;
+
+    /// <summary>
+    /// Read a nullable reference type or value type from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
     unsafe T? ReadObject<T>(byte* bytes, uint maxSize, out int bytesRead);
+
+    /// <summary>
+    /// Read a nullable reference type or value type from a raw binary buffer to a <see cref="TypedReference"/>.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     unsafe void ReadObject(TypedReference refValue, byte* bytes, uint maxSize, out int bytesRead);
+
+    /// <summary>
+    /// Read a nullable reference type or value type of type <paramref name="objectType"/> from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
     unsafe object? ReadObject(Type objectType, byte* bytes, uint maxSize, out int bytesRead);
+
+    /// <summary>
+    /// Read a nullable value type from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value type read, or <see langword="null"/>.</returns>
     T? ReadNullable<T>(Stream stream, out int bytesRead) where T : struct;
+
+    /// <summary>
+    /// Read a nullable value type from a stream to a <see cref="TypedReference"/>.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     void ReadNullable<T>(TypedReference refOut, Stream stream, out int bytesRead) where T : struct;
+
+    /// <summary>
+    /// Read a nullable reference type or value type from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
     T? ReadObject<T>(Stream stream, out int bytesRead);
+
+    /// <summary>
+    /// Read a nullable reference type or value type from a stream to a <see cref="TypedReference"/>.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     void ReadObject(TypedReference refValue, Stream stream, out int bytesRead);
+
+    /// <summary>
+    /// Read a nullable reference type or value type of type <paramref name="objectType"/> from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
     object? ReadObject(Type objectType, Stream stream, out int bytesRead);
 
     /// <summary>

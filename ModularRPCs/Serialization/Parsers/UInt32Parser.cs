@@ -106,4 +106,5 @@ public class UInt32Parser : BinaryTypeParser<uint>
         bytesRead = 4;
         return value;
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<uint>;
 }

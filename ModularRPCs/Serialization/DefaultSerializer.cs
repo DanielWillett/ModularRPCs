@@ -146,7 +146,15 @@ public class DefaultSerializer : IRpcSerializer
     {
         _primitiveParsers.AddManySerializer(new BooleanParser.Many());
         _primitiveParsers.AddManySerializer(new UInt8Parser.Many());
+        _primitiveParsers.AddManySerializer(new UInt16Parser.Many());
+        _primitiveParsers.AddManySerializer(new UInt32Parser.Many());
+        _primitiveParsers.AddManySerializer(new UInt64Parser.Many());
         _primitiveParsers.AddManySerializer(new Int8Parser.Many());
+        _primitiveParsers.AddManySerializer(new Int16Parser.Many());
+        _primitiveParsers.AddManySerializer(new Int32Parser.Many());
+        _primitiveParsers.AddManySerializer(new Int64Parser.Many());
+        _primitiveParsers.AddManySerializer(new SingleParser.Many());
+        _primitiveParsers.AddManySerializer(new DoubleParser.Many());
     }
 
     /// <summary>
@@ -352,27 +360,35 @@ public class DefaultSerializer : IRpcSerializer
     }
 
     /// <inheritdoc />
-    public int GetSize(object? value)
+    public int GetSize(object value)
     {
-        Type origType = value.GetType();
-        if (origType.IsValueType || origType == typeof(string))
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+
+        return GetSize(value.GetType(), value);
+    }
+
+    /// <inheritdoc />
+    public int GetSize(Type valueType, object? value)
+    {
+        if (valueType.IsValueType || valueType == typeof(string))
         {
-            if (_parsers.TryGetValue(origType, out IBinaryTypeParser? parser))
+            if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
             {
                 return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
             }
 
-            if (_primitiveSizes.TryGetValue(origType, out int size))
+            if (_primitiveSizes.TryGetValue(valueType, out int size))
                 return size;
 
-            if (_primitiveParsers.TryGetValue(origType, out parser))
+            if (_primitiveParsers.TryGetValue(valueType, out parser))
             {
                 return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
             }
         }
         else
         {
-            for (Type? type = origType; type != typeof(object) && type != null; type = type.BaseType)
+            for (Type? type = valueType; type != typeof(object) && type != null; type = type.BaseType)
             {
                 if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
                 {
@@ -389,13 +405,13 @@ public class DefaultSerializer : IRpcSerializer
             }
         }
 
-        Type? nullableType = Nullable.GetUnderlyingType(origType);
+        Type? nullableType = Nullable.GetUnderlyingType(valueType);
         if (nullableType != null)
         {
-            return GetNullableSize(value, nullableType, origType);
+            return GetNullableSize(value, nullableType, valueType);
         }
 
-        ThrowNoParserFound(origType);
+        ThrowNoParserFound(valueType);
         return 0; // not reached
     }
 
@@ -634,36 +650,44 @@ public class DefaultSerializer : IRpcSerializer
     }
 
     /// <inheritdoc />
-    public unsafe int WriteObject(object? value, byte* bytes, uint maxSize)
+    public unsafe int WriteObject(object value, byte* bytes, uint maxSize)
     {
-        Type origType = value.GetType();
-        if (origType.IsValueType || origType == typeof(string))
+        if (value == null)
+            throw new ArgumentNullException();
+
+        return WriteObject(value.GetType(), value, bytes, maxSize);
+    }
+
+    /// <inheritdoc />
+    public unsafe int WriteObject(Type valueType, object? value, byte* bytes, uint maxSize)
+    {
+        if (valueType.IsValueType || valueType == typeof(string))
         {
-            if (_parsers.TryGetValue(origType, out IBinaryTypeParser? parser))
+            if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
                 return parser.WriteObject(value, bytes, maxSize);
 
-            if (_primitiveParsers.TryGetValue(origType, out parser))
+            if (_primitiveParsers.TryGetValue(valueType, out parser))
                 return parser.WriteObject(value, bytes, maxSize);
         }
         else
         {
-            for (Type? type = origType; type != typeof(object) && type != null; type = type.BaseType)
+            for (Type? baseType = valueType; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
             {
-                if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+                if (_parsers.TryGetValue(baseType, out IBinaryTypeParser? parser))
                     return parser.WriteObject(value, bytes, maxSize);
 
-                if (_primitiveParsers.TryGetValue(type, out parser))
+                if (_primitiveParsers.TryGetValue(baseType, out parser))
                     return parser.WriteObject(value, bytes, maxSize);
             }
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(origType);
+        Type? underlyingType = Nullable.GetUnderlyingType(valueType);
         if (underlyingType != null)
         {
-            return WriteNullable(value, bytes, maxSize, underlyingType, origType);
+            return WriteNullable(value, bytes, maxSize, underlyingType, valueType);
         }
 
-        ThrowNoParserFound(origType);
+        ThrowNoParserFound(valueType);
         return 0; // not reached
     }
 
@@ -763,36 +787,44 @@ public class DefaultSerializer : IRpcSerializer
     }
 
     /// <inheritdoc />
-    public int WriteObject(object? value, Stream stream)
+    public int WriteObject(object value, Stream stream)
     {
-        Type origType = value.GetType();
-        if (origType.IsValueType || origType == typeof(string))
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+
+        return WriteObject(value.GetType(), value, stream);
+    }
+
+    /// <inheritdoc />
+    public int WriteObject(Type valueType, object? value, Stream stream)
+    {
+        if (valueType.IsValueType || valueType == typeof(string))
         {
-            if (_parsers.TryGetValue(origType, out IBinaryTypeParser? parser))
+            if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
                 return parser.WriteObject(value, stream);
 
-            if (_primitiveParsers.TryGetValue(origType, out parser))
+            if (_primitiveParsers.TryGetValue(valueType, out parser))
                 return parser.WriteObject(value, stream);
         }
         else
         {
-            for (Type? type = origType; type != typeof(object) && type != null; type = type.BaseType)
+            for (Type? baseType = valueType; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
             {
-                if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+                if (_parsers.TryGetValue(baseType, out IBinaryTypeParser? parser))
                     return parser.WriteObject(value, stream);
 
-                if (_primitiveParsers.TryGetValue(type, out parser))
+                if (_primitiveParsers.TryGetValue(baseType, out parser))
                     return parser.WriteObject(value, stream);
             }
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(origType);
+        Type? underlyingType = Nullable.GetUnderlyingType(valueType);
         if (underlyingType != null)
         {
-            return WriteNullable(value, stream, underlyingType, origType);
+            return WriteNullable(value, stream, underlyingType, valueType);
         }
 
-        ThrowNoParserFound(origType);
+        ThrowNoParserFound(valueType);
         return 0; // not reached
     }
     private unsafe int WriteNullable(object? value, byte* bytes, uint maxSize, Type underlyingType, Type nullableType)
@@ -1268,6 +1300,7 @@ public class DefaultSerializer : IRpcSerializer
     }
     protected object GetDefaultNullable(Type nullableType)
     {
+        // ReSharper disable once RedundantSuppressNullableWarningExpression
         return _nullableDefaults.GetOrAdd(nullableType, Activator.CreateInstance!);
     }
     protected unsafe object ReadNullable(Type nullableType, Type underlyingType, byte* bytes, uint maxSize, out int bytesRead)

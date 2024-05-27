@@ -121,4 +121,5 @@ public class SingleParser : BinaryTypeParser<float>
         bytesRead = 4;
         return value;
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<float>;
 }

@@ -115,4 +115,5 @@ public class Int64Parser : BinaryTypeParser<long>
         bytesRead = 8;
         return value;
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<long>;
 }

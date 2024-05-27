@@ -106,6 +106,7 @@ public sealed class ProxyGenerator
     /// <summary>
     /// Maximum size in bytes that a stackalloc can be used instead of creating an new byte array for writing messages to.
     /// </summary>
+    /// <remarks>Defaults to 512.</remarks>
     public int MaxSizeForStackalloc { get; set; } = 512;
 
     internal SerializerGenerator SerializerGenerator { get; }

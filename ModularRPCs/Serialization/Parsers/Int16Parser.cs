@@ -102,4 +102,5 @@ public class Int16Parser : BinaryTypeParser<short>
         bytesRead = 2;
         return unchecked( (short)value );
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<short>;
 }

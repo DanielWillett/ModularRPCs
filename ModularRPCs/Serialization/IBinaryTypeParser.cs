@@ -64,7 +64,7 @@ public interface IBinaryTypeParser<T> : IBinaryTypeParser
 }
 
 /// <summary>
-/// Array implementation of <see cref="IBinaryTypeParser"/>.
+/// Array implementation of <see cref="IBinaryTypeParser"/>. Consider inheriting <see cref="ArrayBinaryTypeParser{T}"/> instead.
 /// </summary>
 /// <typeparam name="T">Element type to be serialized.</typeparam>
 public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
@@ -72,6 +72,7 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     int GetSize(ReadOnlySpan<T> value);
     int GetSize(IList<T> value);
     int GetSize(IReadOnlyList<T> value);
+    int GetSize(ArraySegment<T> value);
 
     /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
     unsafe int WriteObject(ReadOnlySpan<T> value, byte* bytes, uint maxSize);
@@ -81,9 +82,13 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
 
     /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
     unsafe int WriteObject(IReadOnlyList<T> value, byte* bytes, uint maxSize);
+
+    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
+    unsafe int WriteObject(ArraySegment<T> value, byte* bytes, uint maxSize);
     int WriteObject(ReadOnlySpan<T> value, Stream stream);
     int WriteObject(IList<T> value, Stream stream);
     int WriteObject(IReadOnlyList<T> value, Stream stream);
+    int WriteObject(ArraySegment<T> value, Stream stream);
 
     /// <returns>-1 if the array is <see langword="null"/>, otherwise the length of the new array in elements.</returns>
     /// <exception cref="RpcParseException">Buffer was not large enough.</exception>
@@ -102,6 +107,14 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     unsafe int ReadObject(byte* bytes, uint maxSize, Span<T> output, out int bytesRead, bool hasReadLength = true);
 
     /// <summary>
+    /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(byte*,uint,out int)"/> and set <paramref name="hasReadLength"/> to <see langword="true"/>, or guess the max length and set it to <see langword="false"/>.
+    /// </summary>
+    /// <returns>Number of elements written to <paramref name="output"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
+    /// <exception cref="RpcParseException">Buffer was not large enough.</exception>
+    unsafe int ReadObject(byte* bytes, uint maxSize, ArraySegment<T> output, out int bytesRead, bool hasReadLength = true);
+
+    /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(byte*,uint,out int)"/>, set <paramref name="hasReadLength"/> to <see langword="true"/>, and pass that length to <paramref name="measuredCount"/>, or don't read it and set it to <see langword="false"/>.
     /// </summary>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
@@ -116,6 +129,14 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
     /// <exception cref="RpcParseException">Stream was not long enough.</exception>
     int ReadObject(Stream stream, Span<T> output, out int bytesRead, bool hasReadLength = true);
+
+    /// <summary>
+    /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(Stream,out int)"/> and set <paramref name="hasReadLength"/> to <see langword="true"/>, or guess the max length and set it to <see langword="false"/>.
+    /// </summary>
+    /// <returns>Number of elements written to <paramref name="output"/>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
+    /// <exception cref="RpcParseException">Stream was not long enough.</exception>
+    int ReadObject(Stream stream, ArraySegment<T> output, out int bytesRead, bool hasReadLength = true);
 
     /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(Stream,out int)"/>, set <paramref name="hasReadLength"/> to <see langword="true"/>, and pass that length to <paramref name="measuredCount"/>, or don't read it and set it to <see langword="false"/>.

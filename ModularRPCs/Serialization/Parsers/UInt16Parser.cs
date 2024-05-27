@@ -102,4 +102,5 @@ public class UInt16Parser : BinaryTypeParser<ushort>
         bytesRead = 2;
         return unchecked( (ushort)value );
     }
+    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<ushort>;
 }

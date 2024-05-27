@@ -133,6 +133,7 @@ public partial class ParserManyTests
                     parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
                     pos += bytesRead;
                     Assert.That(arr1, Is.EqualTo(values));
+                    arr1 = null;
                 }
 
                 Assert.That(pos, Is.EqualTo(ct));
@@ -145,6 +146,7 @@ public partial class ParserManyTests
                     parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
                     pos += bytesRead;
                     Assert.That(arr2, Is.EqualTo(values));
+                    arr2 = null;
                 }
 
                 Assert.That(pos, Is.EqualTo(ct));
@@ -157,6 +159,7 @@ public partial class ParserManyTests
                     parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
                     pos += bytesRead;
                     Assert.That(arr3, Is.EqualTo(values));
+                    arr3 = null;
                 }
 
                 Assert.That(pos, Is.EqualTo(ct));
@@ -170,6 +173,14 @@ public partial class ParserManyTests
                     parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
                     pos += bytesRead;
                     Assert.That(arr4.ToArray(), Is.EqualTo(values));
+                    if (i > arrCt / 2)
+                    {
+                        arr4 = new T[values.Length];
+                    }
+                    else
+                    {
+                        arr4 = null;
+                    }
                 }
 
                 Assert.That(pos, Is.EqualTo(ct));
@@ -183,6 +194,7 @@ public partial class ParserManyTests
                     parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
                     pos += bytesRead;
                     Assert.That(arr5.ToArray(), Is.EqualTo(values));
+                    arr5 = null;
                 }
 
                 Assert.That(pos, Is.EqualTo(ct));
@@ -203,6 +215,21 @@ public partial class ParserManyTests
 
                     Assert.That(pos, Is.EqualTo(ct));
                 }
+
+                pos = 0;
+                ArraySegment<T> arr7 = default!;
+                tr = __makeref(arr7);
+                for (int i = 0; i < arrCt; ++i)
+                {
+                    parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
+                    pos += bytesRead;
+                    T[] toArray = new T[arr7.Count];
+                    Array.Copy(arr7.Array, arr7.Offset, toArray, 0, toArray.Length);
+                    Assert.That(toArray, Is.EqualTo(values));
+                    arr7 = default;
+                }
+
+                Assert.That(pos, Is.EqualTo(ct));
 
                 /*
                  * read to span (read len first)
@@ -617,6 +644,7 @@ public partial class ParserManyTests
                 parser.ReadObject(memStream, out int bytesRead, tr);
                 pos += bytesRead;
                 Assert.That(arr1, Is.EqualTo(values));
+                arr1 = null;
             }
 
             Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
@@ -632,6 +660,7 @@ public partial class ParserManyTests
                 parser.ReadObject(memStream, out int bytesRead, tr);
                 pos += bytesRead;
                 Assert.That(arr2, Is.EqualTo(values));
+                arr2 = null;
             }
 
             Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
@@ -647,6 +676,7 @@ public partial class ParserManyTests
                 parser.ReadObject(memStream, out int bytesRead, tr);
                 pos += bytesRead;
                 Assert.That(arr3, Is.EqualTo(values));
+                arr3 = null;
             }
 
             Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
@@ -663,6 +693,14 @@ public partial class ParserManyTests
                 parser.ReadObject(memStream, out int bytesRead, tr);
                 pos += bytesRead;
                 Assert.That(arr4.ToArray(), Is.EqualTo(values));
+                if (i > arrCt / 2)
+                {
+                    arr4 = new T[values.Length];
+                }
+                else
+                {
+                    arr4 = null;
+                }
             }
 
             Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
@@ -679,6 +717,7 @@ public partial class ParserManyTests
                 parser.ReadObject(memStream, out int bytesRead, tr);
                 pos += bytesRead;
                 Assert.That(arr5.ToArray(), Is.EqualTo(values));
+                arr5 = null;
             }
 
             Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
@@ -698,11 +737,30 @@ public partial class ParserManyTests
                     bool[] output = new bool[arr6.Count];
                     arr6.CopyTo(output, 0);
                     Assert.That(output, Is.EqualTo(values));
+                    arr6 = null;
                 }
 
                 Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
                 Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
             }
+
+            memStream.Seek(0, SeekOrigin.Begin);
+            ParserTests.CheckBuffer(memStream);
+            pos = ParserTests.BufferSize;
+            ArraySegment<T> arr7 = default!;
+            tr = __makeref(arr7);
+            for (int i = 0; i < arrCt; ++i)
+            {
+                parser.ReadObject(memStream, out int bytesRead, tr);
+                pos += bytesRead;
+                T[] toArray = new T[arr7.Count];
+                Array.Copy(arr7.Array, arr7.Offset, toArray, 0, toArray.Length);
+                Assert.That(toArray, Is.EqualTo(values));
+                arr7 = default;
+            }
+
+            Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
+            Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
 
             /*
              * read to span (read len first)

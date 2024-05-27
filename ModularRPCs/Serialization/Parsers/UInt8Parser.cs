@@ -4,7 +4,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.CompilerServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class UInt8Parser : BinaryTypeParser<byte>
@@ -45,15 +44,15 @@ public class UInt8Parser : BinaryTypeParser<byte>
     public unsafe class Many : ArrayBinaryTypeParser<byte>
     {
         /// <inheritdoc />
-        public override int WriteObject(byte[]? value, byte* bytes, uint maxSize)
+        public override int WriteObject(ArraySegment<byte> value, byte* bytes, uint maxSize)
         {
             uint index = 0;
-            if (value == null)
+            if (value.Array == null)
             {
                 return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
             }
 
-            int length = value.Length;
+            int length = value.Count;
             int hdrSize = SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, length, false, this);
 
             if (length == 0)
@@ -62,10 +61,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
             if (maxSize - hdrSize < length)
                 throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
 
-            fixed (byte* ptr = value)
-            {
-                Buffer.MemoryCopy(ptr, bytes + hdrSize, maxSize - hdrSize, length);
-            }
+            value.AsSpan().CopyTo(new Span<byte>(bytes + hdrSize, length));
 
             return length + hdrSize;
         }
@@ -83,7 +79,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
             if (maxSize - hdrSize < length)
                 throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
 
-            Unsafe.CopyBlockUnaligned(ref Unsafe.AsRef<byte>(bytes + hdrSize), ref Unsafe.AsRef(in value[0]), (uint)length);
+            value.CopyTo(new Span<byte>(bytes + hdrSize, length));
 
             return length + hdrSize;
         }
@@ -109,17 +105,11 @@ public class UInt8Parser : BinaryTypeParser<byte>
             switch (value)
             {
                 case byte[] b:
-                    fixed (byte* ptr = b)
-                    {
-                        Buffer.MemoryCopy(ptr, bytes + hdrSize, maxSize - hdrSize, length);
-                    }
+                    b.AsSpan().CopyTo(new Span<byte>(bytes + hdrSize, length));
                     break;
 
                 case List<byte> l when Accessor.TryGetUnderlyingArray(l, out byte[] underlying):
-                    fixed (byte* ptr = underlying)
-                    {
-                        Buffer.MemoryCopy(ptr, bytes + hdrSize, maxSize - hdrSize, length);
-                    }
+                    underlying.AsSpan(0, length).CopyTo(new Span<byte>(bytes + hdrSize, length));
                     break;
 
                 default:
@@ -152,17 +142,11 @@ public class UInt8Parser : BinaryTypeParser<byte>
             switch (value)
             {
                 case byte[] b:
-                    fixed (byte* ptr = b)
-                    {
-                        Buffer.MemoryCopy(ptr, bytes + hdrSize, maxSize - hdrSize, length);
-                    }
+                    b.AsSpan().CopyTo(new Span<byte>(bytes + hdrSize, length));
                     break;
 
                 case List<byte> l when Accessor.TryGetUnderlyingArray(l, out byte[] underlying):
-                    fixed (byte* ptr = underlying)
-                    {
-                        Buffer.MemoryCopy(ptr, bytes + hdrSize, maxSize - hdrSize, length);
-                    }
+                    underlying.AsSpan(0, length).CopyTo(new Span<byte>(bytes + hdrSize, length));
                     break;
 
                 default:
@@ -175,20 +159,20 @@ public class UInt8Parser : BinaryTypeParser<byte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(byte[]? value, Stream stream)
+        public override int WriteObject(ArraySegment<byte> value, Stream stream)
         {
-            if (value == null)
+            if (value.Array == null)
             {
                 return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
             }
 
-            int length = value.Length;
+            int length = value.Count;
             int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
 
             if (length == 0)
                 return hdrSize;
 
-            stream.Write(value, 0, length);
+            stream.Write(value.Array, value.Offset, length);
             return length + hdrSize;
         }
 
@@ -209,7 +193,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
                 try
                 {
-                    Unsafe.CopyBlockUnaligned(ref buffer[0], ref Unsafe.AsRef(in value[0]), (uint)length);
+                    value.CopyTo(buffer.AsSpan(0, length));
                     stream.Write(buffer, 0, length);
                 }
                 finally
@@ -220,7 +204,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
             else if (length <= DefaultSerializer.MaxBufferSize)
             {
                 byte[] buffer = new byte[length];
-                Unsafe.CopyBlockUnaligned(ref buffer[0], ref Unsafe.AsRef(in value[0]), (uint)length);
+                value.CopyTo(buffer);
                 stream.Write(buffer, 0, length);
             }
             else
@@ -230,7 +214,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 do
                 {
                     int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
-                    Unsafe.CopyBlockUnaligned(ref buffer[0], ref Unsafe.AsRef(in value[length - bytesLeft]), (uint)sizeToCopy);
+                    value.Slice(length - bytesLeft, sizeToCopy).CopyTo(buffer.AsSpan(0, sizeToCopy));
                     stream.Write(buffer, 0, sizeToCopy);
                     bytesLeft -= sizeToCopy;
                 } while (bytesLeft > 0);
@@ -408,12 +392,38 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
             bytesRead = size;
-            fixed (byte* ptr = arr)
-            {
-                Buffer.MemoryCopy(bytes + index, ptr, maxSize - index, length);
-            }
-
+            new Span<byte>(bytes + index, length).CopyTo(arr);
             return arr;
+        }
+
+        /// <inheritdoc />
+        public override int ReadObject(byte* bytes, uint maxSize, ArraySegment<byte> output, out int bytesRead, bool hasReadLength = true)
+        {
+            int length = output.Count;
+            if (!hasReadLength)
+            {
+                length = ReadArrayLength(bytes, maxSize, out bytesRead);
+                if (length > output.Count || length > 0 && output.Array == null)
+                {
+                    if (maxSize >= bytesRead)
+                        bytesRead += length;
+                    throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                }
+            }
+            else bytesRead = 0;
+
+            if (length == 0)
+                return 0;
+
+            bytes += bytesRead;
+            int size = bytesRead + length;
+
+            if (maxSize < size)
+                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+            bytesRead = size;
+            new Span<byte>(bytes, length).CopyTo(output);
+            return length;
         }
 
         /// <inheritdoc />
@@ -442,7 +452,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
             bytesRead = size;
-            Unsafe.CopyBlockUnaligned(ref output[0], ref Unsafe.AsRef<byte>(bytes), (uint)length);
+            new Span<byte>(bytes, length).CopyTo(output);
             return length;
         }
 
@@ -483,18 +493,40 @@ public class UInt8Parser : BinaryTypeParser<byte>
             if (maxSize < size)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
+            byte[]? arr = null;
+            int arrOffset = 0;
+            if (setInsteadOfAdding && output is byte[] arr1)
+            {
+                arr = arr1;
+            }
+            else if (setInsteadOfAdding && output is ArraySegment<byte> arr2)
+            {
+                arr = arr2.Array;
+                arrOffset = arr2.Offset;
+            }
+            else if (output is List<byte> list)
+            {
+                if (!setInsteadOfAdding)
+                    arrOffset = list.Count;
+                if (list.Capacity < arrOffset + length)
+                    list.Capacity = arrOffset + length;
+
+                if (!Accessor.TryGetUnderlyingArray(list, out arr) || (list.Count < arrOffset + length && !list.TrySetUnderlyingArray(arr, arrOffset + length)))
+                    arr = null;
+            }
+
+            if (arr != null)
+            {
+                new Span<byte>(bytes, length).CopyTo(arr.AsSpan(arrOffset, length));
+                bytesRead = size;
+                return length;
+            }
+
             bytesRead = size;
             if (setInsteadOfAdding)
             {
-                if (output is byte[] arr || output is List<byte> list && Accessor.TryGetUnderlyingArray(list, out arr))
-                {
-                    Unsafe.CopyBlockUnaligned(ref arr[0], ref Unsafe.AsRef<byte>(bytes), (uint)length);
-                }
-                else
-                {
-                    for (int i = 0; i < length; ++i)
-                        output[i] = bytes[i];
-                }
+                for (int i = 0; i < length; ++i)
+                    output[i] = bytes[i];
             }
             else
             {
@@ -522,6 +554,32 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
 
             return arr;
+        }
+
+        /// <inheritdoc />
+        public override int ReadObject(Stream stream, ArraySegment<byte> output, out int bytesRead, bool hasReadLength = true)
+        {
+            int length = output.Count;
+            if (!hasReadLength)
+            {
+                length = ReadArrayLength(stream, out bytesRead);
+                if (length > output.Count || length > 0 && output.Array == null)
+                {
+                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length);
+                    throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                }
+            }
+            else bytesRead = 0;
+
+            if (length == 0)
+                return 0;
+
+            int rdCt = stream.Read(output.Array!, output.Offset, output.Count);
+            bytesRead += rdCt;
+            if (rdCt != length)
+                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
+
+            return length;
         }
 
         /// <inheritdoc />
@@ -560,7 +618,8 @@ public class UInt8Parser : BinaryTypeParser<byte>
                         bytesRead += readCt;
                         throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                     }
-                    Unsafe.CopyBlockUnaligned(ref output[0], ref buffer[0], (uint)length);
+
+                    buffer.AsSpan(0, length).CopyTo(output.Slice(0, length));
                 }
                 finally
                 {
@@ -576,7 +635,8 @@ public class UInt8Parser : BinaryTypeParser<byte>
                     bytesRead += readCt;
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                 }
-                Unsafe.CopyBlockUnaligned(ref output[0], ref buffer[0], (uint)length);
+
+                buffer.AsSpan().CopyTo(output.Slice(0, length));
             }
             else
             {
@@ -592,7 +652,7 @@ public class UInt8Parser : BinaryTypeParser<byte>
                         throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                     }
 
-                    Unsafe.CopyBlockUnaligned(ref output[length - bytesLeft], ref buffer[0], (uint)sizeToCopy);
+                    buffer.AsSpan(0, sizeToCopy).CopyTo(output.Slice(length - bytesLeft, sizeToCopy));
                     bytesLeft -= sizeToCopy;
                 } while (bytesLeft > 0);
             }
@@ -634,30 +694,36 @@ public class UInt8Parser : BinaryTypeParser<byte>
                 return 0;
 
             int readCt;
-            if (setInsteadOfAdding && output is byte[] arr)
+            byte[]? arr = null;
+            int arrOffset = 0;
+            if (setInsteadOfAdding && output is byte[] arr1)
             {
-                readCt = stream.Read(arr, 0, length);
+                arr = arr1;
+            }
+            else if (setInsteadOfAdding && output is ArraySegment<byte> arr2)
+            {
+                arr = arr2.Array;
+                arrOffset = arr2.Offset;
+            }
+            else if (output is List<byte> list)
+            {
+                if (!setInsteadOfAdding)
+                    arrOffset = list.Count;
+                if (list.Capacity < arrOffset + length)
+                    list.Capacity = arrOffset + length;
+
+                if (!Accessor.TryGetUnderlyingArray(list, out arr) || (list.Count < arrOffset + length && !list.TrySetUnderlyingArray(arr, arrOffset + length)))
+                    arr = null;
+            }
+
+            if (arr != null)
+            {
+                readCt = stream.Read(arr, arrOffset, length);
                 bytesRead += readCt;
                 if (readCt != length)
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
 
                 return length;
-            }
-            if (output is List<byte> list)
-            {
-                if (list.Capacity < length)
-                    list.Capacity = length;
-
-                if (Accessor.TryGetUnderlyingArray(list, out arr)
-                    && (list.Count >= length || list.TrySetUnderlyingArray(arr, length)))
-                {
-                    readCt = stream.Read(arr, 0, length);
-                    bytesRead += readCt;
-                    if (readCt != length)
-                        throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
-
-                    return length;
-                }
             }
             
             if (length <= DefaultSerializer.MaxArrayPoolSize)
