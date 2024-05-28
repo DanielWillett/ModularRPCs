@@ -12,7 +12,7 @@ public partial class ParserManyTests
 {
     private unsafe void TestManyParserBytes<T>(T[] values, IArrayBinaryTypeParser<T> parser)
     {
-        uint maxSize = 8394240u;
+        uint maxSize = 33576960u;
         fixed (byte* bufferSrc = new byte[maxSize])
         {
             for (bool useObjToWrite = false; ; useObjToWrite = true)
@@ -28,44 +28,174 @@ public partial class ParserManyTests
 
                 if (useObjToWrite)
                 {
-                    arrCtNoBit = 4;
+                    arrCtNoBit = 8;
                     ct = parser.WriteObject((object)values, buffer, maxSize);
-                    ct += parser.WriteObject((object)new List<T>(values), buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((object)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((object)values, buffer + ct, maxSize - (uint)ct);
+                    int lastCount = ct;
+                    int thisCount = parser.WriteObject((object)new ArraySegment<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((object)new List<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((object)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((object)new ReadOnlyArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((object)new CollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((object)new ReadOnlyCollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((object)new EnumerableWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
 
                     if (bitArrayParser != null)
                     {
-                        ct += bitArrayParser.WriteObject((object)new BitArray((bool[])(object)values), buffer + ct, maxSize - (uint)ct);
+                        thisCount = bitArrayParser.WriteObject((object)new BitArray((bool[])(object)values), buffer + ct, maxSize - (uint)ct);
+                        Assert.That(thisCount, Is.EqualTo(lastCount));
+                        ct += thisCount;
                     }
                 }
                 else
                 {
-                    arrCtNoBit = 8;
+                    arrCtNoBit = 31;
                     ct = ((IBinaryTypeParser<T[]>)parser).WriteObject(values, buffer, maxSize);
-                    ct += parser.WriteObject((IList<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((IList<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((IList<T>)values, buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((IReadOnlyList<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((IReadOnlyList<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject((IReadOnlyList<T>)values, buffer + ct, maxSize - (uint)ct);
-                    ct += parser.WriteObject(values.AsSpan(), buffer + ct, maxSize - (uint)ct);
+                    int lastCount = ct;
+                    int thisCount = parser.WriteObject((IList<T>)values, buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IList<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IList<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IList<T>)new ArraySegment<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyList<T>)values, buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyList<T>)new ArraySegment<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyList<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyList<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject(new ReadOnlyArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((ICollection<T>)values, buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((ICollection<T>)new ArraySegment<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((ICollection<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((ICollection<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((ICollection<T>)new CollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyCollection<T>)values, buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyCollection<T>)new ArraySegment<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyCollection<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyCollection<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyCollection<T>)new ReadOnlyArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IReadOnlyCollection<T>)new CollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject(new ReadOnlyCollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)values, buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)new ArraySegment<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)new List<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)new ArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)new ReadOnlyArrayWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)new CollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject((IEnumerable<T>)new ReadOnlyCollectionWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject(new EnumerableWrapper<T>(values), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
+                    thisCount = parser.WriteObject(values.AsSpan(), buffer + ct, maxSize - (uint)ct);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
 
                     if (bitArrayParser != null)
                     {
-                        ct += bitArrayParser.WriteObject(new BitArray((bool[])(object)values), buffer + ct, maxSize - (uint)ct);
+                        thisCount = bitArrayParser.WriteObject(new BitArray((bool[])(object)values), buffer + ct, maxSize - (uint)ct);
+                        Assert.That(thisCount, Is.EqualTo(lastCount));
+                        ct += thisCount;
                     }
                 }
 
                 int arrCt = bitArrayParser != null ? arrCtNoBit + 1 : arrCtNoBit;
 
                 Assert.That(((IBinaryTypeParser<T[]>)parser).GetSize(values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IList<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IList<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
                 Assert.That(parser.GetSize((IList<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
                 Assert.That(parser.GetSize((IList<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
-                Assert.That(parser.GetSize((IList<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyList<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyList<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
                 Assert.That(parser.GetSize((IReadOnlyList<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
                 Assert.That(parser.GetSize((IReadOnlyList<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
-                Assert.That(parser.GetSize((IReadOnlyList<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize(new ReadOnlyArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((ICollection<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((ICollection<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((ICollection<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((ICollection<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((ICollection<T>)new CollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyCollection<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyCollection<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyCollection<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyCollection<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyCollection<T>)new ReadOnlyArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IReadOnlyCollection<T>)new CollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize(new ReadOnlyCollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)values) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)new ReadOnlyArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)new CollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize((IEnumerable<T>)new ReadOnlyCollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+                Assert.That(parser.GetSize(new EnumerableWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
                 Assert.That(parser.GetSize(values.AsSpan()) * arrCt, Is.EqualTo(ct));
                 if (bitArrayParser != null)
                     Assert.That(parser.GetSize(new BitArray((bool[])(object)values)) * arrCt, Is.EqualTo(ct));
@@ -442,6 +572,40 @@ public partial class ParserManyTests
                     Assert.That(outputList, Is.EqualTo(values));
                 }
 
+                /*
+                 * read to array segment (read len, set)
+                 */
+                ParserTests.CheckBuffer(buffer, maxSize);
+                pos = 0;
+
+                for (int i = 0; i < arrCt; ++i)
+                {
+                    int size = parser.ReadArrayLength(buffer + pos, maxSize - (uint)pos, out int bytesRead);
+                    pos += bytesRead;
+                    Assert.That(size, Is.EqualTo(values.Length));
+
+                    ArraySegment<T> arr = new ArraySegment<T>(new T[size + 2], 1, size);
+                    int readCt = parser.ReadObject(buffer + pos, maxSize - (uint)pos, arr, out bytesRead, measuredCount: size, hasReadLength: true, setInsteadOfAdding: true);
+                    Assert.That(readCt, Is.EqualTo(arr.Count));
+                    pos += bytesRead;
+                    Assert.That(arr, Is.EqualTo(values));
+                }
+
+                /*
+                 * read to array segment (dont read len, set)
+                 */
+                ParserTests.CheckBuffer(buffer, maxSize);
+                pos = 0;
+
+                for (int i = 0; i < arrCt; ++i)
+                {
+                    ArraySegment<T> arr = new ArraySegment<T>(new T[values.Length + 2], 1, values.Length);
+                    int readCt = parser.ReadObject(buffer + pos, maxSize - (uint)pos, arr, out int bytesRead, hasReadLength: false, setInsteadOfAdding: true);
+                    Assert.That(readCt, Is.EqualTo(arr.Count));
+                    pos += bytesRead;
+                    Assert.That(arr, Is.EqualTo(values));
+                }
+
                 if (values.Length != 0)
                 {
                     /*
@@ -532,32 +696,138 @@ public partial class ParserManyTests
             int ct;
             if (useObjToWrite)
             {
-                arrCtNoBit = 4;
+                arrCtNoBit = 8;
                 ct = parser.WriteObject((object)values, memStream);
-                ct += parser.WriteObject((object)new List<T>(values), memStream);
-                ct += parser.WriteObject((object)new ArrayWrapper<T>(values), memStream);
-                ct += parser.WriteObject((object)values, memStream);
-
+                int lastCount = ct;
+                int thisCount = parser.WriteObject((object)new ArraySegment<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((object)new List<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((object)new ArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((object)new ReadOnlyArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((object)new CollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((object)new ReadOnlyCollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((object)new EnumerableWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
                 if (bitArrayParser != null)
                 {
-                    ct += bitArrayParser.WriteObject((object)new BitArray((bool[])(object)values), memStream);
+                    thisCount = bitArrayParser.WriteObject((object)new BitArray((bool[])(object)values), memStream);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
                 }
             }
             else
             {
-                arrCtNoBit = 8;
+                arrCtNoBit = 31;
                 ct = ((IBinaryTypeParser<T[]>)parser).WriteObject(values, memStream);
-                ct += parser.WriteObject((IList<T>)new List<T>(values), memStream);
-                ct += parser.WriteObject((IList<T>)new ArrayWrapper<T>(values), memStream);
-                ct += parser.WriteObject((IList<T>)values, memStream);
-                ct += parser.WriteObject((IReadOnlyList<T>)new List<T>(values), memStream);
-                ct += parser.WriteObject((IReadOnlyList<T>)new ArrayWrapper<T>(values), memStream);
-                ct += parser.WriteObject((IReadOnlyList<T>)values, memStream);
-                ct += parser.WriteObject(values.AsSpan(), memStream);
+                int lastCount = ct;
+                int thisCount = parser.WriteObject((IList<T>)values, memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IList<T>)new List<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IList<T>)new ArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IList<T>)new ArraySegment<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyList<T>)values, memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyList<T>)new ArraySegment<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyList<T>)new List<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyList<T>)new ArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject(new ReadOnlyArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((ICollection<T>)values, memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((ICollection<T>)new ArraySegment<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((ICollection<T>)new List<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((ICollection<T>)new ArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((ICollection<T>)new CollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyCollection<T>)values, memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyCollection<T>)new ArraySegment<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyCollection<T>)new List<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyCollection<T>)new ArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyCollection<T>)new ReadOnlyArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IReadOnlyCollection<T>)new CollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject(new ReadOnlyCollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)values, memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)new ArraySegment<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)new List<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)new ArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)new ReadOnlyArrayWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)new CollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject((IEnumerable<T>)new ReadOnlyCollectionWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject(new EnumerableWrapper<T>(values), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
+                thisCount = parser.WriteObject(values.AsSpan(), memStream);
+                Assert.That(thisCount, Is.EqualTo(lastCount));
+                ct += thisCount;
 
                 if (bitArrayParser != null)
                 {
-                    ct += bitArrayParser.WriteObject(new BitArray((bool[])(object)values), memStream);
+                    thisCount = bitArrayParser.WriteObject(new BitArray((bool[])(object)values), memStream);
+                    Assert.That(thisCount, Is.EqualTo(lastCount));
+                    ct += thisCount;
                 }
             }
 
@@ -565,12 +835,35 @@ public partial class ParserManyTests
             Assert.That(memStream.Position, Is.EqualTo(ct + ParserTests.BufferSize));
 
             Assert.That(((IBinaryTypeParser<T[]>)parser).GetSize(values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IList<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IList<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
             Assert.That(parser.GetSize((IList<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
             Assert.That(parser.GetSize((IList<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
-            Assert.That(parser.GetSize((IList<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyList<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyList<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
             Assert.That(parser.GetSize((IReadOnlyList<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
             Assert.That(parser.GetSize((IReadOnlyList<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
-            Assert.That(parser.GetSize((IReadOnlyList<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize(new ReadOnlyArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((ICollection<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((ICollection<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((ICollection<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((ICollection<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((ICollection<T>)new CollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyCollection<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyCollection<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyCollection<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyCollection<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyCollection<T>)new ReadOnlyArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IReadOnlyCollection<T>)new CollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize(new ReadOnlyCollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)values) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)new ArraySegment<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)new List<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)new ArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)new ReadOnlyArrayWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)new CollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize((IEnumerable<T>)new ReadOnlyCollectionWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
+            Assert.That(parser.GetSize(new EnumerableWrapper<T>(values)) * arrCt, Is.EqualTo(ct));
             Assert.That(parser.GetSize(values.AsSpan()) * arrCt, Is.EqualTo(ct));
             if (bitArrayParser != null)
                 Assert.That(parser.GetSize(new BitArray((bool[])(object)values)) * arrCt, Is.EqualTo(ct));
@@ -1004,6 +1297,47 @@ public partial class ParserManyTests
                 Assert.That(outputList, Is.EqualTo(values));
             }
 
+            /*
+             * read to array segment (read len, set)
+             */
+            memStream.Seek(0, SeekOrigin.Begin);
+
+            ParserTests.CheckBuffer(memStream);
+            pos = ParserTests.BufferSize;
+
+            for (int i = 0; i < arrCt; ++i)
+            {
+                int size = parser.ReadArrayLength(memStream, out int bytesRead);
+                pos += bytesRead;
+                Assert.That(size, Is.EqualTo(values.Length));
+
+                ArraySegment<T> arr = new ArraySegment<T>(new T[size + 2], 1, size);
+                int readCt = parser.ReadObject(memStream, arr, out bytesRead, measuredCount: size, hasReadLength: true, setInsteadOfAdding: true);
+                Assert.That(readCt, Is.EqualTo(arr.Count));
+                pos += bytesRead;
+                Assert.That(arr, Is.EqualTo(values));
+            }
+
+            Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
+            Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
+
+            /*
+             * read to array segment (dont read len, set)
+             */
+            memStream.Seek(0, SeekOrigin.Begin);
+
+            ParserTests.CheckBuffer(memStream);
+            pos = ParserTests.BufferSize;
+
+            for (int i = 0; i < arrCt; ++i)
+            {
+                ArraySegment<T> arr = new ArraySegment<T>(new T[values.Length + 2], 1, values.Length);
+                int readCt = parser.ReadObject(memStream, arr, out int bytesRead, hasReadLength: false, setInsteadOfAdding: true);
+                Assert.That(readCt, Is.EqualTo(arr.Count));
+                pos += bytesRead;
+                Assert.That(arr, Is.EqualTo(values));
+            }
+
             if (values.Length != 0)
             {
                 /*
@@ -1136,7 +1470,63 @@ internal class ListWrapper<T> : IList<T>, IReadOnlyList<T>
         set => List[index] = value;
     }
 }
+internal class EnumerableWrapper<T> : IEnumerable<T>
+{
+    public IEnumerable<T> Enumerable { get; }
+    public EnumerableWrapper(IEnumerable<T> enu)
+    {
+        Enumerable = enu;
+    }
 
+    public IEnumerator<T> GetEnumerator() => Enumerable.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => Enumerable.GetEnumerator();
+}
+internal class CollectionWrapper<T> : ICollection<T>, IReadOnlyCollection<T>
+{
+    public ICollection<T> Collection { get; }
+    public CollectionWrapper(ICollection<T> enu)
+    {
+        Collection = enu;
+    }
+
+    public IEnumerator<T> GetEnumerator() => Collection.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => Collection.GetEnumerator();
+    public void Add(T item) => Collection.Add(item);
+    public void Clear() => Collection.Clear();
+    public bool Contains(T item) => Collection.Contains(item);
+    public void CopyTo(T[] array, int arrayIndex) => Collection.CopyTo(array, arrayIndex);
+    public bool Remove(T item) => Collection.Remove(item);
+    public int Count => Collection.Count;
+    public bool IsReadOnly => Collection.IsReadOnly;
+}
+internal class ReadOnlyCollectionWrapper<T> : IReadOnlyCollection<T>
+{
+    public IReadOnlyCollection<T> Collection { get; }
+    public ReadOnlyCollectionWrapper(IReadOnlyCollection<T> enu)
+    {
+        Collection = enu;
+    }
+
+    public IEnumerator<T> GetEnumerator() => Collection.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => Collection.GetEnumerator();
+    public int Count => Collection.Count;
+}
+internal class ReadOnlyArrayWrapper<T> : IReadOnlyList<T>
+{
+    public T[] Array { get; }
+    public ReadOnlyArrayWrapper(T[] array)
+    {
+        Array = array;
+    }
+    public IEnumerator<T> GetEnumerator() => ((IList<T>)Array).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => Array.GetEnumerator();
+    public int Count => ((IList<T>)Array).Count;
+    public T this[int index]
+    {
+        get => Array[index];
+        set => Array[index] = value;
+    }
+}
 internal class ArrayWrapper<T> : IList<T>, IReadOnlyList<T>
 {
     public T[] Array { get; }

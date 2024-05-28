@@ -1,5 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,7 +29,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             bytes += sizeof(TValueType);
         }
     }
-    private static void FlipBits(byte[] bytes, int index, int size)
+    private static void FlipBits([InstantHandle] byte[] bytes, int index, int size)
     {
         for (; index < size; index += sizeof(TValueType))
         {
@@ -40,11 +42,24 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             }
         }
     }
+    private static TValueType FlipBits(TValueType toFlip)
+    {
+        byte* ptr = (byte*)&toFlip;
+        for (int i = 0; i < sizeof(TValueType) / 2; ++i)
+        {
+            byte b = ptr[i];
+            int ind = sizeof(TValueType) - i - 1;
+            ptr[i] = ptr[ind];
+            ptr[ind] = b;
+        }
+
+        return toFlip;
+    }
     /// <inheritdoc />
-    public override int WriteObject(ArraySegment<TValueType> value, byte* bytes, uint maxSize)
+    public override int WriteObject([InstantHandle] ArraySegment<TValueType> value, byte* bytes, uint maxSize)
     {
         uint index = 0;
-        if (value == null)
+        if (value.Array == null)
         {
             return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
         }
@@ -57,7 +72,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             return hdrSize;
 
         if (maxSize - hdrSize < size)
-            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
         value.AsSpan().CopyTo(new Span<TValueType>(bytes + hdrSize, length));
 
@@ -68,7 +83,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(ReadOnlySpan<TValueType> value, byte* bytes, uint maxSize)
+    public override int WriteObject([InstantHandle] scoped ReadOnlySpan<TValueType> value, byte* bytes, uint maxSize)
     {
         uint index = 0;
         int length = value.Length;
@@ -79,7 +94,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             return hdrSize;
 
         if (maxSize - hdrSize < size)
-            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
         value.CopyTo(new Span<TValueType>(bytes + hdrSize, length));
 
@@ -90,7 +105,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(IList<TValueType> value, byte* bytes, uint maxSize)
+    public override int WriteObject([InstantHandle] IList<TValueType>? value, byte* bytes, uint maxSize)
     {
         uint index = 0;
         if (value == null)
@@ -106,7 +121,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             return hdrSize;
 
         if (maxSize - hdrSize < size)
-            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
         switch (value)
         {
@@ -145,7 +160,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(IReadOnlyList<TValueType> value, byte* bytes, uint maxSize)
+    public override int WriteObject([InstantHandle] IReadOnlyList<TValueType>? value, byte* bytes, uint maxSize)
     {
         uint index = 0;
         if (value == null)
@@ -161,7 +176,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             return hdrSize;
 
         if (maxSize - hdrSize < size)
-            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
         switch (value)
         {
@@ -200,7 +215,234 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(ArraySegment<TValueType> value, Stream stream)
+    public override int WriteObject([InstantHandle] ICollection<TValueType>? value, byte* bytes, uint maxSize)
+    {
+        uint index = 0;
+        if (value == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+        }
+        if (value is IList<TValueType> list)
+        {
+            return WriteObject(list, bytes, maxSize);
+        }
+        if (value is IReadOnlyList<TValueType> list2)
+        {
+            return WriteObject(list2, bytes, maxSize);
+        }
+
+        int length = value.Count;
+        int size = length * sizeof(TValueType);
+        int hdrSize = SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, length, false, this);
+
+        if (length == 0)
+            return hdrSize;
+
+        if (maxSize - hdrSize < size)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+        bytes += hdrSize;
+        using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+        int i = 0;
+        if ((nint)bytes % sizeof(TValueType) == 0)
+        {
+            while (i < length && enumerator.MoveNext())
+            {
+                *(TValueType*)(bytes + i++ * sizeof(TValueType)) = enumerator.Current;
+            }
+        }
+        else
+        {
+            while (i < length && enumerator.MoveNext())
+            {
+                Unsafe.WriteUnaligned(bytes + i++ * sizeof(TValueType), enumerator.Current);
+            }
+        }
+
+        if (!BitConverter.IsLittleEndian)
+            FlipBits(bytes, hdrSize, size);
+
+        if (i == length)
+            return i * sizeof(TValueType) + hdrSize;
+
+        bytes -= hdrSize;
+        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(i, false));
+        if (maxSize < i + newHdrSize)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+        if (newHdrSize == hdrSize)
+        {
+            index = 0;
+            SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, i, false, this);
+        }
+        else if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap || hdrSize > newHdrSize)
+        {
+            Buffer.MemoryCopy(bytes + hdrSize, bytes + newHdrSize, i, i);
+        }
+        else
+        {
+            for (int i2 = i - 1; i2 >= 0; --i2)
+            {
+                bytes[newHdrSize + i2] = bytes[hdrSize + i2];
+            }
+        }
+
+        return i * sizeof(TValueType) + newHdrSize;
+    }
+
+    /// <inheritdoc />
+    public override int WriteObject([InstantHandle] IReadOnlyCollection<TValueType>? value, byte* bytes, uint maxSize)
+    {
+        uint index = 0;
+        if (value == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+        }
+        if (value is IList<TValueType> list)
+        {
+            return WriteObject(list, bytes, maxSize);
+        }
+        if (value is IReadOnlyList<TValueType> list2)
+        {
+            return WriteObject(list2, bytes, maxSize);
+        }
+
+        int length = value.Count;
+        int size = length * sizeof(TValueType);
+        int hdrSize = SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, length, false, this);
+
+        if (length == 0)
+            return hdrSize;
+
+        if (maxSize - hdrSize < size)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+        bytes += hdrSize;
+        using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+        int i = 0;
+        if ((nint)bytes % sizeof(TValueType) == 0)
+        {
+            while (i < length && enumerator.MoveNext())
+            {
+                *(TValueType*)(bytes + i++ * sizeof(TValueType)) = enumerator.Current;
+            }
+        }
+        else
+        {
+            while (i < length && enumerator.MoveNext())
+            {
+                Unsafe.WriteUnaligned(bytes + i++ * sizeof(TValueType), enumerator.Current);
+            }
+        }
+
+        bytes -= hdrSize;
+
+        if (!BitConverter.IsLittleEndian)
+            FlipBits(bytes, hdrSize, size);
+
+        if (i == length)
+            return i * sizeof(TValueType) + hdrSize;
+
+        bytes -= hdrSize;
+        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(i, false));
+        if (maxSize < i + newHdrSize)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+        if (newHdrSize == hdrSize)
+        {
+            index = 0;
+            SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, i, false, this);
+        }
+        else if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap || hdrSize > newHdrSize)
+        {
+            Buffer.MemoryCopy(bytes + hdrSize, bytes + newHdrSize, i, i);
+        }
+        else
+        {
+            for (int i2 = i - 1; i2 >= 0; --i2)
+            {
+                bytes[newHdrSize + i2] = bytes[hdrSize + i2];
+            }
+        }
+
+        return i * sizeof(TValueType) + hdrSize;
+    }
+
+    /// <inheritdoc />
+    public override int WriteObject([InstantHandle] IEnumerable<TValueType>? value, byte* bytes, uint maxSize)
+    {
+        uint index = 0;
+        if (value == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+        }
+        if (value is IList<TValueType> list)
+        {
+            return WriteObject(list, bytes, maxSize);
+        }
+        if (value is IReadOnlyList<TValueType> list2)
+        {
+            return WriteObject(list2, bytes, maxSize);
+        }
+        if (value is ICollection<TValueType> collection)
+        {
+            return WriteObject(collection, bytes, maxSize);
+        }
+        if (value is IReadOnlyCollection<TValueType> collection2)
+        {
+            return WriteObject(collection2, bytes, maxSize);
+        }
+
+        int actualCount = 0;
+        using (IEnumerator<TValueType> enumerator = value.GetEnumerator())
+        {
+            if ((nint)bytes % sizeof(TValueType) == 0)
+            {
+                while (enumerator.MoveNext())
+                {
+                    if (maxSize < actualCount + 1)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+                    *(TValueType*)(bytes + actualCount) = enumerator.Current;
+                    actualCount += sizeof(TValueType);
+                }
+            }
+            else
+            {
+                while (enumerator.MoveNext())
+                {
+                    if (maxSize < actualCount + 1)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+                    Unsafe.WriteUnaligned(bytes + actualCount, enumerator.Current);
+                    actualCount += sizeof(TValueType);
+                }
+            }
+        }
+
+        if (!BitConverter.IsLittleEndian)
+            FlipBits(bytes, 0, actualCount);
+
+        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+        if (maxSize < actualCount + newHdrSize)
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+        if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap)
+        {
+            Buffer.MemoryCopy(bytes, bytes + newHdrSize, actualCount, actualCount);
+        }
+        else
+        {
+            for (int i = actualCount - 1; i >= 0; --i)
+            {
+                bytes[newHdrSize + i] = bytes[i];
+            }
+        }
+
+        index = 0;
+        SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, actualCount / sizeof(TValueType), false, this);
+        return actualCount + newHdrSize;
+    }
+
+    /// <inheritdoc />
+    public override int WriteObject([InstantHandle] ArraySegment<TValueType> value, Stream stream)
     {
         if (value.Array == null)
         {
@@ -263,7 +505,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(ReadOnlySpan<TValueType> value, Stream stream)
+    public override int WriteObject([InstantHandle] scoped ReadOnlySpan<TValueType> value, Stream stream)
     {
         int length = value.Length;
         int size = length * sizeof(TValueType);
@@ -321,7 +563,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(IList<TValueType> value, Stream stream)
+    public override int WriteObject([InstantHandle] IList<TValueType>? value, Stream stream)
     {
         if (value == null)
         {
@@ -511,7 +753,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
 
     /// <inheritdoc />
-    public override int WriteObject(IReadOnlyList<TValueType> value, Stream stream)
+    public override int WriteObject([InstantHandle] IReadOnlyList<TValueType>? value, Stream stream)
     {
         if (value == null)
         {
@@ -698,6 +940,392 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
 
         return size + hdrSize;
+    }
+
+    /// <inheritdoc />
+    public override int WriteObject([InstantHandle] ICollection<TValueType>? value, Stream stream)
+    {
+        if (value == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+        }
+        if (value is IList<TValueType> list)
+        {
+            return WriteObject(list, stream);
+        }
+        if (value is IReadOnlyList<TValueType> list2)
+        {
+            return WriteObject(list2, stream);
+        }
+
+        int length = value.Count;
+        int size = length * sizeof(TValueType);
+        int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+        if (length == 0)
+            return hdrSize;
+
+        if (size <= DefaultSerializer.MaxArrayPoolSize)
+        {
+            byte[] buffer = DefaultSerializer.ArrayPool.Rent(size);
+            try
+            {
+
+                fixed (byte* bytes = buffer)
+                {
+                    using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+                    int i = 0;
+                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    {
+                        while (i < length && enumerator.MoveNext())
+                        {
+                            *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                            ++i;
+                        }
+                    }
+                    else
+                    {
+                        while (i < length && enumerator.MoveNext())
+                        {
+                            Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                            ++i;
+                        }
+                    }
+                }
+                if (!BitConverter.IsLittleEndian)
+                    FlipBits(buffer, 0, size);
+                stream.Write(buffer, 0, size);
+            }
+            finally
+            {
+                DefaultSerializer.ArrayPool.Return(buffer);
+            }
+        }
+        else if (size <= MaxBufferSize)
+        {
+            byte[] buffer = new byte[size];
+            fixed (byte* bytes = buffer)
+            {
+                using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+                int i = 0;
+                if ((nint)bytes % sizeof(TValueType) == 0)
+                {
+                    while (i < length && enumerator.MoveNext())
+                    {
+                        *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                        ++i;
+                    }
+                }
+                else
+                {
+                    while (i < length && enumerator.MoveNext())
+                    {
+                        Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                        ++i;
+                    }
+                }
+            }
+            if (!BitConverter.IsLittleEndian)
+                FlipBits(buffer, 0, size);
+            stream.Write(buffer, 0, size);
+        }
+        else
+        {
+            byte[] buffer = new byte[MaxBufferSize];
+            using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+            int bytesLeft = size;
+            do
+            {
+                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int elemToCopy = sizeToCopy / sizeof(TValueType);
+                fixed (byte* bytes = buffer)
+                {
+                    int i = 0;
+                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    {
+                        while (i < elemToCopy && enumerator.MoveNext())
+                        {
+                            *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                            ++i;
+                        }
+                    }
+                    else
+                    {
+                        while (i < elemToCopy && enumerator.MoveNext())
+                        {
+                            Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                            ++i;
+                        }
+                    }
+                }
+                if (!BitConverter.IsLittleEndian)
+                    FlipBits(buffer, 0, sizeToCopy);
+                stream.Write(buffer, 0, sizeToCopy);
+                bytesLeft -= sizeToCopy;
+            } while (bytesLeft > 0);
+        }
+
+        return size + hdrSize;
+    }
+
+    /// <inheritdoc />
+    public override int WriteObject([InstantHandle] IReadOnlyCollection<TValueType>? value, Stream stream)
+    {
+        if (value == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+        }
+        if (value is IList<TValueType> list)
+        {
+            return WriteObject(list, stream);
+        }
+        if (value is IReadOnlyList<TValueType> list2)
+        {
+            return WriteObject(list2, stream);
+        }
+
+        int length = value.Count;
+        int size = length * sizeof(TValueType);
+        int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+        if (length == 0)
+            return hdrSize;
+
+        if (size <= DefaultSerializer.MaxArrayPoolSize)
+        {
+            byte[] buffer = DefaultSerializer.ArrayPool.Rent(size);
+            try
+            {
+
+                fixed (byte* bytes = buffer)
+                {
+                    using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+                    int i = 0;
+                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    {
+                        while (i < length && enumerator.MoveNext())
+                        {
+                            *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                            ++i;
+                        }
+                    }
+                    else
+                    {
+                        while (i < length && enumerator.MoveNext())
+                        {
+                            Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                            ++i;
+                        }
+                    }
+                }
+                if (!BitConverter.IsLittleEndian)
+                    FlipBits(buffer, 0, size);
+                stream.Write(buffer, 0, size);
+            }
+            finally
+            {
+                DefaultSerializer.ArrayPool.Return(buffer);
+            }
+        }
+        else if (size <= MaxBufferSize)
+        {
+            byte[] buffer = new byte[size];
+            fixed (byte* bytes = buffer)
+            {
+                using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+                int i = 0;
+                if ((nint)bytes % sizeof(TValueType) == 0)
+                {
+                    while (i < length && enumerator.MoveNext())
+                    {
+                        *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                        ++i;
+                    }
+                }
+                else
+                {
+                    while (i < length && enumerator.MoveNext())
+                    {
+                        Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                        ++i;
+                    }
+                }
+            }
+            if (!BitConverter.IsLittleEndian)
+                FlipBits(buffer, 0, size);
+            stream.Write(buffer, 0, size);
+        }
+        else
+        {
+            byte[] buffer = new byte[MaxBufferSize];
+            using IEnumerator<TValueType> enumerator = value.GetEnumerator();
+            int bytesLeft = size;
+            do
+            {
+                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int elemToCopy = sizeToCopy / sizeof(TValueType);
+                fixed (byte* bytes = buffer)
+                {
+                    int i = 0;
+                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    {
+                        while (i < elemToCopy && enumerator.MoveNext())
+                        {
+                            *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                            ++i;
+                        }
+                    }
+                    else
+                    {
+                        while (i < elemToCopy && enumerator.MoveNext())
+                        {
+                            Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                            ++i;
+                        }
+                    }
+                }
+                if (!BitConverter.IsLittleEndian)
+                    FlipBits(buffer, 0, sizeToCopy);
+                stream.Write(buffer, 0, sizeToCopy);
+                bytesLeft -= sizeToCopy;
+            } while (bytesLeft > 0);
+        }
+
+        return size + hdrSize;
+    }
+
+    /// <inheritdoc />
+    public override int WriteObject([InstantHandle] IEnumerable<TValueType>? value, Stream stream)
+    {
+        if (value == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+        }
+        if (value is IList<TValueType> list)
+        {
+            return WriteObject(list, stream);
+        }
+        if (value is IReadOnlyList<TValueType> list2)
+        {
+            return WriteObject(list2, stream);
+        }
+
+        IEnumerator<TValueType> enumerator = value.GetEnumerator();
+        try
+        {
+            int length = 0;
+            while (enumerator.MoveNext())
+                checked { ++length; }
+
+            int size = length * sizeof(TValueType);
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+            if (length == 0)
+                return hdrSize;
+
+            ResetOrReMake(ref enumerator, value);
+
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                byte[] buffer = DefaultSerializer.ArrayPool.Rent(size);
+                try
+                {
+                    fixed (byte* bytes = buffer)
+                    {
+                        int i = 0;
+                        if ((nint)bytes % sizeof(TValueType) == 0)
+                        {
+                            while (i < length && enumerator.MoveNext())
+                            {
+                                *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                                ++i;
+                            }
+                        }
+                        else
+                        {
+                            while (i < length && enumerator.MoveNext())
+                            {
+                                Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                                ++i;
+                            }
+                        }
+                    }
+                    if (!BitConverter.IsLittleEndian)
+                        FlipBits(buffer, 0, size);
+                    stream.Write(buffer, 0, size);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(buffer);
+                }
+            }
+            else if (size <= MaxBufferSize)
+            {
+                byte[] buffer = new byte[size];
+                fixed (byte* bytes = buffer)
+                {
+                    int i = 0;
+                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    {
+                        while (i < length && enumerator.MoveNext())
+                        {
+                            *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                            ++i;
+                        }
+                    }
+                    else
+                    {
+                        while (i < length && enumerator.MoveNext())
+                        {
+                            Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                            ++i;
+                        }
+                    }
+                }
+                if (!BitConverter.IsLittleEndian)
+                    FlipBits(buffer, 0, size);
+                stream.Write(buffer, 0, size);
+            }
+            else
+            {
+                byte[] buffer = new byte[MaxBufferSize];
+                int bytesLeft = size;
+                do
+                {
+                    int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                    int elemToCopy = sizeToCopy / sizeof(TValueType);
+                    fixed (byte* bytes = buffer)
+                    {
+                        int i = 0;
+                        if ((nint)bytes % sizeof(TValueType) == 0)
+                        {
+                            while (i < elemToCopy && enumerator.MoveNext())
+                            {
+                                *(TValueType*)(bytes + i * sizeof(TValueType)) = enumerator.Current;
+                                ++i;
+                            }
+                        }
+                        else
+                        {
+                            while (i < elemToCopy && enumerator.MoveNext())
+                            {
+                                Unsafe.WriteUnaligned(bytes + i * sizeof(TValueType), enumerator.Current);
+                                ++i;
+                            }
+                        }
+                    }
+                    if (!BitConverter.IsLittleEndian)
+                        FlipBits(buffer, 0, sizeToCopy);
+                    stream.Write(buffer, 0, sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
+            }
+
+            return size + hdrSize;
+        }
+        finally
+        {
+            enumerator.Dispose();
+        }
     }
 
     /// <inheritdoc />
@@ -724,12 +1352,18 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         bytesRead = size;
         new Span<TValueType>(bytes + index, length).CopyTo(arr);
+        if (BitConverter.IsLittleEndian)
+            return arr;
 
+        for (int i = 0; i < length; ++i)
+        {
+            arr[i] = FlipBits(arr[i]);
+        }
         return arr;
     }
 
     /// <inheritdoc />
-    public override int ReadObject(byte* bytes, uint maxSize, ArraySegment<TValueType> output, out int bytesRead, bool hasReadLength = true)
+    public override int ReadObject(byte* bytes, uint maxSize, [InstantHandle] ArraySegment<TValueType> output, out int bytesRead, bool hasReadLength = true)
     {
         int length = output.Count;
         if (!hasReadLength)
@@ -755,11 +1389,21 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         bytesRead = size;
         new Span<TValueType>(bytes, length).CopyTo(output.AsSpan());
-        return length;
+        if (BitConverter.IsLittleEndian)
+            return length;
+
+        TValueType[] arr = output.Array!;
+        int ofs = output.Offset;
+        length += ofs;
+        for (int i = ofs; i < length; ++i)
+        {
+            arr[i] = FlipBits(arr[i]);
+        }
+        return length - ofs;
     }
 
     /// <inheritdoc />
-    public override int ReadObject(byte* bytes, uint maxSize, Span<TValueType> output, out int bytesRead, bool hasReadLength = true)
+    public override int ReadObject(byte* bytes, uint maxSize, [InstantHandle] scoped Span<TValueType> output, out int bytesRead, bool hasReadLength = true)
     {
         int length = output.Length;
         if (!hasReadLength)
@@ -785,23 +1429,32 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         bytesRead = size;
         new Span<TValueType>(bytes, length).CopyTo(output);
+        if (BitConverter.IsLittleEndian)
+            return length;
+
+        for (int i = 0; i < length; ++i)
+        {
+            output[i] = FlipBits(output[i]);
+        }
+
         return length;
     }
 
     /// <inheritdoc />
-    public override int ReadObject(byte* bytes, uint maxSize, IList<TValueType> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
+    public override int ReadObject(byte* bytes, uint maxSize, [InstantHandle] IList<TValueType> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
     {
-        if (output.IsReadOnly)
-            throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
-
         int length = setInsteadOfAdding ? output.Count : measuredCount;
         if (!hasReadLength)
         {
             length = ReadArrayLength(bytes, maxSize, out bytesRead);
-            if (setInsteadOfAdding)
+            if (setInsteadOfAdding && length > output.Count)
             {
-                while (length > output.Count)
+                if (output.IsReadOnly)
+                    throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                do
                     output.Add(default);
+                while (length > output.Count);
             }
         }
         else
@@ -809,11 +1462,23 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             bytesRead = 0;
             if (setInsteadOfAdding && measuredCount != -1)
             {
-                while (measuredCount > output.Count)
-                    output.Add(default);
+                if (measuredCount > output.Count)
+                {
+                    if (output.IsReadOnly)
+                        throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
 
+                    do
+                        output.Add(default);
+                    while (measuredCount > output.Count);
+                }
                 length = measuredCount;
             }
+        }
+
+        if (!setInsteadOfAdding)
+        {
+            if (output.IsReadOnly)
+                throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
         }
 
         if (length <= 0)
@@ -846,7 +1511,16 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         if (arr != null)
         {
             new Span<TValueType>(bytes, length).CopyTo(arr.AsSpan(arrOffset, length));
+            if (!BitConverter.IsLittleEndian)
+            {
+                length += arrOffset;
+                for (int i = arrOffset; i < length; ++i)
+                {
+                    output[i] = FlipBits(output[i]);
+                }
 
+                length -= arrOffset;
+            }
             bytesRead = size;
             return length;
         }
@@ -854,24 +1528,46 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         bytesRead = size;
         if (setInsteadOfAdding)
         {
-            if ((nint)bytes % sizeof(TValueType) == 0)
+            if (BitConverter.IsLittleEndian)
             {
-                for (int i = 0; i < length; ++i)
+                if ((nint)bytes % sizeof(TValueType) == 0)
                 {
-                    output[i] = *(TValueType*)bytes;
-                    bytes += sizeof(TValueType);
+                    for (int i = 0; i < length; ++i)
+                    {
+                        output[i] = *(TValueType*)bytes;
+                        bytes += sizeof(TValueType);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < length; ++i)
+                    {
+                        output[i] = Unsafe.ReadUnaligned<TValueType>(bytes);
+                        bytes += sizeof(TValueType);
+                    }
                 }
             }
             else
             {
-                for (int i = 0; i < length; ++i)
+                if ((nint)bytes % sizeof(TValueType) == 0)
                 {
-                    output[i] = Unsafe.ReadUnaligned<TValueType>(bytes);
-                    bytes += sizeof(TValueType);
+                    for (int i = 0; i < length; ++i)
+                    {
+                        output[i] = FlipBits(*(TValueType*)bytes);
+                        bytes += sizeof(TValueType);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < length; ++i)
+                    {
+                        output[i] = FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes));
+                        bytes += sizeof(TValueType);
+                    }
                 }
             }
         }
-        else
+        else if (BitConverter.IsLittleEndian)
         {
             if ((nint)bytes % sizeof(TValueType) == 0)
             {
@@ -886,6 +1582,25 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 for (int i = 0; i < length; ++i)
                 {
                     output.Add(Unsafe.ReadUnaligned<TValueType>(bytes));
+                    bytes += sizeof(TValueType);
+                }
+            }
+        }
+        else
+        {
+            if ((nint)bytes % sizeof(TValueType) == 0)
+            {
+                for (int i = 0; i < length; ++i)
+                {
+                    output.Add(FlipBits(*(TValueType*)bytes));
+                    bytes += sizeof(TValueType);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; ++i)
+                {
+                    output.Add(FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes)));
                     bytes += sizeof(TValueType);
                 }
             }
@@ -963,11 +1678,19 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         bytesRead += arrSize;
 #endif
+        if (BitConverter.IsLittleEndian)
+            return arr;
+
+        for (int i = 0; i < length; ++i)
+        {
+            arr[i] = FlipBits(arr[i]);
+        }
+
         return arr;
     }
 
     /// <inheritdoc />
-    public override int ReadObject(Stream stream, ArraySegment<TValueType> output, out int bytesRead, bool hasReadLength = true)
+    public override int ReadObject(Stream stream, [InstantHandle] ArraySegment<TValueType> output, out int bytesRead, bool hasReadLength = true)
     {
         int length = output.Count;
         if (!hasReadLength)
@@ -1044,11 +1767,21 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         bytesRead += arrSize;
 #endif
-        return length;
+        if (BitConverter.IsLittleEndian)
+            return length;
+
+        TValueType[] arr = output.Array!;
+        int ofs = output.Offset;
+        length += ofs;
+        for (int i = ofs; i < length; ++i)
+        {
+            arr[i] = FlipBits(arr[i]);
+        }
+        return length - ofs;
     }
 
     /// <inheritdoc />
-    public override int ReadObject(Stream stream, Span<TValueType> output, out int bytesRead, bool hasReadLength = true)
+    public override int ReadObject(Stream stream, [InstantHandle] scoped Span<TValueType> output, out int bytesRead, bool hasReadLength = true)
     {
         int length = output.Length;
         if (!hasReadLength)
@@ -1125,23 +1858,31 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         bytesRead += arrSize;
 #endif
+        if (BitConverter.IsLittleEndian)
+            return length;
+
+        for (int i = 0; i < length; ++i)
+        {
+            output[i] = FlipBits(output[i]);
+        }
         return length;
     }
 
     /// <inheritdoc />
-    public override int ReadObject(Stream stream, IList<TValueType> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
+    public override int ReadObject(Stream stream, [InstantHandle] IList<TValueType> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
     {
-        if (output.IsReadOnly)
-            throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
-
         int length = setInsteadOfAdding ? output.Count : measuredCount;
         if (!hasReadLength)
         {
             length = ReadArrayLength(stream, out bytesRead);
-            if (setInsteadOfAdding)
+            if (setInsteadOfAdding && length > output.Count)
             {
-                while (length > output.Count)
+                if (output.IsReadOnly)
+                    throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                do
                     output.Add(default);
+                while (length > output.Count);
             }
         }
         else
@@ -1149,11 +1890,24 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             bytesRead = 0;
             if (setInsteadOfAdding && measuredCount != -1)
             {
-                while (measuredCount > output.Count)
-                    output.Add(default);
+                if (measuredCount > output.Count)
+                {
+                    if (output.IsReadOnly)
+                        throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                    do
+                        output.Add(default);
+                    while (measuredCount > output.Count);
+                }
 
                 length = measuredCount;
             }
+        }
+
+        if (!setInsteadOfAdding)
+        {
+            if (output.IsReadOnly)
+                throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
         }
 
         if (length == 0)
@@ -1238,7 +1992,15 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
             bytesRead += arrSize;
 #endif
-            return length;
+            if (BitConverter.IsLittleEndian)
+                return length;
+
+            length += arrOffset;
+            for (int i = arrOffset; i < length; ++i)
+            {
+                output[i] = FlipBits(output[i]);
+            }
+            return length - arrOffset;
         }
 
         if (arrSize <= DefaultSerializer.MaxArrayPoolSize)
@@ -1258,24 +2020,46 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                     byte* bytes = ptr;
                     if (setInsteadOfAdding)
                     {
-                        if ((nint)bytes % sizeof(TValueType) == 0)
+                        if (BitConverter.IsLittleEndian)
                         {
-                            for (int i = 0; i < length; ++i)
+                            if ((nint)bytes % sizeof(TValueType) == 0)
                             {
-                                output[i] = *(TValueType*)bytes;
-                                bytes += sizeof(TValueType);
+                                for (int i = 0; i < length; ++i)
+                                {
+                                    output[i] = *(TValueType*)bytes;
+                                    bytes += sizeof(TValueType);
+                                }
+                            }
+                            else
+                            {
+                                for (int i = 0; i < length; ++i)
+                                {
+                                    output[i] = Unsafe.ReadUnaligned<TValueType>(bytes);
+                                    bytes += sizeof(TValueType);
+                                }
                             }
                         }
                         else
                         {
-                            for (int i = 0; i < length; ++i)
+                            if ((nint)bytes % sizeof(TValueType) == 0)
                             {
-                                output[i] = Unsafe.ReadUnaligned<TValueType>(bytes);
-                                bytes += sizeof(TValueType);
+                                for (int i = 0; i < length; ++i)
+                                {
+                                    output[i] = FlipBits(*(TValueType*)bytes);
+                                    bytes += sizeof(TValueType);
+                                }
+                            }
+                            else
+                            {
+                                for (int i = 0; i < length; ++i)
+                                {
+                                    output[i] = FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes));
+                                    bytes += sizeof(TValueType);
+                                }
                             }
                         }
                     }
-                    else
+                    else if (BitConverter.IsLittleEndian)
                     {
                         if ((nint)bytes % sizeof(TValueType) == 0)
                         {
@@ -1290,6 +2074,25 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                             for (int i = 0; i < length; ++i)
                             {
                                 output.Add(Unsafe.ReadUnaligned<TValueType>(bytes));
+                                bytes += sizeof(TValueType);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if ((nint)bytes % sizeof(TValueType) == 0)
+                        {
+                            for (int i = 0; i < length; ++i)
+                            {
+                                output.Add(FlipBits(*(TValueType*)bytes));
+                                bytes += sizeof(TValueType);
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < length; ++i)
+                            {
+                                output.Add(FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes)));
                                 bytes += sizeof(TValueType);
                             }
                         }
@@ -1316,24 +2119,46 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 byte* bytes = ptr;
                 if (setInsteadOfAdding)
                 {
-                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    if (BitConverter.IsLittleEndian)
                     {
-                        for (int i = 0; i < length; ++i)
+                        if ((nint)bytes % sizeof(TValueType) == 0)
                         {
-                            output[i] = *(TValueType*)bytes;
-                            bytes += sizeof(TValueType);
+                            for (int i = 0; i < length; ++i)
+                            {
+                                output[i] = *(TValueType*)bytes;
+                                bytes += sizeof(TValueType);
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < length; ++i)
+                            {
+                                output[i] = Unsafe.ReadUnaligned<TValueType>(bytes);
+                                bytes += sizeof(TValueType);
+                            }
                         }
                     }
                     else
                     {
-                        for (int i = 0; i < length; ++i)
+                        if ((nint)bytes % sizeof(TValueType) == 0)
                         {
-                            output[i] = Unsafe.ReadUnaligned<TValueType>(bytes);
-                            bytes += sizeof(TValueType);
+                            for (int i = 0; i < length; ++i)
+                            {
+                                output[i] = FlipBits(*(TValueType*)bytes);
+                                bytes += sizeof(TValueType);
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < length; ++i)
+                            {
+                                output[i] = FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes));
+                                bytes += sizeof(TValueType);
+                            }
                         }
                     }
                 }
-                else
+                else if (BitConverter.IsLittleEndian)
                 {
                     if ((nint)bytes % sizeof(TValueType) == 0)
                     {
@@ -1348,6 +2173,25 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                         for (int i = 0; i < length; ++i)
                         {
                             output.Add(Unsafe.ReadUnaligned<TValueType>(bytes));
+                            bytes += sizeof(TValueType);
+                        }
+                    }
+                }
+                else
+                {
+                    if ((nint)bytes % sizeof(TValueType) == 0)
+                    {
+                        for (int i = 0; i < length; ++i)
+                        {
+                            output.Add(FlipBits(*(TValueType*)bytes));
+                            bytes += sizeof(TValueType);
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < length; ++i)
+                        {
+                            output.Add(FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes)));
                             bytes += sizeof(TValueType);
                         }
                     }
@@ -1376,24 +2220,46 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                     {
                         int stInd = (arrSize - bytesLeft) / sizeof(TValueType);
 
-                        if ((nint)bytes % sizeof(TValueType) == 0)
+                        if (BitConverter.IsLittleEndian)
                         {
-                            for (int i = 0; i < elementsToCopy; ++i)
+                            if ((nint)bytes % sizeof(TValueType) == 0)
                             {
-                                output[stInd + i] = *(TValueType*)bytes;
-                                bytes += sizeof(TValueType);
+                                for (int i = 0; i < elementsToCopy; ++i)
+                                {
+                                    output[stInd + i] = *(TValueType*)bytes;
+                                    bytes += sizeof(TValueType);
+                                }
+                            }
+                            else
+                            {
+                                for (int i = 0; i < elementsToCopy; ++i)
+                                {
+                                    output[stInd + i] = Unsafe.ReadUnaligned<TValueType>(bytes);
+                                    bytes += sizeof(TValueType);
+                                }
                             }
                         }
                         else
                         {
-                            for (int i = 0; i < elementsToCopy; ++i)
+                            if ((nint)bytes % sizeof(TValueType) == 0)
                             {
-                                output[stInd + i] = Unsafe.ReadUnaligned<TValueType>(bytes);
-                                bytes += sizeof(TValueType);
+                                for (int i = 0; i < elementsToCopy; ++i)
+                                {
+                                    output[stInd + i] = FlipBits(*(TValueType*)bytes);
+                                    bytes += sizeof(TValueType);
+                                }
+                            }
+                            else
+                            {
+                                for (int i = 0; i < elementsToCopy; ++i)
+                                {
+                                    output[stInd + i] = FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes));
+                                    bytes += sizeof(TValueType);
+                                }
                             }
                         }
                     }
-                    else
+                    else if (BitConverter.IsLittleEndian)
                     {
                         if ((nint)bytes % sizeof(TValueType) == 0)
                         {
@@ -1408,6 +2274,25 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                             for (int i = 0; i < elementsToCopy; ++i)
                             {
                                 output.Add(Unsafe.ReadUnaligned<TValueType>(bytes));
+                                bytes += sizeof(TValueType);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if ((nint)bytes % sizeof(TValueType) == 0)
+                        {
+                            for (int i = 0; i < elementsToCopy; ++i)
+                            {
+                                output.Add(FlipBits(*(TValueType*)bytes));
+                                bytes += sizeof(TValueType);
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i < elementsToCopy; ++i)
+                            {
+                                output.Add(FlipBits(Unsafe.ReadUnaligned<TValueType>(bytes)));
                                 bytes += sizeof(TValueType);
                             }
                         }

@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using DanielWillett.ModularRpcs.Reflection;
+using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class Int8Parser : BinaryTypeParser<sbyte>
@@ -44,7 +46,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
     public unsafe class Many : ArrayBinaryTypeParser<sbyte>
     {
         /// <inheritdoc />
-        public override int WriteObject(ArraySegment<sbyte> value, byte* bytes, uint maxSize)
+        public override int WriteObject([InstantHandle] ArraySegment<sbyte> value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value.Array == null)
@@ -59,7 +61,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 return hdrSize;
 
             if (maxSize - hdrSize < length)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
             value.AsSpan().CopyTo(new Span<sbyte>(bytes + hdrSize, length));
 
@@ -67,7 +69,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(ReadOnlySpan<sbyte> value, byte* bytes, uint maxSize)
+        public override int WriteObject([InstantHandle] scoped ReadOnlySpan<sbyte> value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             int length = value.Length;
@@ -77,7 +79,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 return hdrSize;
 
             if (maxSize - hdrSize < length)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
             value.CopyTo(new Span<sbyte>(bytes + hdrSize, length));
 
@@ -85,7 +87,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(IList<sbyte> value, byte* bytes, uint maxSize)
+        public override int WriteObject([InstantHandle] IList<sbyte>? value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value == null)
@@ -100,7 +102,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 return hdrSize;
 
             if (maxSize - hdrSize < length)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
             switch (value)
             {
@@ -122,7 +124,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(IReadOnlyList<sbyte> value, byte* bytes, uint maxSize)
+        public override int WriteObject([InstantHandle] IReadOnlyList<sbyte>? value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value == null)
@@ -137,7 +139,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 return hdrSize;
 
             if (maxSize - hdrSize < length)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType())));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
             switch (value)
             {
@@ -159,7 +161,199 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(ArraySegment<sbyte> value, Stream stream)
+        public override int WriteObject([InstantHandle] ICollection<sbyte>? value, byte* bytes, uint maxSize)
+        {
+            uint index = 0;
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+            }
+
+            if (value is IList<byte> list)
+            {
+                return WriteObject(list, bytes, maxSize);
+            }
+            if (value is IReadOnlyList<byte> list2)
+            {
+                return WriteObject(list2, bytes, maxSize);
+            }
+
+            int length = value.Count;
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, length, false, this);
+
+            int actualCount = 0;
+            using (IEnumerator<sbyte> enumerator = value.GetEnumerator())
+            {
+                bytes += hdrSize;
+                while (enumerator.MoveNext())
+                {
+                    if (maxSize - hdrSize < actualCount + 1)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+                    bytes[actualCount] = unchecked( (byte)enumerator.Current );
+                    ++actualCount;
+                }
+
+                bytes -= hdrSize;
+            }
+
+            if (actualCount == length)
+                return actualCount + hdrSize;
+
+            int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+            if (maxSize < actualCount + newHdrSize)
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+            if (newHdrSize == hdrSize)
+            {
+                index = 0;
+                SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, actualCount, false, this);
+            }
+            else if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap || hdrSize > newHdrSize)
+            {
+                Buffer.MemoryCopy(bytes + hdrSize, bytes + newHdrSize, actualCount, actualCount);
+            }
+            else
+            {
+                for (int i = actualCount - 1; i >= 0; --i)
+                {
+                    bytes[newHdrSize + i] = bytes[hdrSize + i];
+                }
+            }
+
+            index = 0;
+            SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, actualCount, false, this);
+
+            return length + hdrSize;
+        }
+
+        /// <inheritdoc />
+        public override int WriteObject([InstantHandle] IReadOnlyCollection<sbyte>? value, byte* bytes, uint maxSize)
+        {
+            uint index = 0;
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+            }
+
+            if (value is IList<byte> list)
+            {
+                return WriteObject(list, bytes, maxSize);
+            }
+            if (value is IReadOnlyList<byte> list2)
+            {
+                return WriteObject(list2, bytes, maxSize);
+            }
+
+            int length = value.Count;
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, length, false, this);
+
+            int actualCount = 0;
+            using (IEnumerator<sbyte> enumerator = value.GetEnumerator())
+            {
+                bytes += hdrSize;
+                while (enumerator.MoveNext())
+                {
+                    if (maxSize - hdrSize < actualCount + 1)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+                    bytes[actualCount] = unchecked( (byte)enumerator.Current );
+                    ++actualCount;
+                }
+
+                bytes -= hdrSize;
+            }
+
+            if (actualCount == length)
+                return actualCount + hdrSize;
+
+            int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+            if (maxSize < actualCount + newHdrSize)
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+            if (newHdrSize == hdrSize)
+            {
+                index = 0;
+                SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, actualCount, false, this);
+            }
+            else if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap || hdrSize > newHdrSize)
+            {
+                Buffer.MemoryCopy(bytes + hdrSize, bytes + newHdrSize, actualCount, actualCount);
+            }
+            else
+            {
+                for (int i = actualCount - 1; i >= 0; --i)
+                {
+                    bytes[newHdrSize + i] = bytes[hdrSize + i];
+                }
+            }
+
+            index = 0;
+            SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, actualCount, false, this);
+
+            return length + hdrSize;
+        }
+
+        /// <inheritdoc />
+        public override int WriteObject([InstantHandle] IEnumerable<sbyte>? value, byte* bytes, uint maxSize)
+        {
+            uint index = 0;
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+            }
+
+            if (value is IList<byte> list)
+            {
+                return WriteObject(list, bytes, maxSize);
+            }
+            if (value is IReadOnlyList<byte> list2)
+            {
+                return WriteObject(list2, bytes, maxSize);
+            }
+            if (value is ICollection<byte> collection)
+            {
+                return WriteObject(collection, bytes, maxSize);
+            }
+            if (value is IReadOnlyCollection<byte> collection2)
+            {
+                return WriteObject(collection2, bytes, maxSize);
+            }
+
+            int actualCount = 0;
+            using (IEnumerator<sbyte> enumerator = value.GetEnumerator())
+            {
+                while (enumerator.MoveNext())
+                {
+                    if (maxSize < actualCount + 1)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+
+                    bytes[actualCount] = unchecked( (byte)enumerator.Current );
+                    ++actualCount;
+                }
+            }
+
+            int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+            if (maxSize < actualCount + newHdrSize)
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
+            if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap)
+            {
+                Buffer.MemoryCopy(bytes, bytes + newHdrSize, actualCount, actualCount);
+            }
+            else
+            {
+                for (int i = actualCount - 1; i >= 0; --i)
+                {
+                    bytes[newHdrSize + i] = bytes[i];
+                }
+            }
+
+            index = 0;
+            SerializationHelper.WriteStandardArrayHeader(bytes, (uint)newHdrSize, ref index, actualCount, false, this);
+
+            return actualCount + newHdrSize;
+        }
+
+        /// <inheritdoc />
+        public override int WriteObject([InstantHandle] ArraySegment<sbyte> value, Stream stream)
         {
             if (value.Array == null)
             {
@@ -212,7 +406,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(ReadOnlySpan<sbyte> value, Stream stream)
+        public override int WriteObject([InstantHandle] scoped ReadOnlySpan<sbyte> value, Stream stream)
         {
             int length = value.Length;
             int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
@@ -259,7 +453,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(IList<sbyte> value, Stream stream)
+        public override int WriteObject([InstantHandle] IList<sbyte>? value, Stream stream)
         {
             if (value == null)
             {
@@ -375,7 +569,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int WriteObject(IReadOnlyList<sbyte> value, Stream stream)
+        public override int WriteObject([InstantHandle] IReadOnlyList<sbyte>? value, Stream stream)
         {
             if (value == null)
             {
@@ -488,6 +682,229 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
 
             return length + hdrSize;
+        }
+
+        /// <inheritdoc />
+        public override int WriteObject([InstantHandle] ICollection<sbyte>? value, Stream stream)
+        {
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+            }
+            if (value is IList<byte> list)
+            {
+                return WriteObject(list, stream);
+            }
+            if (value is IReadOnlyList<byte> list2)
+            {
+                return WriteObject(list2, stream);
+            }
+
+            int length = value.Count;
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+            if (length == 0)
+                return hdrSize;
+
+            if (length <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                try
+                {
+                    int index = 0;
+                    using IEnumerator<sbyte> enumerator = value.GetEnumerator();
+                    while (index < length && enumerator.MoveNext())
+                        buffer[index++] = unchecked( (byte)enumerator.Current );
+                    stream.Write(buffer, 0, length);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(buffer);
+                }
+            }
+            else if (length <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] buffer = new byte[length];
+                using IEnumerator<sbyte> enumerator = value.GetEnumerator();
+                int index = 0;
+                while (index < length && enumerator.MoveNext())
+                    buffer[index++] = unchecked( (byte)enumerator.Current );
+                stream.Write(buffer, 0, length);
+            }
+            else
+            {
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                int bytesLeft = length;
+                using IEnumerator<sbyte> enumerator = value.GetEnumerator();
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int index = 0;
+                    while (index < sizeToCopy && enumerator.MoveNext())
+                        buffer[index++] = unchecked( (byte)enumerator.Current );
+                    stream.Write(buffer, 0, sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
+            }
+
+            return length + hdrSize;
+        }
+
+        /// <inheritdoc />
+        public override int WriteObject([InstantHandle] IReadOnlyCollection<sbyte>? value, Stream stream)
+        {
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+            }
+            if (value is IList<byte> list)
+            {
+                return WriteObject(list, stream);
+            }
+            if (value is IReadOnlyList<byte> list2)
+            {
+                return WriteObject(list2, stream);
+            }
+            if (value is ICollection<byte> collection)
+            {
+                return WriteObject(collection, stream);
+            }
+
+            int length = value.Count;
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+            if (length == 0)
+                return hdrSize;
+
+            if (length <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                try
+                {
+                    int index = 0;
+                    using (IEnumerator<sbyte> enumerator = value.GetEnumerator())
+                    {
+                        while (index < length && enumerator.MoveNext())
+                            buffer[index++] = unchecked( (byte)enumerator.Current );
+                    }
+                    stream.Write(buffer, 0, length);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(buffer);
+                }
+            }
+            else if (length <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] buffer = new byte[length];
+                int index = 0;
+                using (IEnumerator<sbyte> enumerator = value.GetEnumerator())
+                {
+                    while (index < length && enumerator.MoveNext())
+                        buffer[index++] = unchecked( (byte)enumerator.Current );
+                }
+                stream.Write(buffer, 0, length);
+            }
+            else
+            {
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                using IEnumerator<sbyte> enumerator = value.GetEnumerator();
+                int bytesLeft = length;
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int index = 0;
+                    while (index < sizeToCopy && enumerator.MoveNext())
+                        buffer[index++] = unchecked( (byte)enumerator.Current );
+                    stream.Write(buffer, 0, sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
+            }
+
+            return length + hdrSize;
+        }
+
+        /// <inheritdoc />
+        public override int WriteObject([InstantHandle] IEnumerable<sbyte>? value, Stream stream)
+        {
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+            }
+            if (value is IList<byte> list)
+            {
+                return WriteObject(list, stream);
+            }
+            if (value is IReadOnlyList<byte> list2)
+            {
+                return WriteObject(list2, stream);
+            }
+            if (value is ICollection<byte> collection)
+            {
+                return WriteObject(collection, stream);
+            }
+            if (value is IReadOnlyCollection<byte> collection2)
+            {
+                return WriteObject(collection2, stream);
+            }
+
+            IEnumerator<sbyte> enumerator = value.GetEnumerator();
+            try
+            {
+                int length = 0;
+                while (enumerator.MoveNext())
+                    checked { ++length; }
+
+                ResetOrReMake(ref enumerator, value);
+                int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+                if (length == 0)
+                    return hdrSize;
+
+                if (length <= DefaultSerializer.MaxArrayPoolSize)
+                {
+                    byte[] buffer = DefaultSerializer.ArrayPool.Rent(length);
+                    try
+                    {
+                        int index = 0;
+                        while (index < length && enumerator.MoveNext())
+                            buffer[index++] = unchecked( (byte)enumerator.Current );
+                        stream.Write(buffer, 0, length);
+                    }
+                    finally
+                    {
+                        DefaultSerializer.ArrayPool.Return(buffer);
+                    }
+                }
+                else if (length <= DefaultSerializer.MaxBufferSize)
+                {
+                    byte[] buffer = new byte[length];
+                    int index = 0;
+                    while (index < length && enumerator.MoveNext())
+                        buffer[index++] = unchecked( (byte)enumerator.Current );
+                    stream.Write(buffer, 0, length);
+                }
+                else
+                {
+                    byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                    int bytesLeft = length;
+                    do
+                    {
+                        int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                        int index = 0;
+                        while (index < sizeToCopy && enumerator.MoveNext())
+                            buffer[index++] = unchecked( (byte)enumerator.Current );
+                        stream.Write(buffer, 0, sizeToCopy);
+                        bytesLeft -= sizeToCopy;
+                    } while (bytesLeft > 0);
+                }
+
+                return length + hdrSize;
+            }
+            finally
+            {
+                enumerator.Dispose();
+            }
         }
 
         /// <inheritdoc />
@@ -519,7 +936,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int ReadObject(byte* bytes, uint maxSize, ArraySegment<sbyte> output, out int bytesRead, bool hasReadLength = true)
+        public override int ReadObject(byte* bytes, uint maxSize, [InstantHandle] ArraySegment<sbyte> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Count;
             if (!hasReadLength)
@@ -549,7 +966,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int ReadObject(byte* bytes, uint maxSize, Span<sbyte> output, out int bytesRead, bool hasReadLength = true)
+        public override int ReadObject(byte* bytes, uint maxSize, [InstantHandle] scoped Span<sbyte> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Length;
             if (!hasReadLength)
@@ -579,19 +996,20 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int ReadObject(byte* bytes, uint maxSize, IList<sbyte> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
+        public override int ReadObject(byte* bytes, uint maxSize, [InstantHandle] IList<sbyte> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
         {
-            if (output.IsReadOnly)
-                throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
-
             int length = setInsteadOfAdding ? output.Count : measuredCount;
             if (!hasReadLength)
             {
                 length = ReadArrayLength(bytes, maxSize, out bytesRead);
-                if (setInsteadOfAdding)
+                if (setInsteadOfAdding && length > output.Count)
                 {
-                    while (length > output.Count)
+                    if (output.IsReadOnly)
+                        throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                    do
                         output.Add(0);
+                    while (length > output.Count);
                 }
             }
             else
@@ -599,11 +1017,24 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (measuredCount > output.Count)
-                        output.Add(0);
+                    if (measuredCount > output.Count)
+                    {
+                        if (output.IsReadOnly)
+                            throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                        do
+                            output.Add(0);
+                        while (measuredCount > output.Count);
+                    }
 
                     length = measuredCount;
                 }
+            }
+
+            if (!setInsteadOfAdding)
+            {
+                if (output.IsReadOnly)
+                    throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
 
             if (length <= 0)
@@ -731,7 +1162,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int ReadObject(Stream stream, ArraySegment<sbyte> output, out int bytesRead, bool hasReadLength = true)
+        public override int ReadObject(Stream stream, [InstantHandle] ArraySegment<sbyte> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Count;
             if (!hasReadLength)
@@ -810,7 +1241,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int ReadObject(Stream stream, Span<sbyte> output, out int bytesRead, bool hasReadLength = true)
+        public override int ReadObject(Stream stream, [InstantHandle] scoped Span<sbyte> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Length;
             if (!hasReadLength)
@@ -889,19 +1320,20 @@ public class Int8Parser : BinaryTypeParser<sbyte>
         }
 
         /// <inheritdoc />
-        public override int ReadObject(Stream stream, IList<sbyte> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
+        public override int ReadObject(Stream stream, [InstantHandle] IList<sbyte> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
         {
-            if (output.IsReadOnly)
-                throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
-
             int length = setInsteadOfAdding ? output.Count : measuredCount;
             if (!hasReadLength)
             {
                 length = ReadArrayLength(stream, out bytesRead);
-                if (setInsteadOfAdding)
+                if (setInsteadOfAdding && length > output.Count)
                 {
-                    while (length > output.Count)
+                    if (output.IsReadOnly)
+                        throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                    do
                         output.Add(0);
+                    while (length > output.Count);
                 }
             }
             else
@@ -909,11 +1341,23 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (measuredCount > output.Count)
-                        output.Add(0);
+                    if (measuredCount > output.Count)
+                    {
+                        if (output.IsReadOnly)
+                            throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
 
+                        do
+                            output.Add(0);
+                        while (measuredCount > output.Count);
+                    }
                     length = measuredCount;
                 }
+            }
+
+            if (!setInsteadOfAdding)
+            {
+                if (output.IsReadOnly)
+                    throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
 
             if (length == 0)

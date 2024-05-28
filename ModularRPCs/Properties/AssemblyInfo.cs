@@ -19,4 +19,5 @@ using System.Runtime.InteropServices;
 [assembly: InternalsVisibleTo("ModularRPCs.Proxy")]
 #if DEBUG
 [assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Examples")]
+[assembly: InternalsVisibleTo("ModularRPCs.Test")]
 #endif

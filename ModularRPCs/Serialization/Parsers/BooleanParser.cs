@@ -1,13 +1,13 @@
 ﻿//#define SIM_BIG_ENDIAN
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
+using JetBrains.Annotations;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
-using DanielWillett.ModularRpcs.Reflection;
-#endif
+using System.Linq;
 
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
@@ -64,6 +64,9 @@ public class BooleanParser : BinaryTypeParser<bool>
         private static readonly Type BoolArrType = typeof(bool[]);
         private static readonly Type BoolListType = typeof(IList<bool>);
         private static readonly Type BoolRoListType = typeof(IReadOnlyList<bool>);
+        private static readonly Type BoolCollectionType = typeof(ICollection<bool>);
+        private static readonly Type BoolRoCollectionType = typeof(IReadOnlyCollection<bool>);
+        private static readonly Type BoolEnumerableType = typeof(IEnumerable<bool>);
         private static readonly Type BoolArrSegmentType = typeof(ArraySegment<bool>);
         private static readonly Type BoolSpanType = typeof(Span<bool>);
         private static readonly Type BoolRoSpanType = typeof(ReadOnlySpan<bool>);
@@ -355,7 +358,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int ReadObject(byte* bytes, uint maxSize, ArraySegment<bool> output, out int bytesRead, bool hasReadLength = true)
+        public unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] ArraySegment<bool> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Count;
             if (!hasReadLength)
@@ -400,7 +403,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int ReadObject(byte* bytes, uint maxSize, Span<bool> output, out int bytesRead, bool hasReadLength = true)
+        public unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] scoped Span<bool> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Length;
             if (!hasReadLength)
@@ -442,19 +445,20 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int ReadObject(byte* bytes, uint maxSize, IList<bool> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
+        public unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] IList<bool> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
         {
-            if (output.IsReadOnly)
-                throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
-
             int length = setInsteadOfAdding ? output.Count : measuredCount;
             if (!hasReadLength)
             {
                 length = ReadArrayLength(bytes, maxSize, out bytesRead);
-                if (setInsteadOfAdding)
+                if (setInsteadOfAdding && length > output.Count)
                 {
-                    while (length > output.Count)
+                    if (output.IsReadOnly)
+                        throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                    do
                         output.Add(false);
+                    while (length > output.Count);
                 }
             }
             else
@@ -462,11 +466,24 @@ public class BooleanParser : BinaryTypeParser<bool>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (measuredCount > output.Count)
-                        output.Add(false);
+                    if (measuredCount > output.Count)
+                    {
+                        if (output.IsReadOnly)
+                            throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                        do
+                            output.Add(false);
+                        while (measuredCount > output.Count);
+                    }
 
                     length = measuredCount;
                 }
+            }
+
+            if (!setInsteadOfAdding)
+            {
+                if (output.IsReadOnly)
+                    throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
 
             if (length <= 0)
@@ -513,7 +530,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int ReadObject(Stream stream, ArraySegment<bool> output, out int bytesRead, bool hasReadLength = true)
+        public int ReadObject(Stream stream, [InstantHandle] ArraySegment<bool> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Count;
             if (!hasReadLength)
@@ -534,7 +551,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             bytesRead += bytesRead2;
             return ct;
         }
-        private static void ReadToSpan(ReadOnlySpan<byte> bytes, Span<bool> output)
+        private static void ReadToSpan([InstantHandle] scoped ReadOnlySpan<byte> bytes, [InstantHandle] scoped Span<bool> output)
         {
             byte current = 0;
             int index = -1;
@@ -553,7 +570,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             }
         }
         /// <inheritdoc />
-        public int ReadObject(Stream stream, Span<bool> output, out int bytesRead, bool hasReadLength = true)
+        public int ReadObject(Stream stream, [InstantHandle] scoped Span<bool> output, out int bytesRead, bool hasReadLength = true)
         {
             int length = output.Length;
             if (!hasReadLength)
@@ -629,7 +646,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             return length;
         }
 
-        public static void ReadToList(Span<byte> bytes, IList<bool> output, int startIndex, int length, bool setInsteadOfAdding)
+        private static void ReadToList([InstantHandle] scoped Span<byte> bytes, [InstantHandle] IList<bool> output, int startIndex, int length, bool setInsteadOfAdding)
         {
             byte current = 0;
             int index = -1;
@@ -668,19 +685,19 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int ReadObject(Stream stream, IList<bool> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
+        public int ReadObject(Stream stream, [InstantHandle] IList<bool> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false)
         {
-            if (output.IsReadOnly)
-                throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
-
             int length = setInsteadOfAdding ? output.Count : measuredCount;
             if (!hasReadLength)
             {
                 length = ReadArrayLength(stream, out bytesRead);
-                if (setInsteadOfAdding)
+                if (setInsteadOfAdding && length > output.Count)
                 {
-                    while (length > output.Count)
+                    if (output.IsReadOnly)
+                        throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+                    do
                         output.Add(false);
+                    while (length > output.Count);
                 }
             }
             else
@@ -688,11 +705,23 @@ public class BooleanParser : BinaryTypeParser<bool>
                 bytesRead = 0;
                 if (setInsteadOfAdding && measuredCount != -1)
                 {
-                    while (measuredCount > output.Count)
-                        output.Add(false);
+                    if (measuredCount > output.Count)
+                    {
+                        if (output.IsReadOnly)
+                            throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
+
+                        do
+                            output.Add(false);
+                        while (measuredCount > output.Count);
+                    }
 
                     length = measuredCount;
                 }
+            }
+            if (!setInsteadOfAdding)
+            {
+                if (output.IsReadOnly)
+                    throw new ArgumentException(nameof(output), string.Format(Properties.Exceptions.OutputListReadOnlyIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
 
             if (length == 0)
@@ -761,19 +790,19 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int WriteObject(bool[]? value, byte* bytes, uint maxSize)
+        public unsafe int WriteObject([InstantHandle] bool[]? value, byte* bytes, uint maxSize)
         {
             return WriteObject(value == null ? default : new ArraySegment<bool>(value), bytes, maxSize);
         }
 
         /// <inheritdoc />
-        public int WriteObject(bool[]? value, Stream stream)
+        public int WriteObject([InstantHandle] bool[]? value, Stream stream)
         {
             return WriteObject(value == null ? default : new ArraySegment<bool>(value), stream);
         }
 
         /// <inheritdoc />
-        public unsafe int WriteObject(ArraySegment<bool> value, byte* bytes, uint maxSize)
+        public unsafe int WriteObject([InstantHandle] ArraySegment<bool> value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value.Array == null)
@@ -790,7 +819,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             int byteSize = (len - 1) / 8 + 1;
 
             if (maxSize - hdrSize < byteSize)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
             bool[] arr = value.Array;
             int ofs = value.Offset;
@@ -815,7 +844,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int WriteObject(IList<bool>? value, byte* bytes, uint maxSize)
+        public unsafe int WriteObject([InstantHandle] IList<bool>? value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value == null)
@@ -840,7 +869,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             int byteSize = (len - 1) / 8 + 1;
 
             if (maxSize - hdrSize < byteSize)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
             bytes += index;
             byte current = 0;
@@ -863,7 +892,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int WriteObject(IReadOnlyList<bool>? value, byte* bytes, uint maxSize)
+        public unsafe int WriteObject([InstantHandle] IReadOnlyList<bool>? value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value == null)
@@ -888,7 +917,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             int byteSize = (len - 1) / 8 + 1;
 
             if (maxSize - hdrSize < byteSize)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
             bytes += index;
             byte current = 0;
@@ -911,7 +940,95 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int WriteObject(ReadOnlySpan<bool> value, byte* bytes, uint maxSize)
+        public unsafe int WriteObject([InstantHandle] ICollection<bool>? value, byte* bytes, uint maxSize)
+        {
+            return WriteObject((IEnumerable<bool>?)value, bytes, maxSize);
+        }
+
+        /// <inheritdoc />
+        public unsafe int WriteObject([InstantHandle] IReadOnlyCollection<bool>? value, byte* bytes, uint maxSize)
+        {
+            return WriteObject((IEnumerable<bool>?)value, bytes, maxSize);
+        }
+
+        /// <inheritdoc />
+        public unsafe int WriteObject([InstantHandle] IEnumerable<bool>? value, byte* bytes, uint maxSize)
+        {
+            uint index = 0;
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+            }
+            if (value is IList<bool> list2)
+            {
+                return WriteObject(list2, bytes, maxSize);
+            }
+            if (value is IReadOnlyList<bool> roList)
+            {
+                return WriteObject(roList, bytes, maxSize);
+            }
+
+            int actualCount = 0;
+            int byteCt = 2;
+            byte* startPtr = bytes + 2;
+            using (IEnumerator<bool> enumerator = value.GetEnumerator())
+            {
+                byte current = 0;
+                while (enumerator.MoveNext())
+                {
+                    bool c = enumerator.Current;
+                    int mod = actualCount % 8;
+                    if (mod == 0 && actualCount != 0)
+                    {
+                        *startPtr = current;
+                        if (byteCt >= maxSize)
+                            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
+                        ++byteCt;
+                        ++startPtr;
+                        current = (byte)(c ? 1 : 0);
+                    }
+                    else if (c) current |= (byte)(1 << mod);
+                    ++actualCount;
+                }
+
+                if (actualCount > 0)
+                {
+                    *startPtr = current;
+                    ++byteCt;
+                    ++startPtr;
+                }
+            }
+
+            byteCt -= 2;
+
+            startPtr -= byteCt;
+            if (actualCount == 0)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, actualCount, false, this);
+            }
+
+            int hdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+            if (hdrSize != 2)
+            {
+                if (Compatibility.IncompatibleWithBufferMemoryCopyOverlap)
+                {
+                    for (int i = byteCt - 1; i >= 0; --i)
+                    {
+                        *(bytes + hdrSize + i) = *(startPtr + i);
+                    }
+                }
+                else
+                {
+                    Buffer.MemoryCopy(startPtr, bytes + hdrSize, maxSize - hdrSize, byteCt);
+                }
+            }
+
+            SerializationHelper.WriteStandardArrayHeader(bytes, (uint)hdrSize, ref index, actualCount, false, this);
+            return byteCt + hdrSize;
+        }
+        
+        /// <inheritdoc />
+        public unsafe int WriteObject([InstantHandle] scoped ReadOnlySpan<bool> value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             int len = value.Length;
@@ -923,7 +1040,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             int byteSize = (len - 1) / 8 + 1;
 
             if (maxSize - hdrSize < byteSize)
-                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name));
+                throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
 
             bytes += index;
             byte current = 0;
@@ -945,7 +1062,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             return hdrSize + byteSize;
         }
 
-        private static void WriteFromArrSeg(ArraySegment<bool> value, Span<byte> output)
+        private static void WriteFromArrSeg([InstantHandle] ArraySegment<bool> value, [InstantHandle] scoped Span<byte> output)
         {
             bool[] arr = value.Array!;
             int ofs = value.Offset;
@@ -966,7 +1083,7 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             output[index] = current;
         }
-        private static void WriteFromSpan(ReadOnlySpan<bool> value, Span<byte> output)
+        private static void WriteFromSpan([InstantHandle] scoped ReadOnlySpan<bool> value, [InstantHandle] scoped Span<byte> output)
         {
             int index = 0;
             byte current = 0;
@@ -985,7 +1102,7 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             output[index] = current;
         }
-        private static void WriteFromList(IList<bool> value, int startIndex, int count, Span<byte> output)
+        private static void WriteFromList([InstantHandle] IList<bool> value, int startIndex, int count, [InstantHandle] scoped Span<byte> output)
         {
             int index = 0;
             byte current = 0;
@@ -1004,7 +1121,7 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             output[index] = current;
         }
-        private static void WriteFromList(IReadOnlyList<bool> value, int startIndex, int count, Span<byte> output)
+        private static void WriteFromList([InstantHandle] IReadOnlyList<bool> value, int startIndex, int count, [InstantHandle] scoped Span<byte> output)
         {
             int index = 0;
             byte current = 0;
@@ -1023,7 +1140,7 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             output[index] = current;
         }
-        private static void WriteFromBitArray(BitArray value, int startIndex, int count, Span<byte> output)
+        private static void WriteFromBitArray([InstantHandle] BitArray value, int startIndex, int count, [InstantHandle] scoped Span<byte> output)
         {
             int index = 0;
             byte current = 0;
@@ -1042,9 +1159,38 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             output[index] = current;
         }
+        private static void WriteFromEnumerable([InstantHandle] IEnumerable<bool> enumerable, [InstantHandle] scoped Span<byte> output)
+        {
+            using IEnumerator<bool> enumerator = enumerable.GetEnumerator();
+            WriteFromEnumerator(enumerator, output);
+        }
+        private static void WriteFromEnumerator([InstantHandle] IEnumerator<bool> enumerator, [InstantHandle] scoped Span<byte> output)
+        {
+            int i = 0;
+            int index = 0;
+            byte current = 0;
+            bool any = false;
+            while (enumerator.MoveNext())
+            {
+                any = true;
+                bool c = enumerator.Current;
+                int mod = i % 8;
+                if (mod == 0 && i != 0)
+                {
+                    output[index] = current;
+                    ++index;
+                    current = (byte)(c ? 1 : 0);
+                }
+                else if (c) current |= (byte)(1 << mod);
+                ++i;
+            }
+
+            if (any)
+                output[index] = current;
+        }
 
         /// <inheritdoc />
-        public int WriteObject(ArraySegment<bool> value, Stream stream)
+        public int WriteObject([InstantHandle] ArraySegment<bool> value, Stream stream)
         {
             if (value.Array == null)
             {
@@ -1104,7 +1250,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int WriteObject(IList<bool>? value, Stream stream)
+        public int WriteObject([InstantHandle] IList<bool>? value, Stream stream)
         {
             if (value == null)
             {
@@ -1171,7 +1317,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int WriteObject(IReadOnlyList<bool>? value, Stream stream)
+        public int WriteObject([InstantHandle] IReadOnlyList<bool>? value, Stream stream)
         {
             if (value == null)
             {
@@ -1238,7 +1384,312 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int WriteObject(ReadOnlySpan<bool> value, Stream stream)
+        public int WriteObject([InstantHandle] ICollection<bool>? value, Stream stream)
+        {
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+            }
+            if (value is IList<bool> list1)
+            {
+                return WriteObject(list1, stream);
+            }
+            if (value is IReadOnlyList<bool> list2)
+            {
+                return WriteObject(list2, stream);
+            }
+
+            int length = value.Count;
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+            if (length == 0)
+                return hdrSize;
+
+            int size = (length - 1) / 8 + 1;
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            if (size <= ProxyGenerator.Instance.MaxSizeForStackalloc)
+            {
+                Span<byte> bytes = stackalloc byte[size];
+                WriteFromEnumerable(value, bytes);
+                stream.Write(bytes);
+            }
+            else
+#endif
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                byte[] bytes = DefaultSerializer.ArrayPool.Rent(size);
+                try
+                {
+                    WriteFromEnumerable(value, bytes);
+                    stream.Write(bytes, 0, size);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(bytes);
+                }
+            }
+            else if (size <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] bytes = new byte[size];
+                WriteFromEnumerable(value, bytes);
+                stream.Write(bytes, 0, size);
+            }
+            else
+            {
+                using IEnumerator<bool> enumerator = value.GetEnumerator();
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                int bytesLeft = size;
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int elementsToCopy = Math.Min(sizeToCopy * 8, length - (size - bytesLeft) * 8);
+
+                    int i = 0;
+                    int index = 0;
+                    byte current = 0;
+                    bool any = false;
+                    while (i < elementsToCopy && enumerator.MoveNext())
+                    {
+                        any = true;
+                        bool c = enumerator.Current;
+                        int mod = i % 8;
+                        if (mod == 0 && i != 0)
+                        {
+                            buffer[index] = current;
+                            ++index;
+                            current = (byte)(c ? 1 : 0);
+                        }
+                        else if (c) current |= (byte)(1 << mod);
+                        ++i;
+                    }
+
+                    if (any)
+                        buffer[index] = current;
+
+                    stream.Write(buffer, 0, sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
+            }
+
+            return hdrSize + size;
+        }
+
+        /// <inheritdoc />
+        public int WriteObject([InstantHandle] IReadOnlyCollection<bool>? value, Stream stream)
+        {
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+            }
+            if (value is IList<bool> list1)
+            {
+                return WriteObject(list1, stream);
+            }
+            if (value is IReadOnlyList<bool> list2)
+            {
+                return WriteObject(list2, stream);
+            }
+
+            int length = value.Count;
+            int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+
+            if (length == 0)
+                return hdrSize;
+
+            int size = (length - 1) / 8 + 1;
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            if (size <= ProxyGenerator.Instance.MaxSizeForStackalloc)
+            {
+                Span<byte> bytes = stackalloc byte[size];
+                WriteFromEnumerable(value, bytes);
+                stream.Write(bytes);
+            }
+            else
+#endif
+            if (size <= DefaultSerializer.MaxArrayPoolSize)
+            {
+                byte[] bytes = DefaultSerializer.ArrayPool.Rent(size);
+                try
+                {
+                    WriteFromEnumerable(value, bytes);
+                    stream.Write(bytes, 0, size);
+                }
+                finally
+                {
+                    DefaultSerializer.ArrayPool.Return(bytes);
+                }
+            }
+            else if (size <= DefaultSerializer.MaxBufferSize)
+            {
+                byte[] bytes = new byte[size];
+                WriteFromEnumerable(value, bytes);
+                stream.Write(bytes, 0, size);
+            }
+            else
+            {
+                using IEnumerator<bool> enumerator = value.GetEnumerator();
+                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                int bytesLeft = size;
+                do
+                {
+                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int elementsToCopy = Math.Min(sizeToCopy * 8, length - (size - bytesLeft) * 8);
+
+                    int i = 0;
+                    int index = 0;
+                    byte current = 0;
+                    bool any = false;
+                    while (i < elementsToCopy && enumerator.MoveNext())
+                    {
+                        any = true;
+                        bool c = enumerator.Current;
+                        int mod = i % 8;
+                        if (mod == 0 && i != 0)
+                        {
+                            buffer[index] = current;
+                            ++index;
+                            current = (byte)(c ? 1 : 0);
+                        }
+                        else if (c) current |= (byte)(1 << mod);
+                        ++i;
+                    }
+
+                    if (any)
+                        buffer[index] = current;
+
+                    stream.Write(buffer, 0, sizeToCopy);
+                    bytesLeft -= sizeToCopy;
+                } while (bytesLeft > 0);
+            }
+
+            return hdrSize + size;
+        }
+
+        private static void ResetOrReMake(ref IEnumerator<bool> enumerator, IEnumerable<bool> enumerable)
+        {
+            try
+            {
+                enumerator.Reset();
+            }
+            catch (NotSupportedException)
+            {
+                enumerator.Dispose();
+                enumerator = enumerable.GetEnumerator();
+            }
+        }
+
+        /// <inheritdoc />
+        public int WriteObject([InstantHandle] IEnumerable<bool>? value, Stream stream)
+        {
+            if (value == null)
+            {
+                return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+            }
+            if (value is ICollection<bool> col1)
+            {
+                return WriteObject(col1, stream);
+            }
+            if (value is IReadOnlyCollection<bool> col2)
+            {
+                return WriteObject(col2, stream);
+            }
+            if (value is IList<bool> list1)
+            {
+                return WriteObject(list1, stream);
+            }
+            if (value is IReadOnlyList<bool> list2)
+            {
+                return WriteObject(list2, stream);
+            }
+
+            IEnumerator<bool> enumerator = value.GetEnumerator();
+            try
+            {
+                int length = 0;
+                while (enumerator.MoveNext())
+                {
+                    checked { ++length; }
+                }
+
+                ResetOrReMake(ref enumerator, value);
+                int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
+                if (length == 0)
+                    return hdrSize;
+                int size = (length - 1) / 8 + 1;
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                if (size <= ProxyGenerator.Instance.MaxSizeForStackalloc)
+                {
+                    Span<byte> bytes = stackalloc byte[size];
+                    WriteFromEnumerator(enumerator, bytes);
+                    stream.Write(bytes);
+                }
+                else
+#endif
+                if (size <= DefaultSerializer.MaxArrayPoolSize)
+                {
+                    byte[] bytes = DefaultSerializer.ArrayPool.Rent(size);
+                    try
+                    {
+                        WriteFromEnumerator(enumerator, bytes);
+                        stream.Write(bytes, 0, size);
+                    }
+                    finally
+                    {
+                        DefaultSerializer.ArrayPool.Return(bytes);
+                    }
+                }
+                else if (size <= DefaultSerializer.MaxBufferSize)
+                {
+                    byte[] bytes = new byte[size];
+                    WriteFromEnumerator(enumerator, bytes);
+                    stream.Write(bytes, 0, size);
+                }
+                else
+                {
+                    byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                    int bytesLeft = size;
+                    do
+                    {
+                        int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                        int elementsToCopy = Math.Min(sizeToCopy * 8, length - (size - bytesLeft) * 8);
+
+                        int i = 0;
+                        int index = 0;
+                        byte current = 0;
+                        bool any = false;
+                        while (i < elementsToCopy && enumerator.MoveNext())
+                        {
+                            any = true;
+                            bool c = enumerator.Current;
+                            int mod = i % 8;
+                            if (mod == 0 && i != 0)
+                            {
+                                buffer[index] = current;
+                                ++index;
+                                current = (byte)(c ? 1 : 0);
+                            }
+                            else if (c) current |= (byte)(1 << mod);
+                            ++i;
+                        }
+
+                        if (any)
+                            buffer[index] = current;
+
+                        stream.Write(buffer, 0, sizeToCopy);
+                        bytesLeft -= sizeToCopy;
+                    } while (bytesLeft > 0);
+                }
+
+                return hdrSize + size;
+            }
+            finally
+            {
+                enumerator.Dispose();
+            }
+        }
+
+        /// <inheritdoc />
+        public int WriteObject([InstantHandle] scoped ReadOnlySpan<bool> value, Stream stream)
         {
             int length = value.Length;
             int hdrSize = SerializationHelper.WriteStandardArrayHeader(stream, length, false);
@@ -1293,7 +1744,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public unsafe int WriteObject(BitArray? value, byte* bytes, uint maxSize)
+        public unsafe int WriteObject([InstantHandle] BitArray? value, byte* bytes, uint maxSize)
         {
             uint index = 0;
             if (value == null)
@@ -1330,7 +1781,7 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int WriteObject(BitArray? value, Stream stream)
+        public int WriteObject([InstantHandle] BitArray? value, Stream stream)
         {
             if (value == null)
             {
@@ -1397,13 +1848,54 @@ public class BooleanParser : BinaryTypeParser<bool>
             Type t = __reftype(value);
             int len;
             if (t == BitArrType)
-                len = __refvalue(value, BitArray).Length;
+            {
+                BitArray? bitArray = __refvalue(value, BitArray?);
+                if (bitArray == null)
+                    return 1;
+                len = bitArray.Length;
+            }
             else if (t == BoolArrType)
-                len = __refvalue(value, bool[]).Length;
+            {
+                bool[]? arr = __refvalue(value, bool[]?);
+                if (arr == null)
+                    return 1;
+                len = arr.Length;
+            }
             else if (t == BoolListType)
-                len = __refvalue(value, IList<bool>).Count;
+            {
+                IList<bool>? arr = __refvalue(value, IList<bool>?);
+                if (arr == null)
+                    return 1;
+                len = arr.Count;
+            }
             else if (t == BoolRoListType)
-                len = __refvalue(value, IReadOnlyList<bool>).Count;
+            {
+                IReadOnlyList<bool>? arr = __refvalue(value, IReadOnlyList<bool>?);
+                if (arr == null)
+                    return 1;
+                len = arr.Count;
+            }
+            else if (t == BoolCollectionType)
+            {
+                ICollection<bool>? arr = __refvalue(value, ICollection<bool>?);
+                if (arr == null)
+                    return 1;
+                len = arr.Count;
+            }
+            else if (t == BoolRoCollectionType)
+            {
+                IReadOnlyCollection<bool>? arr = __refvalue(value, IReadOnlyCollection<bool>?);
+                if (arr == null)
+                    return 1;
+                len = arr.Count;
+            }
+            else if (t == BoolEnumerableType)
+            {
+                IEnumerable<bool>? arr = __refvalue(value, IEnumerable<bool>?);
+                if (arr == null)
+                    return 1;
+                len = arr.Count();
+            }
             else if (t == BoolArrSegmentType)
                 len = __refvalue(value, ArraySegment<bool>).Count;
             else if (t == BoolRoSpanType)
@@ -1411,9 +1903,19 @@ public class BooleanParser : BinaryTypeParser<bool>
             else if (t == BoolSpanType)
                 len = __refvalue(value, Span<bool>).Length;
             else if (t == BoolRoSpanPtrType)
-                len = __refvalue(value, ReadOnlySpan<bool>*)->Length;
+            {
+                ReadOnlySpan<bool>* span = __refvalue(value, ReadOnlySpan<bool>*);
+                if (span == null)
+                    return 1;
+                len = span->Length;
+            }
             else if (t == BoolSpanPtrType)
-                len = __refvalue(value, Span<bool>*)->Length;
+            {
+                Span<bool>* span = __refvalue(value, Span<bool>*);
+                if (span == null)
+                    return 1;
+                len = span->Length;
+            }
             else
                 throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(t), Accessor.ExceptionFormatter.Format(GetType())));
 
@@ -1425,13 +1927,19 @@ public class BooleanParser : BinaryTypeParser<bool>
         {
             Type t = __reftype(value);
             if (t == BitArrType)
-                return WriteObject(__refvalue(value, BitArray), bytes, maxSize);
+                return WriteObject(__refvalue(value, BitArray?), bytes, maxSize);
             if (t == BoolArrType)
-                return WriteObject(__refvalue(value, bool[]), bytes, maxSize);
+                return WriteObject(__refvalue(value, bool[]?), bytes, maxSize);
             if (t == BoolListType)
-                return WriteObject(__refvalue(value, IList<bool>), bytes, maxSize);
+                return WriteObject(__refvalue(value, IList<bool>?), bytes, maxSize);
             if (t == BoolRoListType)
-                return WriteObject(__refvalue(value, IReadOnlyList<bool>), bytes, maxSize);
+                return WriteObject(__refvalue(value, IReadOnlyList<bool>?), bytes, maxSize);
+            if (t == BoolCollectionType)
+                return WriteObject(__refvalue(value, ICollection<bool>?), bytes, maxSize);
+            if (t == BoolRoCollectionType)
+                return WriteObject(__refvalue(value, IReadOnlyCollection<bool>?), bytes, maxSize);
+            if (t == BoolEnumerableType)
+                return WriteObject(__refvalue(value, IEnumerable<bool>?), bytes, maxSize);
             if (t == BoolArrSegmentType)
                 return WriteObject(__refvalue(value, ArraySegment<bool>), bytes, maxSize);
             if (t == BoolRoSpanType)
@@ -1451,13 +1959,19 @@ public class BooleanParser : BinaryTypeParser<bool>
         {
             Type t = __reftype(value);
             if (t == BitArrType)
-                return WriteObject(__refvalue(value, BitArray), stream);
+                return WriteObject(__refvalue(value, BitArray?), stream);
             if (t == BoolArrType)
-                return WriteObject(__refvalue(value, bool[]), stream);
+                return WriteObject(__refvalue(value, bool[]?), stream);
             if (t == BoolListType)
-                return WriteObject(__refvalue(value, IList<bool>), stream);
+                return WriteObject(__refvalue(value, IList<bool>?), stream);
             if (t == BoolRoListType)
-                return WriteObject(__refvalue(value, IReadOnlyList<bool>), stream);
+                return WriteObject(__refvalue(value, IReadOnlyList<bool>?), stream);
+            if (t == BoolCollectionType)
+                return WriteObject(__refvalue(value, ICollection<bool>?), stream);
+            if (t == BoolRoCollectionType)
+                return WriteObject(__refvalue(value, IReadOnlyCollection<bool>?), stream);
+            if (t == BoolEnumerableType)
+                return WriteObject(__refvalue(value, IEnumerable<bool>?), stream);
             if (t == BoolArrSegmentType)
                 return WriteObject(__refvalue(value, ArraySegment<bool>), stream);
             if (t == BoolRoSpanType)
@@ -1491,6 +2005,12 @@ public class BooleanParser : BinaryTypeParser<bool>
                 __refvalue(outObj, IList<bool>?) = ReadBooleanArray(bytes, maxSize, out bytesRead);
             else if (t == BoolRoListType)
                 __refvalue(outObj, IReadOnlyList<bool>?) = ReadBooleanArray(bytes, maxSize, out bytesRead);
+            else if (t == BoolCollectionType)
+                __refvalue(outObj, ICollection<bool>?) = ReadBooleanArray(bytes, maxSize, out bytesRead);
+            else if (t == BoolRoCollectionType)
+                __refvalue(outObj, IReadOnlyCollection<bool>?) = ReadBooleanArray(bytes, maxSize, out bytesRead);
+            else if (t == BoolEnumerableType)
+                __refvalue(outObj, IEnumerable<bool>?) = ReadBooleanArray(bytes, maxSize, out bytesRead);
             else if (t == BoolArrSegmentType)
             {
                 bool[]? arr = ReadBooleanArray(bytes, maxSize, out bytesRead);
@@ -1540,6 +2060,12 @@ public class BooleanParser : BinaryTypeParser<bool>
                 __refvalue(outObj, IList<bool>?) = ReadBooleanArray(stream, out bytesRead);
             else if (t == BoolRoListType)
                 __refvalue(outObj, IReadOnlyList<bool>?) = ReadBooleanArray(stream, out bytesRead);
+            else if (t == BoolCollectionType)
+                __refvalue(outObj, ICollection<bool>?) = ReadBooleanArray(stream, out bytesRead);
+            else if (t == BoolRoCollectionType)
+                __refvalue(outObj, IReadOnlyCollection<bool>?) = ReadBooleanArray(stream, out bytesRead);
+            else if (t == BoolEnumerableType)
+                __refvalue(outObj, IEnumerable<bool>?) = ReadBooleanArray(stream, out bytesRead);
             else if (t == BoolArrSegmentType)
             {
                 bool[]? arr = ReadBooleanArray(stream, out bytesRead);
@@ -1578,22 +2104,31 @@ public class BooleanParser : BinaryTypeParser<bool>
         }
 
         /// <inheritdoc />
-        public int GetSize(BitArray? value) => value == null ? 1 : CalcLen(value.Length);
+        public int GetSize([InstantHandle] BitArray? value) => value == null ? 1 : CalcLen(value.Length);
 
         /// <inheritdoc />
-        public int GetSize(bool[]? value) => value == null ? 1 : CalcLen(value.Length);
+        public int GetSize([InstantHandle] bool[]? value) => value == null ? 1 : CalcLen(value.Length);
 
         /// <inheritdoc />
-        public int GetSize(ArraySegment<bool> value) => value.Array == null ? 1 : CalcLen(value.Count);
+        public int GetSize([InstantHandle] ArraySegment<bool> value) => value.Array == null ? 1 : CalcLen(value.Count);
 
         /// <inheritdoc />
-        public int GetSize(IList<bool>? value) => value == null ? 1 : CalcLen(value.Count);
+        public int GetSize([InstantHandle] IList<bool>? value) => value == null ? 1 : CalcLen(value.Count);
 
         /// <inheritdoc />
-        public int GetSize(IReadOnlyList<bool>? value) => value == null ? 1 : CalcLen(value.Count);
+        public int GetSize([InstantHandle] IReadOnlyList<bool>? value) => value == null ? 1 : CalcLen(value.Count);
 
         /// <inheritdoc />
-        public int GetSize(ReadOnlySpan<bool> value) => CalcLen(value.Length);
+        public int GetSize([InstantHandle] ICollection<bool>? value) => value == null ? 1 : CalcLen(value.Count);
+
+        /// <inheritdoc />
+        public int GetSize([InstantHandle] IReadOnlyCollection<bool>? value) => value == null ? 1 : CalcLen(value.Count);
+
+        /// <inheritdoc />
+        public int GetSize([InstantHandle] IEnumerable<bool>? value) => value == null ? 1 : CalcLen(value.Count());
+
+        /// <inheritdoc />
+        public int GetSize([InstantHandle] scoped ReadOnlySpan<bool> value) => CalcLen(value.Length);
 
         /// <inheritdoc />
         public int GetSize(object? value)
@@ -1616,6 +2151,15 @@ public class BooleanParser : BinaryTypeParser<bool>
                 case IReadOnlyList<bool> list:
                     len = list.Count;
                     break;
+                case ICollection<bool> collection:
+                    len = collection.Count;
+                    break;
+                case IReadOnlyCollection<bool> collection:
+                    len = collection.Count;
+                    break;
+                case IEnumerable<bool> enu:
+                    len = enu.Count();
+                    break;
                 case null:
                     return 1;
                 default:
@@ -1635,6 +2179,9 @@ public class BooleanParser : BinaryTypeParser<bool>
                 ArraySegment<bool> arr => WriteObject(arr, bytes, maxSize),
                 IList<bool> list => WriteObject(list, bytes, maxSize),
                 IReadOnlyList<bool> list => WriteObject(list, bytes, maxSize),
+                ICollection<bool> collection => WriteObject(collection, bytes, maxSize),
+                IReadOnlyCollection<bool> collection => WriteObject(collection, bytes, maxSize),
+                IEnumerable<bool> enu => WriteObject(enu, bytes, maxSize),
                 null => WriteObject((bool[])null!, bytes, maxSize),
                 _ => throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(value.GetType()), Accessor.ExceptionFormatter.Format(GetType())))
             };
@@ -1650,6 +2197,9 @@ public class BooleanParser : BinaryTypeParser<bool>
                 ArraySegment<bool> arr => WriteObject(arr, stream),
                 IList<bool> list => WriteObject(list, stream),
                 IReadOnlyList<bool> list => WriteObject(list, stream),
+                ICollection<bool> collection => WriteObject(collection, stream),
+                IReadOnlyCollection<bool> collection => WriteObject(collection, stream),
+                IEnumerable<bool> enu => WriteObject(enu, stream),
                 null => WriteObject((bool[])null!, stream),
                 _ => throw new InvalidCastException(string.Format(Properties.Exceptions.InvalidCastExceptionInvalidType, Accessor.ExceptionFormatter.Format(value.GetType()), Accessor.ExceptionFormatter.Format(GetType())))
             };

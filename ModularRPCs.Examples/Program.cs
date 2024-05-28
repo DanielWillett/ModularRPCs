@@ -15,7 +15,12 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        await Run(args);
+        Console.WriteLine($"Mono: {MonoImpl.MonoVersion}");
+        Console.WriteLine($"Unity: {MonoImpl.UnityVersion}");
+        Console.WriteLine($"Can use internals: {!Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute}");
+        Console.WriteLine($"Can use overlap buffers: {!Compatibility.IncompatibleWithBufferMemoryCopyOverlap}");
+
+        //await Run(args);
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 
