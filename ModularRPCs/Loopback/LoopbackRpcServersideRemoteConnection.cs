@@ -26,7 +26,7 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
 
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
     IModularRpcLocalConnection IModularRpcRemoteConnection.Local => Local;
-    ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token)
+    ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
@@ -34,7 +34,7 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
         if (rawData.Length <= 0)
             throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
 
-        return Local.Router.ReceiveData(Client, serializer, rawData, token);
+        return Local.Router.ReceiveData(Client, serializer, rawData, canTakeOwnership, token);
     }
     ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {

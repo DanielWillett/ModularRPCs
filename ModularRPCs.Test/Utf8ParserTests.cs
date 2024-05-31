@@ -3,6 +3,7 @@ using NUnit.Framework;
 using System;
 using System.IO;
 using System.Text;
+using DanielWillett.ModularRpcs.Configuration;
 
 namespace ModularRPCs.Test;
 public class Utf8ParserTests
@@ -26,7 +27,7 @@ public class Utf8ParserTests
         }
         ++expectedLength;
 
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
         
         int size = parser.GetSize(value);
         Assert.That(size, Is.EqualTo(expectedLength));
@@ -37,7 +38,7 @@ public class Utf8ParserTests
     {
         int expectedLength = CalcLength(value);
 
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
         using Stream memStream = new MemoryStream();
         parser.WriteObject(value, memStream);
 
@@ -53,7 +54,7 @@ public class Utf8ParserTests
     {
         int expectedLength = CalcLength(value);
 
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
 
         scoped Span<byte> buffer = expectedLength > 512 ? new byte[expectedLength + 128] : stackalloc byte[expectedLength + 128];
 
@@ -121,7 +122,7 @@ public class Utf8ParserTests
     [Test]
     public void TestEmptyStringStream()
     {
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
         using Stream memStream = new MemoryStream();
         parser.WriteObject(string.Empty, memStream);
 
@@ -137,7 +138,7 @@ public class Utf8ParserTests
     [Test]
     public unsafe void TestEmptyStringBytes()
     {
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
 
         byte* buffer = stackalloc byte[64];
         int bytesWritten = parser.WriteObject(string.Empty, buffer, 64);
@@ -153,7 +154,7 @@ public class Utf8ParserTests
     [Test]
     public void TestNullStringStream()
     {
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
         using Stream memStream = new MemoryStream();
         parser.WriteObject(null!, memStream);
 
@@ -169,7 +170,7 @@ public class Utf8ParserTests
     [Test]
     public unsafe void TestNullStringBytes()
     {
-        Utf8Parser parser = new Utf8Parser();
+        Utf8Parser parser = new Utf8Parser(new SerializationConfiguration());
 
         byte* buffer = stackalloc byte[64];
         int bytesWritten = parser.WriteObject(null!, buffer, 64);

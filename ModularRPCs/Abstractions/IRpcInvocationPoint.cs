@@ -10,7 +10,7 @@ public interface IRpcInvocationPoint
 {
     uint? EndpointId { get; set; }
     bool CanCache { get; }
-    int Size { get; }
+    uint Size { get; }
     bool IsStatic { get; }
     object? Identifier { get; }
 

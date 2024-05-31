@@ -9,6 +9,8 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Buffers;
+using System.Text;
+using DanielWillett.ModularRpcs.Configuration;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -33,6 +35,7 @@ public class DefaultSerializer : IRpcSerializer
     private readonly ConcurrentDictionary<Type, ReadNullableStream> _nullableReadStream = new ConcurrentDictionary<Type, ReadNullableStream>();
     private readonly ConcurrentDictionary<Type, ReadNullableBytesRefAny> _nullableReadBytesRefAny = new ConcurrentDictionary<Type, ReadNullableBytesRefAny>();
     private readonly ConcurrentDictionary<Type, ReadNullableStreamRefAny> _nullableReadStreamRefAny = new ConcurrentDictionary<Type, ReadNullableStreamRefAny>();
+    private readonly SerializationConfiguration _config;
     private delegate bool NullableHasValueTypeRef(TypedReference value);
     private delegate object NullableValueTypeRef(TypedReference value);
     private unsafe delegate object ReadNullableBytes(byte* bytes, uint maxSize, out int bytesRead);
@@ -42,6 +45,7 @@ public class DefaultSerializer : IRpcSerializer
     private readonly Dictionary<Type, IBinaryTypeParser> _parsers;
     private static readonly MethodInfo MtdReadBoxedNullableBytes = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableBytes), BindingFlags.NonPublic | BindingFlags.Instance)
                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableBytes))
+                                                                       .DeclaredIn<DefaultSerializer>(isStatic: false)
                                                                        .WithGenericParameterDefinition("T")
                                                                        .WithParameter(typeof(byte*), "bytes")
                                                                        .WithParameter<uint>("maxSize")
@@ -50,6 +54,7 @@ public class DefaultSerializer : IRpcSerializer
                                                                    );
     private static readonly MethodInfo MtdReadBoxedNullableStream = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableStream), BindingFlags.NonPublic | BindingFlags.Instance)
                                                                     ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableStream))
+                                                                        .DeclaredIn<DefaultSerializer>(isStatic: false)
                                                                         .WithGenericParameterDefinition("T")
                                                                         .WithParameter<Stream>("stream")
                                                                         .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
@@ -57,6 +62,7 @@ public class DefaultSerializer : IRpcSerializer
                                                                     );
     private static readonly MethodInfo MtdReadBoxedNullableBytesRefAny = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableBytesRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
                                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableBytesRefAny))
+                                                                             .DeclaredIn<DefaultSerializer>(isStatic: false)
                                                                              .WithGenericParameterDefinition("T")
                                                                              .WithParameter(typeof(TypedReference), "value")
                                                                              .WithParameter(typeof(byte*), "bytes")
@@ -66,6 +72,7 @@ public class DefaultSerializer : IRpcSerializer
                                                                          );
     private static readonly MethodInfo MtdReadBoxedNullableStreamRefAny = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableStreamRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
                                                                           ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableStreamRefAny))
+                                                                              .DeclaredIn<DefaultSerializer>(isStatic: false)
                                                                               .WithGenericParameterDefinition("T")
                                                                               .WithParameter(typeof(TypedReference), "value")
                                                                               .WithParameter<Stream>("stream")
@@ -73,34 +80,12 @@ public class DefaultSerializer : IRpcSerializer
                                                                               .Returning<object>()
                                                                           );
 
-    private readonly Dictionary<Type, IBinaryTypeParser> _primitiveParsers = new Dictionary<Type, IBinaryTypeParser>
-    {
-        { typeof(byte), new UInt8Parser() },
-        { typeof(sbyte), new Int8Parser() },
-        { typeof(bool), new BooleanParser() },
-        { typeof(ushort), new UInt16Parser() },
-        { typeof(short), new Int16Parser() },
-        { typeof(char), new CharParser() },
-        { typeof(uint), new UInt32Parser() },
-        { typeof(int), new Int32Parser() },
-        { typeof(ulong), new UInt64Parser() },
-        { typeof(long), new Int64Parser() },
-        { typeof(nuint), new UIntPtrParser() },
-        { typeof(nint), new IntPtrParser() },
-        { typeof(string), new Utf8Parser() },
-#if NET5_0_OR_GREATER
-        { typeof(Half), new HalfParser() },
-#endif
-        { typeof(float), new SingleParser() },
-        { typeof(double), new DoubleParser() },
-        { typeof(decimal), new DecimalParser() },
-        { typeof(DateTime), new DateTimeParser() },
-        { typeof(DateTimeOffset), new DateTimeOffsetParser() },
-        { typeof(TimeSpan), new TimeSpanParser() },
-        { typeof(Guid), new GuidParser() }
-    };
+    private readonly ConcurrentDictionary<Type, IBinaryTypeParser?> _discoveredInParsers = new ConcurrentDictionary<Type, IBinaryTypeParser?>();
+    private readonly ConcurrentDictionary<Type, IBinaryTypeParser?> _discoveredOutParsers = new ConcurrentDictionary<Type, IBinaryTypeParser?>();
+    private readonly List<IBinaryParserFactory> _parserFactories;
+    private readonly Dictionary<Type, IBinaryTypeParser> _primitiveParsers = new Dictionary<Type, IBinaryTypeParser>(117);
 
-    private readonly Dictionary<Type, int> _primitiveSizes = new Dictionary<Type, int>
+    private readonly Dictionary<Type, int> _primitiveSizes = new Dictionary<Type, int>(20)
     {
         { typeof(byte), 1 },
         { typeof(sbyte), 1 },
@@ -130,6 +115,9 @@ public class DefaultSerializer : IRpcSerializer
     public bool CanFastReadPrimitives { get; }
 
     /// <inheritdoc />
+    public SerializationConfiguration Configuration => _config;
+    
+    /// <inheritdoc />
     public bool TryGetKnownType(uint knownTypeId,
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
         [MaybeNullWhen(false)]
@@ -144,17 +132,57 @@ public class DefaultSerializer : IRpcSerializer
 
     private void AddDefaultNonPrimitiveSerializers()
     {
-        _primitiveParsers.AddManySerializer(new BooleanParser.Many());
-        _primitiveParsers.AddManySerializer(new UInt8Parser.Many());
-        _primitiveParsers.AddManySerializer(new UInt16Parser.Many());
-        _primitiveParsers.AddManySerializer(new UInt32Parser.Many());
-        _primitiveParsers.AddManySerializer(new UInt64Parser.Many());
-        _primitiveParsers.AddManySerializer(new Int8Parser.Many());
-        _primitiveParsers.AddManySerializer(new Int16Parser.Many());
-        _primitiveParsers.AddManySerializer(new Int32Parser.Many());
-        _primitiveParsers.AddManySerializer(new Int64Parser.Many());
-        _primitiveParsers.AddManySerializer(new SingleParser.Many());
-        _primitiveParsers.AddManySerializer(new DoubleParser.Many());
+        _primitiveParsers.AddManySerializer(new BooleanParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new CharParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new UIntPtrParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new UInt8Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new UInt16Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new UInt32Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new UInt64Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new Int8Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new IntPtrParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new Int16Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new Int32Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new Int64Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new SingleParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new DoubleParser.Many(_config));
+
+        _primitiveParsers.AddManySerializer(new DecimalParser.Many(_config));
+        _primitiveParsers.AddManySerializer(Encoding.UTF8.Equals(_config.StringEncoding) ? new Utf8Parser.Many(_config) : new StringParser.Many(_config, _config.StringEncoding));
+        _primitiveParsers.AddManySerializer(new Utf8Parser.Many(_config));
+#if NET5_0_OR_GREATER
+        _primitiveParsers.AddManySerializer(new HalfParser.Many(_config));
+#endif
+        _primitiveParsers.AddManySerializer(new GuidParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new TimeSpanParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new DateTimeParser.Many(_config));
+        _primitiveParsers.AddManySerializer(new DateTimeOffsetParser.Many(_config));
+    }
+    private void SetupPrimitiveParsers()
+    {
+        _primitiveParsers.Add(typeof(byte), new UInt8Parser());
+        _primitiveParsers.Add(typeof(sbyte), new Int8Parser());
+        _primitiveParsers.Add(typeof(bool), new BooleanParser());
+        _primitiveParsers.Add(typeof(ushort), new UInt16Parser());
+        _primitiveParsers.Add(typeof(short), new Int16Parser());
+        _primitiveParsers.Add(typeof(char), new CharParser());
+        _primitiveParsers.Add(typeof(uint), new UInt32Parser());
+        _primitiveParsers.Add(typeof(int), new Int32Parser());
+        _primitiveParsers.Add(typeof(ulong), new UInt64Parser());
+        _primitiveParsers.Add(typeof(long), new Int64Parser());
+        _primitiveParsers.Add(typeof(nuint), new UIntPtrParser());
+        _primitiveParsers.Add(typeof(nint), new IntPtrParser());
+        _primitiveParsers.Add(typeof(string), Encoding.UTF8.Equals(_config.StringEncoding) ? new Utf8Parser(_config) : new StringParser(_config, _config.StringEncoding));
+#if NET5_0_OR_GREATER
+        _primitiveParsers.Add(typeof(Half), new HalfParser());
+#endif
+        _primitiveParsers.Add(typeof(float), new SingleParser());
+        _primitiveParsers.Add(typeof(double), new DoubleParser());
+        _primitiveParsers.Add(typeof(decimal), new DecimalParser());
+        _primitiveParsers.Add(typeof(DateTime), new DateTimeParser());
+        _primitiveParsers.Add(typeof(DateTimeOffset), new DateTimeOffsetParser());
+        _primitiveParsers.Add(typeof(TimeSpan), new TimeSpanParser());
+        _primitiveParsers.Add(typeof(Guid), new GuidParser());
     }
 
     /// <summary>
@@ -162,11 +190,16 @@ public class DefaultSerializer : IRpcSerializer
     /// </summary>
     /// <exception cref="ArgumentNullException">The key of a pair is <see langword="null" />.</exception>
     /// <exception cref="ArgumentException">An element with the same key was added more than once.</exception>
-    public DefaultSerializer(Action<IDictionary<Type, IBinaryTypeParser>> registerParsers)
+    public DefaultSerializer(Action<SerializationConfiguration, IDictionary<Type, IBinaryTypeParser>, IList<IBinaryParserFactory>> registerParsers, SerializationConfiguration? configuration = null)
     {
+        _config = configuration ?? new SerializationConfiguration();
         IDictionary<Type, IBinaryTypeParser> dict = new Dictionary<Type, IBinaryTypeParser>();
-        registerParsers(dict);
+        IList<IBinaryParserFactory> factories = new List<IBinaryParserFactory>();
+        registerParsers(_config, dict, factories);
+        _config.Lock();
         _parsers = new Dictionary<Type, IBinaryTypeParser>(dict);
+        _parserFactories = new List<IBinaryParserFactory>(factories);
+        SetupPrimitiveParsers();
         CanFastReadPrimitives = !IntlAnyCustomPrimitiveParsers();
         AddDefaultNonPrimitiveSerializers();
     }
@@ -176,8 +209,12 @@ public class DefaultSerializer : IRpcSerializer
     /// </summary>
     /// <exception cref="ArgumentNullException">The key of a pair is <see langword="null" />.</exception>
     /// <exception cref="ArgumentException">An element with the same key was added more than once.</exception>
-    public DefaultSerializer(IEnumerable<KeyValuePair<Type, IBinaryTypeParser>> parsers)
+    public DefaultSerializer(IEnumerable<KeyValuePair<Type, IBinaryTypeParser>> parsers, IEnumerable<IBinaryParserFactory> parserFactories, SerializationConfiguration? configuration = null)
     {
+        _config = configuration ?? new SerializationConfiguration();
+        _config.Lock();
+        SetupPrimitiveParsers();
+        _parserFactories = new List<IBinaryParserFactory>(parserFactories);
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_0_OR_GREATER
         _parsers = new Dictionary<Type, IBinaryTypeParser>(parsers);
         CanFastReadPrimitives = !IntlAnyCustomPrimitiveParsers();
@@ -208,11 +245,89 @@ public class DefaultSerializer : IRpcSerializer
     /// <summary>
     /// Create a serializer.
     /// </summary>
-    public DefaultSerializer()
+    public DefaultSerializer(SerializationConfiguration? configuration = null)
     {
+        _config = configuration ?? new SerializationConfiguration();
+        _config.Lock();
         _parsers = new Dictionary<Type, IBinaryTypeParser>();
+        _parserFactories = new List<IBinaryParserFactory>();
+        SetupPrimitiveParsers();
         CanFastReadPrimitives = true;
+        AddDefaultNonPrimitiveSerializers();
     }
+    
+    /// <summary>
+    /// Find a parser that could be assigned but aren't stored as the exact type, or from existing factories.
+    /// </summary>
+    /// <param name="isIn">Would this be treated as an 'in' (contravariant) parameter, or an 'out' (covariant) parameter.</param>
+    private IBinaryTypeParser? LookForParser(bool isIn, Type type)
+    {
+        if (type.IsValueType || type == typeof(string))
+            return null;
+        ConcurrentDictionary<Type, IBinaryTypeParser?> dict = isIn ? _discoveredInParsers : _discoveredOutParsers;
+        IBinaryTypeParser? parser = dict.GetOrAdd(type, isIn ? LookForInParserFactory : LookForOutParserFactory);
+        if (parser != null)
+            return parser;
+
+        for (int i = 0; i < _parserFactories.Count; ++i)
+        {
+            if (!_parserFactories[i].TryGetParser(type, _config, isIn, out parser, out bool canCacheParser))
+                continue;
+
+            if (!canCacheParser || parser == null)
+                return parser;
+
+            IBinaryTypeParser? existingParser;
+            while ((existingParser = dict.GetOrAdd(type, parser)) == null)
+            {
+                dict[type] = parser;
+            }
+
+            return existingParser;
+        }
+
+        return null;
+    }
+
+    private IBinaryTypeParser? LookForInParserFactory(Type arg)
+    {
+        foreach (KeyValuePair<Type, IBinaryTypeParser> parserSet in _parsers)
+        {
+            if (parserSet.Key.IsAssignableFrom(arg))
+            {
+                return parserSet.Value;
+            }
+        }
+        foreach (KeyValuePair<Type, IBinaryTypeParser> parserSet in _primitiveParsers)
+        {
+            if (parserSet.Key.IsAssignableFrom(arg))
+            {
+                return parserSet.Value;
+            }
+        }
+
+        return null;
+    }
+    private IBinaryTypeParser? LookForOutParserFactory(Type arg)
+    {
+        foreach (KeyValuePair<Type, IBinaryTypeParser> parserSet in _parsers)
+        {
+            if (arg.IsAssignableFrom(parserSet.Key))
+            {
+                return parserSet.Value;
+            }
+        }
+        foreach (KeyValuePair<Type, IBinaryTypeParser> parserSet in _primitiveParsers)
+        {
+            if (arg.IsAssignableFrom(parserSet.Key))
+            {
+                return parserSet.Value;
+            }
+        }
+
+        return null;
+    }
+
     private static void ThrowNoParserFound(Type type)
     {
         throw new RpcInvalidParameterException(
@@ -261,6 +376,13 @@ public class DefaultSerializer : IRpcSerializer
             if (!_parsers.ContainsKey(nullableType) && !_primitiveSizes.ContainsKey(nullableType) && !_primitiveParsers.ContainsKey(nullableType))
                 ThrowNoParserFound(type);
             return 1;
+        }
+
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            isFixedSize = !parser.IsVariableSize;
+            return parser.MinimumSize;
         }
 
         ThrowNoParserFound(type);
@@ -355,6 +477,15 @@ public class DefaultSerializer : IRpcSerializer
             return GetNullableSize(value!, underlyingType, type);
         }
 
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.GetSize(value);
+
+            return parser.GetSize(value);
+        }
+
         ThrowNoParserFound(type);
         return 0; // not reached
     }
@@ -371,44 +502,29 @@ public class DefaultSerializer : IRpcSerializer
     /// <inheritdoc />
     public int GetSize(Type valueType, object? value)
     {
-        if (valueType.IsValueType || valueType == typeof(string))
+        if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
         {
-            if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
-            {
-                return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
-            }
-
-            if (_primitiveSizes.TryGetValue(valueType, out int size))
-                return size;
-
-            if (_primitiveParsers.TryGetValue(valueType, out parser))
-            {
-                return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
-            }
+            return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
         }
-        else
+
+        if (_primitiveSizes.TryGetValue(valueType, out int size))
+            return size;
+
+        if (_primitiveParsers.TryGetValue(valueType, out parser))
         {
-            for (Type? type = valueType; type != typeof(object) && type != null; type = type.BaseType)
-            {
-                if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
-                {
-                    return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
-                }
-
-                if (_primitiveSizes.TryGetValue(type, out int size))
-                    return size;
-
-                if (_primitiveParsers.TryGetValue(type, out parser))
-                {
-                    return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
-                }
-            }
+            return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
         }
 
         Type? nullableType = Nullable.GetUnderlyingType(valueType);
         if (nullableType != null)
         {
             return GetNullableSize(value, nullableType, valueType);
+        }
+
+        parser = LookForParser(true, valueType);
+        if (parser != null)
+        {
+            return parser.GetSize(value);
         }
 
         ThrowNoParserFound(valueType);
@@ -436,6 +552,12 @@ public class DefaultSerializer : IRpcSerializer
         if (nullableType != null)
         {
             return GetNullableSize(value, nullableType);
+        }
+
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            return parser.GetSize(value);
         }
 
         ThrowNoParserFound(type);
@@ -618,28 +740,20 @@ public class DefaultSerializer : IRpcSerializer
 
             return parser.WriteObject(__makeref(value), bytes, maxSize);
         }
-        if (!type.IsValueType && type != typeof(string))
-        {
-            for (Type? baseType = type; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
-            {
-                if (_parsers.TryGetValue(baseType, out parser))
-                {
-                    return parser.WriteObject(__makeref(value), bytes, maxSize);
-                }
 
-                if (_primitiveParsers.TryGetValue(baseType, out parser))
-                {
-                    return parser.WriteObject(__makeref(value), bytes, maxSize);
-                }
-            }
-        }
-        else
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
         {
-            Type? underlyingType = Nullable.GetUnderlyingType(type);
-            if (underlyingType != null)
-            {
-                return WriteNullable(value!, bytes, maxSize, underlyingType, type);
-            }
+            return WriteNullable(value!, bytes, maxSize, underlyingType, type);
+        }
+
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(value, bytes, maxSize);
+
+            return parser.WriteObject(value, bytes, maxSize);
         }
 
         ThrowNoParserFound(type);
@@ -650,30 +764,22 @@ public class DefaultSerializer : IRpcSerializer
     public unsafe int WriteObject(TypedReference value, byte* bytes, uint maxSize)
     {
         Type type = __reftype(value);
-        if (type.IsValueType || type == typeof(string))
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, bytes, maxSize);
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+            return parser.WriteObject(value, bytes, maxSize);
+
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
         {
-            if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
-                return parser.WriteObject(value, bytes, maxSize);
-
-            if (_primitiveParsers.TryGetValue(type, out parser))
-                return parser.WriteObject(value, bytes, maxSize);
-
-            Type? underlyingType = Nullable.GetUnderlyingType(type);
-            if (underlyingType != null)
-            {
-                return WriteNullable(value, bytes, maxSize, underlyingType);
-            }
+            return WriteNullable(value, bytes, maxSize, underlyingType);
         }
-        else
-        {
-            for (Type? baseType = type; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
-            {
-                if (_parsers.TryGetValue(baseType, out IBinaryTypeParser? parser))
-                    return parser.WriteObject(value, bytes, maxSize);
 
-                if (_primitiveParsers.TryGetValue(baseType, out parser))
-                    return parser.WriteObject(value, bytes, maxSize);
-            }
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            return parser.WriteObject(value, bytes, maxSize);
         }
 
         ThrowNoParserFound(type);
@@ -692,30 +798,22 @@ public class DefaultSerializer : IRpcSerializer
     /// <inheritdoc />
     public unsafe int WriteObject(Type valueType, object? value, byte* bytes, uint maxSize)
     {
-        if (valueType.IsValueType || valueType == typeof(string))
+        if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, bytes, maxSize);
+
+        if (_primitiveParsers.TryGetValue(valueType, out parser))
+            return parser.WriteObject(value, bytes, maxSize);
+
+        Type? underlyingType = Nullable.GetUnderlyingType(valueType);
+        if (underlyingType != null)
         {
-            if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
-                return parser.WriteObject(value, bytes, maxSize);
-
-            if (_primitiveParsers.TryGetValue(valueType, out parser))
-                return parser.WriteObject(value, bytes, maxSize);
-
-            Type? underlyingType = Nullable.GetUnderlyingType(valueType);
-            if (underlyingType != null)
-            {
-                return WriteNullable(value, bytes, maxSize, underlyingType, valueType);
-            }
+            return WriteNullable(value, bytes, maxSize, underlyingType, valueType);
         }
-        else
-        {
-            for (Type? baseType = valueType; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
-            {
-                if (_parsers.TryGetValue(baseType, out IBinaryTypeParser? parser))
-                    return parser.WriteObject(value, bytes, maxSize);
 
-                if (_primitiveParsers.TryGetValue(baseType, out parser))
-                    return parser.WriteObject(value, bytes, maxSize);
-            }
+        parser = LookForParser(true, valueType);
+        if (parser != null)
+        {
+            return parser.WriteObject(value, bytes, maxSize);
         }
 
         ThrowNoParserFound(valueType);
@@ -787,28 +885,19 @@ public class DefaultSerializer : IRpcSerializer
             return parser.WriteObject(__makeref(value), stream);
         }
 
-        if (!type.IsValueType && type != typeof(string))
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
         {
-            for (Type? baseType = type; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
-            {
-                if (_parsers.TryGetValue(baseType, out parser))
-                {
-                    return parser.WriteObject(__makeref(value), stream);
-                }
-
-                if (_primitiveParsers.TryGetValue(baseType, out parser))
-                {
-                    return parser.WriteObject(__makeref(value), stream);
-                }
-            }
+            return WriteNullable(value!, stream, underlyingType, type);
         }
-        else
+
+        parser = LookForParser(true, type);
+        if (parser != null)
         {
-            Type? underlyingType = Nullable.GetUnderlyingType(type);
-            if (underlyingType != null)
-            {
-                return WriteNullable(value!, stream, underlyingType, type);
-            }
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.WriteObject(value, stream);
+
+            return parser.WriteObject(value, stream);
         }
 
         ThrowNoParserFound(type);
@@ -819,30 +908,22 @@ public class DefaultSerializer : IRpcSerializer
     public int WriteObject(TypedReference value, Stream stream)
     {
         Type type = __reftype(value);
-        if (type.IsValueType || type == typeof(string))
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, stream);
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+            return parser.WriteObject(value, stream);
+
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
         {
-            if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
-                return parser.WriteObject(value, stream);
-
-            if (_primitiveParsers.TryGetValue(type, out parser))
-                return parser.WriteObject(value, stream);
-
-            Type? underlyingType = Nullable.GetUnderlyingType(type);
-            if (underlyingType != null)
-            {
-                return WriteNullable(value, stream, underlyingType);
-            }
+            return WriteNullable(value, stream, underlyingType);
         }
-        else
-        {
-            for (Type? baseType = type; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
-            {
-                if (_parsers.TryGetValue(baseType, out IBinaryTypeParser? parser))
-                    return parser.WriteObject(value, stream);
 
-                if (_primitiveParsers.TryGetValue(baseType, out parser))
-                    return parser.WriteObject(value, stream);
-            }
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            return parser.WriteObject(value, stream);
         }
 
         ThrowNoParserFound(type);
@@ -861,30 +942,22 @@ public class DefaultSerializer : IRpcSerializer
     /// <inheritdoc />
     public int WriteObject(Type valueType, object? value, Stream stream)
     {
-        if (valueType.IsValueType || valueType == typeof(string))
+        if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
+            return parser.WriteObject(value, stream);
+
+        if (_primitiveParsers.TryGetValue(valueType, out parser))
+            return parser.WriteObject(value, stream);
+
+        Type? underlyingType = Nullable.GetUnderlyingType(valueType);
+        if (underlyingType != null)
         {
-            if (_parsers.TryGetValue(valueType, out IBinaryTypeParser? parser))
-                return parser.WriteObject(value, stream);
-
-            if (_primitiveParsers.TryGetValue(valueType, out parser))
-                return parser.WriteObject(value, stream);
-
-            Type? underlyingType = Nullable.GetUnderlyingType(valueType);
-            if (underlyingType != null)
-            {
-                return WriteNullable(value, stream, underlyingType, valueType);
-            }
+            return WriteNullable(value, stream, underlyingType, valueType);
         }
-        else
-        {
-            for (Type? baseType = valueType; baseType != typeof(object) && baseType != null; baseType = baseType.BaseType)
-            {
-                if (_parsers.TryGetValue(baseType, out IBinaryTypeParser? parser))
-                    return parser.WriteObject(value, stream);
 
-                if (_primitiveParsers.TryGetValue(baseType, out parser))
-                    return parser.WriteObject(value, stream);
-            }
+        parser = LookForParser(true, valueType);
+        if (parser != null)
+        {
+            return parser.WriteObject(value, stream);
         }
 
         ThrowNoParserFound(valueType);
@@ -1151,6 +1224,15 @@ public class DefaultSerializer : IRpcSerializer
             }
         }
 
+        parser = LookForParser(false, type);
+        if (parser != null)
+        {
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(bytes, maxSize, out bytesRead);
+
+            return (T?)parser.ReadObject(type, bytes, maxSize, out bytesRead);
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
         return default!;
@@ -1179,6 +1261,13 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
+        parser = LookForParser(false, type);
+        if (parser != null)
+        {
+            parser.ReadObject(bytes, maxSize, out bytesRead, refValue);
+            return;
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
     }
@@ -1196,30 +1285,16 @@ public class DefaultSerializer : IRpcSerializer
             return parser.ReadObject(objectType, bytes, maxSize, out bytesRead);
         }
 
-        if (!objectType.IsValueType && objectType.BaseType != typeof(object))
+        Type? underlyingType = Nullable.GetUnderlyingType(objectType);
+        if (underlyingType != null)
         {
-            foreach (KeyValuePair<Type, IBinaryTypeParser> parserPair in _parsers)
-            {
-                if (objectType.IsAssignableFrom(parserPair.Key))
-                {
-                    return parserPair.Value.ReadObject(parserPair.Key, bytes, maxSize, out bytesRead);
-                }
-            }
-            foreach (KeyValuePair<Type, IBinaryTypeParser> parserPair in _primitiveParsers)
-            {
-                if (objectType.IsAssignableFrom(parserPair.Key))
-                {
-                    return parserPair.Value.ReadObject(parserPair.Key, bytes, maxSize, out bytesRead);
-                }
-            }
+            return ReadNullable(objectType, underlyingType, bytes, maxSize, out bytesRead);
         }
-        else
+
+        parser = LookForParser(false, objectType);
+        if (parser != null)
         {
-            Type? underlyingType = Nullable.GetUnderlyingType(objectType);
-            if (underlyingType != null)
-            {
-                return ReadNullable(objectType, underlyingType, bytes, maxSize, out bytesRead);
-            }
+            return parser.ReadObject(objectType, bytes, maxSize, out bytesRead);
         }
 
         ThrowNoParserFound(objectType);
@@ -1345,30 +1420,20 @@ public class DefaultSerializer : IRpcSerializer
             parser.ReadObject(stream, out bytesRead, __makeref(value));
             return value!;
         }
-        if (!type.IsValueType && type.BaseType != typeof(object))
+
+        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
         {
-            foreach (KeyValuePair<Type, IBinaryTypeParser> parserPair in _parsers)
-            {
-                if (type.IsAssignableFrom(parserPair.Key))
-                {
-                    return (T?)parserPair.Value.ReadObject(parserPair.Key, stream, out bytesRead);
-                }
-            }
-            foreach (KeyValuePair<Type, IBinaryTypeParser> parserPair in _primitiveParsers)
-            {
-                if (type.IsAssignableFrom(parserPair.Key))
-                {
-                    return (T?)parserPair.Value.ReadObject(parserPair.Key, stream, out bytesRead);
-                }
-            }
+            return (T)ReadNullable(type, underlyingType, stream, out bytesRead);
         }
-        else
+
+        parser = LookForParser(false, type);
+        if (parser != null)
         {
-            Type? underlyingType = Nullable.GetUnderlyingType(type);
-            if (underlyingType != null)
-            {
-                return (T)ReadNullable(type, underlyingType, stream, out bytesRead);
-            }
+            if (parser is IBinaryTypeParser<T> genParser)
+                return genParser.ReadObject(stream, out bytesRead);
+
+            return (T?)parser.ReadObject(type, stream, out bytesRead);
         }
 
         ThrowNoParserFound(type);
@@ -1399,6 +1464,13 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
+        parser = LookForParser(false, type);
+        if (parser != null)
+        {
+            parser.ReadObject(stream, out bytesRead, refValue);
+            return;
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 0; // not reached
     }
@@ -1420,6 +1492,12 @@ public class DefaultSerializer : IRpcSerializer
         if (underlyingType != null)
         {
             return ReadNullable(objectType, underlyingType, stream, out bytesRead);
+        }
+
+        parser = LookForParser(false, objectType);
+        if (parser != null)
+        {
+            return parser.ReadObject(objectType, stream, out bytesRead);
         }
 
         ThrowNoParserFound(objectType);

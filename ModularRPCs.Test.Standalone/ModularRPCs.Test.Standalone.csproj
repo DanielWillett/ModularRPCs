@@ -5,6 +5,7 @@
     <TargetFramework>net462</TargetFramework>
     <LangVersion>12.0</LangVersion>
     <Nullable>enable</Nullable>
+    <AssemblyName>DanielWillett.ModularRPCs.Test.Standalone</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

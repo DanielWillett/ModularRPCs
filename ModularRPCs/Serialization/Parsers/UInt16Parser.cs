@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -102,5 +103,5 @@ public class UInt16Parser : BinaryTypeParser<ushort>
         bytesRead = 2;
         return unchecked( (ushort)value );
     }
-    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<ushort>;
+    public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<ushort>(config);
 }

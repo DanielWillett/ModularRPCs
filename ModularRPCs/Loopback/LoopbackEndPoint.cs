@@ -44,6 +44,8 @@ public class LoopbackEndpoint(bool isServer) : IModularRpcRemoteEndpoint
         LoopbackRpcServersideRemoteConnection serverRemote = new LoopbackRpcServersideRemoteConnection(CreateOtherSide(), router, serializer);
         LoopbackRpcClientsideRemoteConnection clientConnection = new LoopbackRpcClientsideRemoteConnection(this, router, serverRemote);
 
+        await serverRemote.Local.InitializeConnectionAsync(serverRemote, token);
+        
         clientConnection.IsClosed = false;
         clientConnection.Local.IsClosed = false;
         clientConnection.Server.IsClosed = false;

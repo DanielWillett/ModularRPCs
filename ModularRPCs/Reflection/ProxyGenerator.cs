@@ -1,9 +1,6 @@
-﻿// todo remove this
-#define DEBUG
-using DanielWillett.ModularRpcs.Abstractions;
+﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
-using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
@@ -11,7 +8,6 @@ using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
 using DanielWillett.ReflectionTools.Formatting;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -28,7 +24,7 @@ namespace DanielWillett.ModularRpcs.Reflection;
 /// <summary>
 /// Creates inherited proxy types for classes with virtual or abstract methods decorated with the <see cref="RpcSendAttribute"/> to provide implementations of them at runtime.
 /// </summary>
-public sealed class ProxyGenerator
+public sealed class ProxyGenerator : IRefSafeLoggable
 {
     private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
@@ -55,10 +51,9 @@ public sealed class ProxyGenerator
         "m_id",
     ];
 
-    /// <summary>
-    /// Set using <see cref="LoggingExtensions.SetLogger(ProxyGenerator, ILogger)"/>. 
-    /// </summary>
-    internal object? Logger;
+    private object? _logger;
+    ref object? IRefSafeLoggable.Logger => ref _logger;
+    LoggerType IRefSafeLoggable.LoggerType { get; set; }
 
     /// <summary>
     /// Name of the private field used to store instances in a proxy class that implemnets <see cref="IRpcObject{T}"/>.
@@ -514,10 +509,7 @@ public sealed class ProxyGenerator
 
             if (!VisibilityUtility.IsMethodOverridable(baseCtor))
             {
-                if (Logger != null)
-                    LogWarning(string.Format(Properties.Logging.ConstructorNotVisibileToOverridingClasses, Accessor.Formatter.Format(baseCtor), type.FullName));
-                else if (Accessor.LogWarningMessages)
-                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.ConstructorNotVisibileToOverridingClasses, Accessor.Formatter.Format(baseCtor), type.FullName));
+                this.LogWarning(string.Format(Properties.Logging.ConstructorNotVisibileToOverridingClasses, Accessor.Formatter.Format(baseCtor), type.FullName));
                 continue;
             }
 
@@ -644,10 +636,7 @@ public sealed class ProxyGenerator
 
             if (baseReleaseMethod is { IsPublic: true })
             {
-                if (Logger != null)
-                    LogWarning(string.Format(Properties.Logging.BaseReleaseMethodCantBePublic, Accessor.Formatter.Format(baseReleaseMethod.DeclaringType!)));
-                else if (Accessor.LogWarningMessages)
-                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.BaseReleaseMethodCantBePublic, Accessor.Formatter.Format(baseReleaseMethod.DeclaringType!)));
+                this.LogWarning(string.Format(Properties.Logging.BaseReleaseMethodCantBePublic, Accessor.Formatter.Format(baseReleaseMethod.DeclaringType!)));
                 baseReleaseMethod = null;
             }
 
@@ -875,10 +864,7 @@ public sealed class ProxyGenerator
             backingFieldIsExplicit = true;
             if (identifierBackingField != null && (identifierBackingField.IsStatic || identifierBackingField.FieldType != idType || identifierBackingField.IsIgnored()))
             {
-                if (Logger != null)
-                    LogWarning(string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
-                else if (Accessor.LogWarningMessages)
-                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
+                this.LogWarning(string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
             }
 
             if (identifierBackingField == null)
@@ -913,10 +899,7 @@ public sealed class ProxyGenerator
 
             if (identifierBackingField == null)
             {
-                if (Logger != null)
-                    LogDebug(string.Format(Properties.Logging.BackingFieldNotFound, Accessor.Formatter.Format(type)));
-                else if (Accessor.LogDebugMessages)
-                    Accessor.Logger?.LogDebug(nameof(ProxyGenerator), string.Format(Properties.Logging.BackingFieldNotFound, Accessor.Formatter.Format(type)));
+                this.LogDebug(string.Format(Properties.Logging.BackingFieldNotFound, Accessor.Formatter.Format(type)));
             }
         }
 
@@ -932,10 +915,7 @@ public sealed class ProxyGenerator
                 identifierBackingField = null;
                 if (backingFieldIsExplicit)
                 {
-                    if (Logger != null)
-                        LogWarning(string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
-                    else if (Accessor.LogWarningMessages)
-                        Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
+                    this.LogWarning(string.Format(Properties.Logging.BackingFieldNotValid, Accessor.Formatter.Format(type)));
                 }
             }
         }
@@ -1212,10 +1192,7 @@ public sealed class ProxyGenerator
 
             if (!VisibilityUtility.IsMethodOverridable(method))
             {
-                if (Logger != null)
-                    LogWarning(string.Format(Properties.Logging.MethodNotVisibileToOverridingClasses, Accessor.Formatter.Format(method), type.FullName));
-                else if (Accessor.LogWarningMessages)
-                    Accessor.Logger?.LogWarning(nameof(ProxyGenerator), string.Format(Properties.Logging.MethodNotVisibileToOverridingClasses, Accessor.Formatter.Format(method), type.FullName));
+                this.LogWarning(string.Format(Properties.Logging.MethodNotVisibileToOverridingClasses, Accessor.Formatter.Format(method), Accessor.Formatter.Format(type)));
                 continue;
             }
 
@@ -1892,22 +1869,6 @@ public sealed class ProxyGenerator
 
         SerializerGenerator.GenerateInvokeBytes(method, bytesDynMethod, bytesDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
         return (RpcInvokeHandlerBytes)bytesDynMethod.CreateDelegate(typeof(RpcInvokeHandlerBytes));
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void LogWarning(string text)
-    {
-        // separated it like this to avoid having a strict reliance on Microsoft.Extensions.Logging.Abstractions.dll
-        if (Logger is ILogger logger)
-            logger.LogWarning(text);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void LogDebug(string text)
-    {
-        // separated it like this to avoid having a strict reliance on Microsoft.Extensions.Logging.Abstractions.dll
-        if (Logger is ILogger logger)
-            logger.LogDebug(text);
     }
 
     internal static readonly Type[] RpcInvokeHandlerBytesParams =

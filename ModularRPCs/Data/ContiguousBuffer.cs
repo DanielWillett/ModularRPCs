@@ -1,30 +1,26 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
-using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Serialization;
-using DanielWillett.ReflectionTools;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace DanielWillett.ModularRpcs.Data;
 
 /// <summary>
-/// Allows reading messages when their payloads could be sequentially read into the same buffer (like from a <see cref="NetworkStream"/>).
+/// Allows reading messages when their payloads could be sequentially read into the same buffer (like from a <see cref="NetworkStream"/>), or where the entire message may not be received at one time.
 /// </summary>
-public sealed class ContiguousBuffer
+/// <remarks>This buffer only supports one sequential read 'thread' at a time.</remarks>
+public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher, IRefSafeLoggable
 {
     private int _disposed;
     private byte[]? _pendingData;
     private uint _pendingLength;
-
-    /// <summary>
-    /// Set using <see cref="LoggingExtensions.SetLogger(ContiguousBuffer, ILogger)"/>. 
-    /// </summary>
-    internal object? Logger;
+    private PrimitiveRpcOverhead? _pendingOverhead;
+    private object? _logger;
+    ref object? IRefSafeLoggable.Logger => ref _logger;
+    LoggerType IRefSafeLoggable.LoggerType { get; set; }
 
     /// <summary>
     /// Max allowed message size in bytes, defaults to 128 MiB.
@@ -44,23 +40,24 @@ public sealed class ContiguousBuffer
     /// <summary>
     /// The currently pending message, if any.
     /// </summary>
-    public RpcOverhead? PendingOverhead { get; private set; }
+    public PrimitiveRpcOverhead? PendingOverhead
+    {
+        get => _pendingOverhead;
+        private set => _pendingOverhead = value;
+    }
 
     /// <summary>
     /// If there is a currently pending message, meaning a message that is in progress of being received.
     /// </summary>
     public bool HasPendingMessage => PendingOverhead != null;
 
+    /// <inheritdoc />
+    public event ContiguousBufferProgressUpdate? BufferProgressUpdated;
+
     /// <summary>
     /// The connection that created this <see cref="ContiguousBuffer"/>.
     /// </summary>
     public IModularRpcLocalConnection Connection { get; }
-
-    /// <summary>
-    /// Invoked when a large download has a buffer progress update. Used to track large downloads.
-    /// </summary>
-    /// <remarks>Not all implementations of <see cref="IModularRpcConnection"/> will support this.</remarks>
-    public event ContiguousBufferProgressUpdate? BufferProgressUpdated;
 
     public ContiguousBuffer(IModularRpcLocalConnection connection, int bufferSize) : this(connection, new byte[bufferSize]) { }
     public ContiguousBuffer(IModularRpcLocalConnection connection, byte[] buffer)
@@ -77,7 +74,7 @@ public sealed class ContiguousBuffer
     /// <param name="offset">Offset of data read into <see cref="Buffer"/>, usually 0.</param>
     /// <exception cref="ObjectDisposedException"/>
     /// <exception cref="ContiguousBufferParseException">Any other error occurs while separating messages.</exception>
-    public unsafe void ProcessBuffer(uint amtReceived, IRpcSerializer serializer, Action<Memory<byte>, RpcOverhead> callback, uint offset = 0)
+    public unsafe void ProcessBuffer(uint amtReceived, IRpcSerializer serializer, ContiguousBufferCallback callback, uint offset = 0)
     {
         if (_disposed != 0)
             throw new ObjectDisposedException(nameof(ContiguousBuffer));
@@ -91,39 +88,39 @@ public sealed class ContiguousBuffer
                     bool hadMuchData;
                     fixed (byte* bytes = &Buffer[offset])
                     {
-                        bool isNewMsg = _pendingData == null || PendingOverhead == null;
+                        bool isNewMsg = _pendingData == null || !_pendingOverhead.HasValue;
                         if (isNewMsg)
                         {
-                            if (amtReceived < RpcOverhead.MinimumSize)
+                            if (amtReceived < PrimitiveRpcOverhead.MinimumLength)
                             {
-                                // todo localization
-                                string msg = $"Received message less than {RpcOverhead.MinimumSize} bytes long!";
-                                LogWarning(msg);
-                                BufferProgressUpdated?.Invoke(0, 0);
+                                string msg = string.Format(Properties.Exceptions.ContiguousBufferMessageTooShort, PrimitiveRpcOverhead.MinimumLength);
+                                this.LogWarning(msg);
+                                BufferProgressUpdated?.Invoke(null, 0, 0);
                                 error = new ContiguousBufferParseException(msg) { ErrorCode = 1 };
                                 goto reset;
                             }
-                            
-                            PendingOverhead = RpcOverhead.ReadFromBytes(Connection.Remote, serializer, bytes, amtReceived);
-                            if (!PendingOverhead.CheckSizeHashValid())
+
+                            _pendingOverhead = PrimitiveRpcOverhead.ReadFromBytes(Connection.Remote, serializer, bytes, amtReceived);
+                            if (_pendingOverhead.Value.Size != _pendingOverhead.Value.SizeCheck)
                             {
-                                string msg = $"Mismatch in size hash of \"{PendingOverhead}\"!";
-                                LogWarning(msg);
-                                PendingOverhead = default;
-                                BufferProgressUpdated?.Invoke(0, 0);
+                                string msg = string.Format(Properties.Exceptions.ContiguousBufferSizeHashMismatch, _pendingOverhead.Value.ToString());
+                                this.LogWarning(msg);
+                                _pendingOverhead = default;
+                                BufferProgressUpdated?.Invoke(null, 0, 0);
                                 error = new ContiguousBufferParseException(msg) { ErrorCode = 2 };
                                 goto reset;
                             }
                         }
 
-                        uint size = PendingOverhead!.MessageSize;
-                        uint expectedSize = (uint)(size + PendingOverhead.OverheadSize);
+                        PrimitiveRpcOverhead ovh = _pendingOverhead!.Value;
+                        uint size = ovh.Size;
+                        uint expectedSize = size + ovh.OverheadSize;
                         if (expectedSize > MaxMessageSize)
                         {
-                            string msg = $"Incoming message \"{PendingOverhead}\" (including header data) has a size of {expectedSize} B which is greater than the max ({MaxMessageSize} B).";
-                            LogWarning(msg);
-                            PendingOverhead = default;
-                            BufferProgressUpdated?.Invoke(0, 0);
+                            string msg = string.Format(Properties.Exceptions.ContiguousBufferOversizedMessage, _pendingOverhead, expectedSize, MaxMessageSize);
+                            this.LogWarning(msg);
+                            _pendingOverhead = default;
+                            BufferProgressUpdated?.Invoke(in _pendingOverhead, 0, 0);
                             error = new ContiguousBufferParseException(msg) { ErrorCode = 3 };
                             goto reset;
                         }
@@ -132,8 +129,8 @@ public sealed class ContiguousBuffer
                         {
                             if (expectedSize == amtReceived) // new single packet, process all
                             {
-                                BufferProgressUpdated?.Invoke(amtReceived, amtReceived);
-                                callback(new Memory<byte>(Buffer, checked((int)offset), checked((int)amtReceived)), PendingOverhead);
+                                BufferProgressUpdated?.Invoke(in _pendingOverhead, amtReceived, amtReceived);
+                                callback(Buffer.AsSpan(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
                                 goto reset;
                             }
 
@@ -143,15 +140,15 @@ public sealed class ContiguousBuffer
                                 fixed (byte* ptr = _pendingData)
                                     System.Buffer.MemoryCopy(bytes, ptr, expectedSize, amtReceived);
                                 _pendingLength = amtReceived;
-                                BufferProgressUpdated?.Invoke(amtReceived, expectedSize);
+                                BufferProgressUpdated?.Invoke(in _pendingOverhead, amtReceived, expectedSize);
                                 return;
                             }
 
-                            BufferProgressUpdated?.Invoke(expectedSize, expectedSize);
+                            BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
                             // multiple messages in one.
-                            callback(new Memory<byte>(Buffer, checked((int)offset), checked((int)expectedSize)), PendingOverhead);
+                            callback(Buffer.AsSpan(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
                             _pendingData = null;
-                            PendingOverhead = null;
+                            _pendingOverhead = null;
                             _pendingLength = 0;
                             amtReceived -= expectedSize;
                             offset = expectedSize;
@@ -164,8 +161,8 @@ public sealed class ContiguousBuffer
                         {
                             fixed (byte* ptr = &_pendingData![_pendingLength])
                                 System.Buffer.MemoryCopy(bytes, ptr, amtReceived, amtReceived);
-                            BufferProgressUpdated?.Invoke(expectedSize, expectedSize);
-                            callback(new Memory<byte>(_pendingData, 0, checked((int)expectedSize)), PendingOverhead);
+                            BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
+                            callback(_pendingData.AsSpan(0, checked( (int)expectedSize )), true, in ovh);
                             goto reset;
                         }
                         // continue the data for another packet
@@ -174,7 +171,7 @@ public sealed class ContiguousBuffer
                             fixed (byte* ptr = &_pendingData![_pendingLength])
                                 System.Buffer.MemoryCopy(bytes, ptr, amtReceived, amtReceived);
                             _pendingLength += amtReceived;
-                            BufferProgressUpdated?.Invoke(ttlSize, expectedSize);
+                            BufferProgressUpdated?.Invoke(in _pendingOverhead, ttlSize, expectedSize);
                             break;
                         }
 
@@ -182,11 +179,11 @@ public sealed class ContiguousBuffer
                         uint remaining = expectedSize - _pendingLength;
                         fixed (byte* ptr = &_pendingData![_pendingLength])
                             System.Buffer.MemoryCopy(bytes, ptr, remaining, remaining);
-                        BufferProgressUpdated?.Invoke(expectedSize, expectedSize);
-                        callback(new Memory<byte>(_pendingData, 0, checked((int)expectedSize)), PendingOverhead);
+                        BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
+                        callback(_pendingData.AsSpan(0, checked( (int)expectedSize )), true, in ovh);
                         hadMuchData = _pendingData.Length > GCTriggerSizeThreshold;
                         _pendingData = null;
-                        PendingOverhead = default;
+                        _pendingOverhead = default;
                         _pendingLength = 0;
                         if (hadMuchData)
                             GC.Collect();
@@ -198,7 +195,7 @@ public sealed class ContiguousBuffer
                     reset:
                     hadMuchData = _pendingData != null && _pendingData.Length > GCTriggerSizeThreshold;
                     _pendingData = null;
-                    PendingOverhead = default;
+                    _pendingOverhead = default;
                     _pendingLength = 0;
                     if (hadMuchData)
                         GC.Collect();
@@ -206,22 +203,25 @@ public sealed class ContiguousBuffer
                 }
                 catch (OverflowException ex)
                 {
-                    LogError($"Overflow exception hit trying to allocate {PendingOverhead?.MessageSize} B for message {PendingOverhead}.");
+                    string msg = string.Format(Properties.Exceptions.ContiguousBufferOverflow, _pendingOverhead.GetValueOrDefault().Size, _pendingOverhead.ToString());
                     _pendingData = null;
-                    PendingOverhead = default;
+                    _pendingOverhead = default;
                     Buffer = null!;
                     GC.Collect();
-                    throw new ContiguousBufferParseException(Properties.Exceptions.ContiguousBufferParseException, ex) { ErrorCode = 4 };
+                    this.LogError(msg);
+                    throw new ContiguousBufferParseException(msg, ex) { ErrorCode = 4 };
                 }
                 catch (OutOfMemoryException ex)
                 {
-                    LogError($"Out of Memory trying to allocate {PendingOverhead?.MessageSize} B for message {PendingOverhead}.");
-                    throw new ContiguousBufferParseException(Properties.Exceptions.ContiguousBufferParseException, ex) { ErrorCode = 5 };
+                    string msg = string.Format(Properties.Exceptions.ContiguousBufferOverflow, _pendingOverhead.GetValueOrDefault().Size, _pendingOverhead.ToString());
+                    this.LogError(msg);
+                    throw new ContiguousBufferParseException(msg, ex) { ErrorCode = 5 };
                 }
                 catch (Exception ex)
                 {
-                    LogError($"Exception reading message {PendingOverhead}.");
-                    throw new ContiguousBufferParseException(Properties.Exceptions.ContiguousBufferParseException, ex);
+                    string msg = string.Format(Properties.Exceptions.ContiguousBufferException, _pendingOverhead.ToString());
+                    this.LogError(msg);
+                    throw new ContiguousBufferParseException(msg, ex);
                 }
             }
         }
@@ -246,41 +246,20 @@ public sealed class ContiguousBuffer
     {
         Dispose();
     }
-
-    private void LogWarning(string text)
-    {
-        if (Logger != null)
-            LogWarningExt(text);
-        else
-            Accessor.Logger?.LogWarning(nameof(ContiguousBuffer), text);
-    }
-    private void LogError(string text)
-    {
-        if (Logger != null)
-            LogErrorExt(text);
-        else
-            Accessor.Logger?.LogError(nameof(ContiguousBuffer), null, text);
-    }
-
-    // separated it like this to avoid having a strict reliance on Microsoft.Extensions.Logging.Abstractions.dll
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void LogWarningExt(string text)
-    {
-        if (Logger is ILogger logger)
-            logger.LogWarning(text);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void LogErrorExt(string text)
-    {
-        if (Logger is ILogger logger)
-            logger.LogError(text);
-    }
 }
 
 /// <summary>
 /// Used to reperesent an update in the progress of a large download.
 /// </summary>
+/// <param name="overhead">The current RPC that is downloading. This will be <see langword="null"/> if this is a 'clear' invocation, meaning after the RPC is done a 0/0 event will be fired.</param>
 /// <param name="bytesDownloaded">Number of bytes downloaded so far.</param>
 /// <param name="totalBytes">Total number of bytes that need to be downloaded.</param>
-public delegate void ContiguousBufferProgressUpdate(uint bytesDownloaded, uint totalBytes);
+public delegate void ContiguousBufferProgressUpdate(in PrimitiveRpcOverhead? overhead, uint bytesDownloaded, uint totalBytes);
+
+/// <summary>
+/// Handles each packet that's parsed from a set of binary data.
+/// </summary>
+/// <param name="overhead">Information about the RPC call.</param>
+/// <param name="canTakeOwnership">If the backing storage for <paramref name="data"/> is safe to use outside the current stack frame. If this is <see langword="false"/>, data should be copied before context switching.</param>
+/// <param name="data">Span of bytes, not including the overhead.</param>
+public delegate void ContiguousBufferCallback(ReadOnlySpan<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead);

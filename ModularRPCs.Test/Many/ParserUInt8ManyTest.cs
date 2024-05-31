@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
 
 namespace ModularRPCs.Test.Many;
@@ -3541,7 +3542,7 @@ partial class ParserManyTests
     [TestCase(new byte[0])]
     public void TestUInt8(byte[] values)
     {
-        UInt8Parser.Many parser = new UInt8Parser.Many();
+        UInt8Parser.Many parser = new UInt8Parser.Many(new SerializationConfiguration());
         TestManyParserBytes(values, parser);
         TestManyParserStream(values, parser);
     }

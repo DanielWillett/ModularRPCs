@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
 using JetBrains.Annotations;
@@ -11,7 +12,15 @@ using System.Runtime.InteropServices;
 namespace DanielWillett.ModularRpcs.Serialization;
 public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayBinaryTypeParser<TValueType> where TValueType : unmanaged
 {
-    private static readonly int MaxBufferSize = DefaultSerializer.MaxBufferSize / sizeof(TValueType) * sizeof(TValueType);
+    protected readonly SerializationConfiguration Configuration;
+    private readonly int _maxBufferSize;
+    public UnmanagedValueTypeBinaryArrayTypeParser(SerializationConfiguration config)
+    {
+        Configuration = config;
+        Configuration.Lock();
+        _maxBufferSize = Configuration.MaximumBufferSize / sizeof(TValueType) * sizeof(TValueType);
+    }
+
     private static void FlipBits(byte* bytes, int hdrSize, int size)
     {
         bytes += hdrSize;
@@ -478,7 +487,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (size <= MaxBufferSize)
+        else if (size <= _maxBufferSize)
         {
             byte[] buffer = new byte[size];
             value.AsSpan().CopyTo(MemoryMarshal.Cast<byte, TValueType>(buffer.AsSpan(0, size)));
@@ -488,11 +497,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 value.AsSpan((size - bytesLeft) / sizeof(TValueType), sizeToCopy / sizeof(TValueType)).CopyTo(MemoryMarshal.Cast<byte, TValueType>(buffer.AsSpan()));
                 if (!BitConverter.IsLittleEndian)
                     FlipBits(buffer, 0, sizeToCopy);
@@ -536,7 +545,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (size <= MaxBufferSize)
+        else if (size <= _maxBufferSize)
         {
             byte[] buffer = new byte[size];
             value.CopyTo(MemoryMarshal.Cast<byte, TValueType>(buffer.AsSpan(0, size)));
@@ -546,11 +555,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 value.Slice((size - bytesLeft) / sizeof(TValueType), sizeToCopy / sizeof(TValueType)).CopyTo(MemoryMarshal.Cast<byte, TValueType>(buffer.AsSpan()));
                 if (!BitConverter.IsLittleEndian)
                     FlipBits(buffer, 0, sizeToCopy);
@@ -643,7 +652,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                         DefaultSerializer.ArrayPool.Return(buffer);
                     }
                 }
-                else if (size <= MaxBufferSize)
+                else if (size <= _maxBufferSize)
                 {
                     byte[] buffer = new byte[size];
                     switch (value)
@@ -692,11 +701,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 }
                 else
                 {
-                    byte[] buffer = new byte[MaxBufferSize];
+                    byte[] buffer = new byte[_maxBufferSize];
                     int bytesLeft = size;
                     do
                     {
-                        int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                        int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                         int stInd = (size - bytesLeft) / sizeof(TValueType);
                         switch (value)
                         {
@@ -833,7 +842,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                         DefaultSerializer.ArrayPool.Return(buffer);
                     }
                 }
-                else if (size <= MaxBufferSize)
+                else if (size <= _maxBufferSize)
                 {
                     byte[] buffer = new byte[size];
                     switch (value)
@@ -882,11 +891,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 }
                 else
                 {
-                    byte[] buffer = new byte[MaxBufferSize];
+                    byte[] buffer = new byte[_maxBufferSize];
                     int bytesLeft = size;
                     do
                     {
-                        int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                        int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                         int stInd = (size - bytesLeft) / sizeof(TValueType);
                         switch (value)
                         {
@@ -1001,7 +1010,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (size <= MaxBufferSize)
+        else if (size <= _maxBufferSize)
         {
             byte[] buffer = new byte[size];
             fixed (byte* bytes = buffer)
@@ -1031,12 +1040,12 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             using IEnumerator<TValueType> enumerator = value.GetEnumerator();
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int elemToCopy = sizeToCopy / sizeof(TValueType);
                 fixed (byte* bytes = buffer)
                 {
@@ -1127,7 +1136,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (size <= MaxBufferSize)
+        else if (size <= _maxBufferSize)
         {
             byte[] buffer = new byte[size];
             fixed (byte* bytes = buffer)
@@ -1157,12 +1166,12 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             using IEnumerator<TValueType> enumerator = value.GetEnumerator();
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int elemToCopy = sizeToCopy / sizeof(TValueType);
                 fixed (byte* bytes = buffer)
                 {
@@ -1258,7 +1267,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (size <= MaxBufferSize)
+            else if (size <= _maxBufferSize)
             {
                 byte[] buffer = new byte[size];
                 fixed (byte* bytes = buffer)
@@ -1287,11 +1296,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             }
             else
             {
-                byte[] buffer = new byte[MaxBufferSize];
+                byte[] buffer = new byte[_maxBufferSize];
                 int bytesLeft = size;
                 do
                 {
-                    int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int elemToCopy = sizeToCopy / sizeof(TValueType);
                     fixed (byte* bytes = buffer)
                     {
@@ -1344,6 +1353,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             return Array.Empty<TValueType>();
         }
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
+
         TValueType[] arr = new TValueType[length];
         int size = (int)index + length * sizeof(TValueType);
 
@@ -1380,6 +1391,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         if (length == 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
 
         bytes += bytesRead;
         int size = bytesRead + length * sizeof(TValueType);
@@ -1420,6 +1433,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         if (length == 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
 
         bytes += bytesRead;
         int size = bytesRead + length * sizeof(TValueType);
@@ -1483,6 +1498,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 
         if (length <= 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
 
         bytes += bytesRead;
         int arrSize = length * sizeof(TValueType);
@@ -1619,6 +1636,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         if (length == 0)
             return Array.Empty<TValueType>();
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
+
         TValueType[] arr = new TValueType[length];
         int arrSize = length * sizeof(TValueType);
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
@@ -1646,7 +1665,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (arrSize <= MaxBufferSize)
+        else if (arrSize <= _maxBufferSize)
         {
             byte[] buffer = new byte[arrSize];
             int readCt = stream.Read(buffer, 0, arrSize);
@@ -1660,11 +1679,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)
                 {
@@ -1707,6 +1726,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         if (length == 0)
             return 0;
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
+
         int arrSize = length * sizeof(TValueType);
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         int rdCt = stream.Read(MemoryMarshal.Cast<TValueType, byte>(output.AsSpan(0, length)));
@@ -1734,7 +1755,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (arrSize <= MaxBufferSize)
+        else if (arrSize <= _maxBufferSize)
         {
             byte[] buffer = new byte[arrSize];
             int readCt = stream.Read(buffer, 0, arrSize);
@@ -1748,11 +1769,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)
                 {
@@ -1798,6 +1819,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         if (length == 0)
             return 0;
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
+
         int arrSize = length * sizeof(TValueType);
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         int rdCt = stream.Read(MemoryMarshal.Cast<TValueType, byte>(output[..length]));
@@ -1825,7 +1848,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (arrSize <= MaxBufferSize)
+        else if (arrSize <= _maxBufferSize)
         {
             byte[] buffer = new byte[arrSize];
             int readCt = stream.Read(buffer, 0, arrSize);
@@ -1839,11 +1862,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)
                 {
@@ -1913,6 +1936,8 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         if (length == 0)
             return 0;
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TValueType), length, this);
+
         int arrSize = length * sizeof(TValueType);
         int readCt;
         TValueType[]? arr = null;
@@ -1959,7 +1984,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (arrSize <= MaxBufferSize)
+            else if (arrSize <= _maxBufferSize)
             {
                 byte[] buffer = new byte[arrSize];
                 readCt = stream.Read(buffer, 0, arrSize);
@@ -1973,11 +1998,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             }
             else
             {
-                byte[] buffer = new byte[MaxBufferSize];
+                byte[] buffer = new byte[_maxBufferSize];
                 int bytesLeft = arrSize;
                 do
                 {
-                    int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     readCt = stream.Read(buffer, 0, sizeToCopy);
                     if (readCt != sizeToCopy)
                     {
@@ -2104,7 +2129,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
                 DefaultSerializer.ArrayPool.Return(buffer);
             }
         }
-        else if (arrSize <= MaxBufferSize)
+        else if (arrSize <= _maxBufferSize)
         {
             byte[] buffer = new byte[arrSize];
             readCt = stream.Read(buffer, 0, arrSize);
@@ -2200,11 +2225,11 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
         else
         {
-            byte[] buffer = new byte[MaxBufferSize];
+            byte[] buffer = new byte[_maxBufferSize];
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(MaxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int elementsToCopy = sizeToCopy / sizeof(TValueType);
                 readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)

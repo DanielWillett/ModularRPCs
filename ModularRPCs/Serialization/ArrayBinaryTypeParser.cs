@@ -259,6 +259,80 @@ public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T
     }
 
     /// <inheritdoc />
+    IList<T>? IBinaryTypeParser<IList<T>>.ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        return ReadObject(bytes, maxSize, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    IReadOnlyList<T>? IBinaryTypeParser<IReadOnlyList<T>>.ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        return ReadObject(bytes, maxSize, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    ICollection<T>? IBinaryTypeParser<ICollection<T>>.ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        return ReadObject(bytes, maxSize, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    IReadOnlyCollection<T>? IBinaryTypeParser<IReadOnlyCollection<T>>.ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        return ReadObject(bytes, maxSize, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    IEnumerable<T>? IBinaryTypeParser<IEnumerable<T>>.ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        return ReadObject(bytes, maxSize, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    ArraySegment<T> IBinaryTypeParser<ArraySegment<T>>.ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    {
+        T[]? arr = ReadObject(bytes, maxSize, out bytesRead);
+        return arr == null ? default : new ArraySegment<T>(arr);
+    }
+
+    /// <inheritdoc />
+    IList<T>? IBinaryTypeParser<IList<T>>.ReadObject(Stream stream, out int bytesRead)
+    {
+        return ReadObject(stream, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    IReadOnlyList<T>? IBinaryTypeParser<IReadOnlyList<T>>.ReadObject(Stream stream, out int bytesRead)
+    {
+        return ReadObject(stream, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    ICollection<T>? IBinaryTypeParser<ICollection<T>>.ReadObject(Stream stream, out int bytesRead)
+    {
+        return ReadObject(stream, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    IReadOnlyCollection<T>? IBinaryTypeParser<IReadOnlyCollection<T>>.ReadObject(Stream stream, out int bytesRead)
+    {
+        return ReadObject(stream, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    IEnumerable<T>? IBinaryTypeParser<IEnumerable<T>>.ReadObject(Stream stream, out int bytesRead)
+    {
+        return ReadObject(stream, out bytesRead);
+    }
+
+    /// <inheritdoc />
+    ArraySegment<T> IBinaryTypeParser<ArraySegment<T>>.ReadObject(Stream stream, out int bytesRead)
+    {
+        T[]? arr = ReadObject(stream, out bytesRead);
+        return arr == null ? default : new ArraySegment<T>(arr);
+    }
+
+    /// <inheritdoc />
     public void ReadObject(Stream stream, out int bytesRead, TypedReference outObj)
     {
         Type t = __reftype(outObj);

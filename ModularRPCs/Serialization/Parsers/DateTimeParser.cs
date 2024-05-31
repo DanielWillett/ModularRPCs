@@ -1,7 +1,9 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class DateTimeParser : BinaryTypeParser<DateTime>
@@ -126,5 +128,38 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
 
         bytesRead = 8;
         return FromInt64(value);
+    }
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<DateTime>
+    {
+        public Many(SerializationConfiguration config) : base(config, sizeof(long), sizeof(long), !BitConverter.IsLittleEndian, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+            &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
+        {
+
+        }
+        private static void WriteToBufferIntl(byte* ptr, DateTime dateTime)
+        {
+            *(long*)ptr = ToInt64(dateTime);
+        }
+        private static void WriteToBufferUnalignedIntl(byte* ptr, DateTime dateTime)
+        {
+            Unsafe.WriteUnaligned(ptr, ToInt64(dateTime));
+        }
+        private static void WriteToBufferSpanIntl(Span<byte> span, DateTime dateTime)
+        {
+            long int64 = ToInt64(dateTime);
+            MemoryMarshal.Write(span, ref int64);
+        }
+        private static DateTime ReadFromBufferIntl(byte* ptr)
+        {
+            return FromInt64(*(long*)ptr);
+        }
+        private static DateTime ReadFromBufferUnalignedIntl(byte* ptr)
+        {
+            return FromInt64(Unsafe.ReadUnaligned<long>(ptr));
+        }
+        private static DateTime ReadFromBufferSpanIntl(Span<byte> span)
+        {
+            return FromInt64(MemoryMarshal.Read<long>(span));
+        }
     }
 }

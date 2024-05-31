@@ -11,7 +11,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.WebSockets", "M
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.Test", "ModularRPCs.Test\ModularRPCs.Test.csproj", "{F0ED3B5A-D2FD-4FD3-8DB4-98B129CFB930}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.Test.Standalone", "ModularRPCs.Test.Standalone\ModularRPCs.Test.Standalone.csproj", "{A3243319-1879-4AB7-A656-40302253F85E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.Test.Standalone", "ModularRPCs.Test.Standalone\ModularRPCs.Test.Standalone.csproj", "{A3243319-1879-4AB7-A656-40302253F85E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

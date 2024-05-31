@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Loopback;
-public class LoopbackRpcServersideLocalConnection : IModularRpcServersideConnection, IModularRpcLocalConnection, IModularRpcAuthoritativeParentConnection
+public class LoopbackRpcServersideLocalConnection : IModularRpcAuthoritativeParentConnection
 {
     public bool IsClosed { get; internal set; }
     public IRpcRouter Router { get; }

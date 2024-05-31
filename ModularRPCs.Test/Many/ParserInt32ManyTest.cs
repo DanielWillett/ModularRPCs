@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
 
 namespace ModularRPCs.Test.Many;
@@ -7335,7 +7336,7 @@ partial class ParserManyTests
     })]
     public void TestInt32(int[] values)
     {
-        Int32Parser.Many parser = new Int32Parser.Many();
+        Int32Parser.Many parser = new Int32Parser.Many(new SerializationConfiguration());
         TestManyParserBytes(values, parser);
         TestManyParserStream(values, parser);
     }

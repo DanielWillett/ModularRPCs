@@ -1,11 +1,12 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
-using DanielWillett.ModularRpcs.Reflection;
-using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class Int8Parser : BinaryTypeParser<sbyte>
@@ -45,6 +46,13 @@ public class Int8Parser : BinaryTypeParser<sbyte>
 
     public unsafe class Many : ArrayBinaryTypeParser<sbyte>
     {
+        private readonly SerializationConfiguration _config;
+        public Many(SerializationConfiguration config)
+        {
+            _config = config;
+            _config.Lock();
+        }
+
         /// <inheritdoc />
         public override int WriteObject([InstantHandle] ArraySegment<sbyte> value, byte* bytes, uint maxSize)
         {
@@ -382,7 +390,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 Buffer.BlockCopy(value.Array, value.Offset, buffer, 0, length);
@@ -390,11 +398,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     Buffer.BlockCopy(value.Array, value.Offset + (length - bytesLeft), buffer, 0, sizeToCopy);
                     stream.Write(buffer, 0, sizeToCopy);
                     bytesLeft -= sizeToCopy;
@@ -430,7 +438,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 value.CopyTo(MemoryMarshal.Cast<byte, sbyte>(buffer));
@@ -438,11 +446,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     value.Slice(length - bytesLeft, sizeToCopy).CopyTo(MemoryMarshal.Cast<byte, sbyte>(buffer));
                     stream.Write(buffer, 0, sizeToCopy);
                     bytesLeft -= sizeToCopy;
@@ -508,7 +516,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                             DefaultSerializer.ArrayPool.Return(buffer);
                         }
                     }
-                    else if (length <= DefaultSerializer.MaxBufferSize)
+                    else if (length <= _config.MaximumBufferSize)
                     {
                         byte[] buffer = new byte[length];
                         switch (value)
@@ -533,11 +541,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     }
                     else
                     {
-                        byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                        byte[] buffer = new byte[_config.MaximumBufferSize];
                         int bytesLeft = length;
                         do
                         {
-                            int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                            int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                             int stInd = length - bytesLeft;
                             switch (value)
                             {
@@ -624,7 +632,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                             DefaultSerializer.ArrayPool.Return(buffer);
                         }
                     }
-                    else if (length <= DefaultSerializer.MaxBufferSize)
+                    else if (length <= _config.MaximumBufferSize)
                     {
                         byte[] buffer = new byte[length];
                         switch (value)
@@ -649,11 +657,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     }
                     else
                     {
-                        byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                        byte[] buffer = new byte[_config.MaximumBufferSize];
                         int bytesLeft = length;
                         do
                         {
-                            int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                            int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                             int stInd = length - bytesLeft;
                             switch (value)
                             {
@@ -722,7 +730,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 using IEnumerator<sbyte> enumerator = value.GetEnumerator();
@@ -733,12 +741,12 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 using IEnumerator<sbyte> enumerator = value.GetEnumerator();
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int index = 0;
                     while (index < sizeToCopy && enumerator.MoveNext())
                         buffer[index++] = unchecked( (byte)enumerator.Current );
@@ -794,7 +802,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 int index = 0;
@@ -807,12 +815,12 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 using IEnumerator<sbyte> enumerator = value.GetEnumerator();
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int index = 0;
                     while (index < sizeToCopy && enumerator.MoveNext())
                         buffer[index++] = unchecked( (byte)enumerator.Current );
@@ -876,7 +884,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                         DefaultSerializer.ArrayPool.Return(buffer);
                     }
                 }
-                else if (length <= DefaultSerializer.MaxBufferSize)
+                else if (length <= _config.MaximumBufferSize)
                 {
                     byte[] buffer = new byte[length];
                     int index = 0;
@@ -886,11 +894,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 }
                 else
                 {
-                    byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                    byte[] buffer = new byte[_config.MaximumBufferSize];
                     int bytesLeft = length;
                     do
                     {
-                        int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                        int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                         int index = 0;
                         while (index < sizeToCopy && enumerator.MoveNext())
                             buffer[index++] = unchecked( (byte)enumerator.Current );
@@ -923,6 +931,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 return Array.Empty<sbyte>();
             }
 
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
+
             sbyte[] arr = new sbyte[length];
             int size = (int)index + length;
 
@@ -954,6 +964,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             if (length == 0)
                 return 0;
 
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
+
             bytes += bytesRead;
             int size = bytesRead + length;
 
@@ -983,6 +995,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
 
             if (length == 0)
                 return 0;
+
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
 
             bytes += bytesRead;
             int size = bytesRead + length;
@@ -1039,6 +1053,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
 
             if (length <= 0)
                 return 0;
+
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
 
             bytes += bytesRead;
             int size = bytesRead + length;
@@ -1100,6 +1116,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             if (length == 0)
                 return Array.Empty<sbyte>();
 
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
+
             sbyte[] arr = new sbyte[length];
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
             int rdCt = stream.Read(MemoryMarshal.Cast<sbyte, byte>(arr));
@@ -1126,7 +1144,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 int readCt = stream.Read(buffer, 0, length);
@@ -1140,11 +1158,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int readCt = stream.Read(buffer, 0, sizeToCopy);
                     if (readCt != sizeToCopy)
                     {
@@ -1179,6 +1197,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             if (length == 0)
                 return 0;
 
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
+
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
             int rdCt = stream.Read(MemoryMarshal.Cast<sbyte, byte>(output[..length]));
             bytesRead += rdCt;
@@ -1205,7 +1225,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 int readCt = stream.Read(buffer, 0, length);
@@ -1218,11 +1238,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int readCt = stream.Read(buffer, 0, sizeToCopy);
                     if (readCt != sizeToCopy)
                     {
@@ -1258,6 +1278,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             if (length == 0)
                 return 0;
 
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
+
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
             int rdCt = stream.Read(MemoryMarshal.Cast<sbyte, byte>(output[..length]));
             bytesRead += rdCt;
@@ -1284,7 +1306,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 int readCt = stream.Read(buffer, 0, length);
@@ -1297,11 +1319,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int readCt = stream.Read(buffer, 0, sizeToCopy);
                     if (readCt != sizeToCopy)
                     {
@@ -1363,6 +1385,8 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             if (length == 0)
                 return 0;
 
+            _config.AssertCanCreateArrayOfType(typeof(sbyte), length, this);
+
             int readCt;
             sbyte[]? arr = null;
             int arrOffset = 0;
@@ -1413,7 +1437,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                         DefaultSerializer.ArrayPool.Return(buffer);
                     }
                 }
-                else if (length <= DefaultSerializer.MaxBufferSize)
+                else if (length <= _config.MaximumBufferSize)
                 {
                     byte[] buffer = new byte[length];
                     readCt = stream.Read(buffer, 0, length);
@@ -1427,11 +1451,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 }
                 else
                 {
-                    byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                    byte[] buffer = new byte[_config.MaximumBufferSize];
                     int bytesLeft = length;
                     do
                     {
-                        int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                        int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                         readCt = stream.Read(buffer, 0, sizeToCopy);
                         if (readCt != sizeToCopy)
                         {
@@ -1476,7 +1500,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                     DefaultSerializer.ArrayPool.Return(buffer);
                 }
             }
-            else if (length <= DefaultSerializer.MaxBufferSize)
+            else if (length <= _config.MaximumBufferSize)
             {
                 byte[] buffer = new byte[length];
                 readCt = stream.Read(buffer, 0, length);
@@ -1499,11 +1523,11 @@ public class Int8Parser : BinaryTypeParser<sbyte>
             }
             else
             {
-                byte[] buffer = new byte[DefaultSerializer.MaxBufferSize];
+                byte[] buffer = new byte[_config.MaximumBufferSize];
                 int bytesLeft = length;
                 do
                 {
-                    int sizeToCopy = Math.Min(DefaultSerializer.MaxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     readCt = stream.Read(buffer, 0, sizeToCopy);
                     if (readCt != sizeToCopy)
                     {

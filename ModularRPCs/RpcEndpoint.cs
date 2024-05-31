@@ -24,7 +24,7 @@ namespace DanielWillett.ModularRpcs;
 public class RpcEndpoint : IRpcInvocationPoint
 {
     private static MethodInfo? _fromResultMethod;
-    private int _sizeWithoutIdentifier;
+    private uint _sizeWithoutIdentifier;
     protected int SignatureHash;
 
     /// <summary>
@@ -84,7 +84,7 @@ public class RpcEndpoint : IRpcInvocationPoint
     /// <summary>
     /// Size in bytes of this endpoint if it were written to a buffer.
     /// </summary>
-    public int Size { get; private set; }
+    public uint Size { get; private set; }
     bool IRpcInvocationPoint.CanCache => true;
     protected RpcEndpoint(IRpcSerializer serializer, RpcEndpoint other, object? identifier)
     {
@@ -109,38 +109,6 @@ public class RpcEndpoint : IRpcInvocationPoint
             Size += CalculateIdentifierSize(serializer, identifier);
         }
     }
-
-    //internal RpcEndpoint(IRpcSerializer serializer, MethodInfo method, object? identifier)
-    //{
-    //    if (identifier is DBNull)
-    //        identifier = null;
-
-    //    if (method.DeclaringType == null)
-    //        throw new ArgumentException(Properties.Exceptions.MethodHasNoDeclaringType, nameof(method));
-
-    //    Identifier = identifier;
-    //    ParameterInfo[] parameters = method.GetParameters();
-    //    ParameterTypes = parameters.Length == 0 ? Type.EmptyTypes : new Type[parameters.Length];
-    //    ParameterTypeNames = parameters.Length == 0 ? Array.Empty<string>() : new string[parameters.Length];
-    //    IsStatic = method.IsStatic;
-    //    for (int i = 0; i < parameters.Length; ++i)
-    //    {
-    //        Type parameterType = parameters[i].ParameterType;
-    //        ParameterTypes[i] = parameterType;
-    //        ParameterTypeNames[i] = parameterType.AssemblyQualifiedName!;
-    //    }
-
-    //    Method = method;
-    //    MethodName = method.Name;
-    //    DeclaringType = method.DeclaringType;
-    //    DeclaringTypeName = method.DeclaringType.AssemblyQualifiedName!;
-    //    CalculateSize();
-    //    if (identifier != null)
-    //    {
-    //        Size += CalculateIdentifierSize(serializer, identifier);
-    //    }
-    //}
-
     internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, int signatureHash)
         : this(declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, signatureHash)
     {
@@ -303,15 +271,15 @@ public class RpcEndpoint : IRpcInvocationPoint
 
     private void CalculateSize()
     {
-        int size = sizeof(uint) + sizeof(int) + sizeof(ushort) + sizeof(ushort) + 1;
-        size += Math.Min(Encoding.UTF8.GetByteCount(DeclaringTypeName), ushort.MaxValue)
-                + Math.Min(Encoding.UTF8.GetByteCount(MethodName), ushort.MaxValue);
+        uint size = sizeof(uint) + sizeof(int) + sizeof(ushort) + sizeof(ushort) + 1;
+        size += Math.Min((uint)Encoding.UTF8.GetByteCount(DeclaringTypeName), ushort.MaxValue)
+                + Math.Min((uint)Encoding.UTF8.GetByteCount(MethodName), ushort.MaxValue);
         if (ParameterTypeNames != null)
         {
             size += sizeof(ushort);
             int c = Math.Min(ParameterTypeNames.Length, ushort.MaxValue);
             for (int i = 0; i < c; ++i)
-                size += Math.Min(Encoding.UTF8.GetByteCount(ParameterTypeNames[i]), ushort.MaxValue);
+                size += Math.Min((uint)Encoding.UTF8.GetByteCount(ParameterTypeNames[i]), ushort.MaxValue);
         }
 
         _sizeWithoutIdentifier = size;
@@ -734,26 +702,26 @@ public class RpcEndpoint : IRpcInvocationPoint
     {
         return new RpcEndpoint(serializer, this, identifier);
     }
-    internal static int CalculateIdentifierSize(IRpcSerializer serializer, object identifier)
+    internal static uint CalculateIdentifierSize(IRpcSerializer serializer, object identifier)
     {
         Type idType = identifier.GetType();
         TypeCode tc = TypeUtility.GetTypeCode(idType);
         if (tc == TypeCode.Object)
         {
-            int size = 2 + serializer.GetSize(identifier);
+            uint size = 2 + (uint)serializer.GetSize(identifier);
             if (serializer.TryGetKnownTypeId(idType, out _))
                 return 4 + size;
 
-            return size + serializer.GetSize(TypeUtility.GetAssemblyQualifiedNameNoVersion(idType));
+            return size + (uint)serializer.GetSize(TypeUtility.GetAssemblyQualifiedNameNoVersion(idType));
         }
 
         if (tc == TypeCode.DBNull)
             return 1;
 
         if (tc != TypeCode.String && serializer.CanFastReadPrimitives)
-            return 1 + TypeUtility.GetTypeCodeSize(tc);
+            return 1 + (uint)TypeUtility.GetTypeCodeSize(tc);
 
-        return 1 + serializer.GetSize(identifier);
+        return 1 + (uint)serializer.GetSize(identifier);
     }
     internal static unsafe object? ReadIdentifierFromBytes(IRpcSerializer serializer, byte* bytes, uint maxCt, out int bytesRead)
     {
@@ -776,7 +744,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
             if (typeCode == TypeCode.String)
             {
-                string str = serializer.ReadObject<string>(bytes, maxCt - (uint)size, out int strBytesRead);
+                string? str = serializer.ReadObject<string>(bytes, maxCt - (uint)size, out int strBytesRead);
                 bytesRead = size + strBytesRead;
                 return str;
             }
@@ -801,7 +769,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             else
             {
                 Type type = TypeUtility.GetType(typeCode);
-                object obj = serializer.ReadObject(type, bytes, maxCt - (uint)size, out int identBytesRead);
+                object? obj = serializer.ReadObject(type, bytes, maxCt - (uint)size, out int identBytesRead);
                 bytesRead = size + identBytesRead;
                 return obj;
             }
@@ -839,7 +807,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             }
 
             Type type = DetermineIdentifierType(serializer, typeName, knownTypeId);
-            object identifier = serializer.ReadObject(type, bytes, maxCt - (uint)size, out bytesRead);
+            object? identifier = serializer.ReadObject(type, bytes, maxCt - (uint)size, out bytesRead);
 
             bytesRead += size;
             return identifier;
@@ -868,7 +836,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
             if (typeCode == TypeCode.String)
             {
-                string value = serializer.ReadObject<string>(stream, out int strBytesRead);
+                string? value = serializer.ReadObject<string>(stream, out int strBytesRead);
                 bytesRead = size + strBytesRead;
                 return value;
             }
@@ -928,7 +896,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             else
             {
                 Type type = TypeUtility.GetType(typeCode);
-                object obj = serializer.ReadObject(type, stream, out int identBytesRead);
+                object? obj = serializer.ReadObject(type, stream, out int identBytesRead);
                 bytesRead = size + identBytesRead;
                 return obj;
             }
@@ -1001,7 +969,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             }
 
             Type type = DetermineIdentifierType(serializer, typeName, knownTypeId);
-            object identifier = serializer.ReadObject(type, stream, out bytesRead);
+            object? identifier = serializer.ReadObject(type, stream, out bytesRead);
 
             bytesRead += size;
             return identifier;

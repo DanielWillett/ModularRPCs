@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
 using System.Collections;
 
@@ -362,11 +363,13 @@ partial class ParserManyTests
         if (values is not bool[] array)
         {
             byte[] bytes = (byte[])values;
-            array = new bool[bytes.Length * 8];
+            array = new bool[bytes.Length * 8 + 2 /* add trailing to make sure odd ones work */];
             new BitArray(bytes).CopyTo(array, 0);
+            array[array.Length - 2] = true;
+            array[array.Length - 1] = true;
         }
 
-        BooleanParser.Many parser = new BooleanParser.Many();
+        BooleanParser.Many parser = new BooleanParser.Many(new SerializationConfiguration());
         TestManyParserBytes(array, parser);
         TestManyParserStream(array, parser);
     }

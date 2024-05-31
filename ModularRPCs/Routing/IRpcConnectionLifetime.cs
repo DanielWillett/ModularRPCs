@@ -20,9 +20,12 @@ public interface IRpcConnectionLifetime
     /// <summary>
     /// Attempts to add a new connection.
     /// </summary>
-    /// <param name="connection"></param>
-    /// <returns></returns>
     ValueTask<bool> TryAddNewConnection(IModularRpcRemoteConnection connection, CancellationToken token = default);
+
+    /// <summary>
+    /// Attempts to remove an existing connection.
+    /// </summary>
+    ValueTask<bool> TryRemoveConnection(IModularRpcRemoteConnection connection, CancellationToken token = default);
 }
 
 /// <summary>

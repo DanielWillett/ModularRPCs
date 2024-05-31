@@ -1,29 +1,31 @@
-﻿using System;
+﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Routing;
 using System.Net.WebSockets;
-using DanielWillett.ModularRpcs.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.WebSockets;
 public class WebSocketClientsideLocalRpcConnection : WebSocketLocalRpcConnection, IModularRpcLocalConnection, IModularRpcClientsideConnection
 {
-    private readonly CancellationTokenSource _listenToken;
-    protected override WebSocket WebSocket => Remote.WebSocket;
+    protected internal override WebSocket WebSocket => Remote.WebSocket;
+    protected internal override SemaphoreSlim Semaphore => Remote.Semaphore;
     public override bool IsClosed => Remote.IsClosed;
     internal WebSocketClientsideRemoteRpcConnection Remote { get; }
-    internal WebSocketClientsideLocalRpcConnection(IRpcRouter router, WebSocketClientsideRemoteRpcConnection remote) : base(router)
+    internal WebSocketClientsideLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketClientsideRemoteRpcConnection remote, int bufferSize = 4096) : base(router, serializer, bufferSize)
     {
-        _listenToken = new CancellationTokenSource();
         Remote = remote;
         Remote.Local = this;
     }
-    IModularRpcRemoteConnection IModularRpcLocalConnection.Remote => Remote;
-    public ValueTask DisposeAsync()
+    protected internal override Task Reconnect(CancellationToken token = default) => Remote.Reconnect(token);
+
+    public override ValueTask DisposeAsync()
     {
         return Remote.DisposeAsync();
     }
-    public ValueTask CloseAsync(CancellationToken token = default)
+    public override ValueTask CloseAsync(CancellationToken token = default)
     {
         return Remote.CloseAsync(token);
     }
+    IModularRpcRemoteConnection IModularRpcLocalConnection.Remote => Remote;
 }

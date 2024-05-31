@@ -1,7 +1,10 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
@@ -142,5 +145,64 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
 
         bytesRead = 10;
         return FromComponents(ticks, offset);
+    }
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<DateTimeOffset>
+    {
+        public Many(SerializationConfiguration config) : base(config, sizeof(long) + sizeof(short), sizeof(long), !BitConverter.IsLittleEndian, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+            &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
+        {
+
+        }
+
+        protected override DateTimeOffset FlipBits(DateTimeOffset toFlip)
+        {
+            ToComponents(ref toFlip, out long ticks, out short offset);
+            ticks = BinaryPrimitives.ReverseEndianness(ticks);
+            offset = BinaryPrimitives.ReverseEndianness(offset);
+            return FromComponents(ticks, offset);
+        }
+
+        protected override void FlipBits(byte* bytes, int hdrSize, int size)
+        {
+            Unsafe.WriteUnaligned(bytes, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<long>(bytes)));
+            Unsafe.WriteUnaligned(bytes + sizeof(long), BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<short>(bytes + sizeof(long))));
+        }
+
+        protected override void FlipBits(byte[] bytes, int index, int size)
+        {
+            Unsafe.WriteUnaligned(ref bytes[0], BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<long>(ref bytes[0])));
+            Unsafe.WriteUnaligned(ref bytes[sizeof(long)], BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<short>(ref bytes[sizeof(long)])));
+        }
+
+        private static void WriteToBufferIntl(byte* ptr, DateTimeOffset dateTimeOffset)
+        {
+            ToComponents(ref dateTimeOffset, out long ticks, out short offset);
+            *(long*)ptr = ticks;
+            *(short*)(ptr + sizeof(long)) = offset;
+        }
+        private static void WriteToBufferUnalignedIntl(byte* ptr, DateTimeOffset dateTimeOffset)
+        {
+            ToComponents(ref dateTimeOffset, out long ticks, out short offset);
+            Unsafe.WriteUnaligned(ptr, ticks);
+            Unsafe.WriteUnaligned(ptr + sizeof(long), offset);
+        }
+        private static void WriteToBufferSpanIntl(Span<byte> span, DateTimeOffset dateTimeOffset)
+        {
+            ToComponents(ref dateTimeOffset, out long ticks, out short offset);
+            MemoryMarshal.Write(span, ref ticks);
+            MemoryMarshal.Write(span.Slice(sizeof(long)), ref offset);
+        }
+        private static DateTimeOffset ReadFromBufferIntl(byte* ptr)
+        {
+            return FromComponents(*(long*)ptr, *(short*)(ptr + sizeof(long)));
+        }
+        private static DateTimeOffset ReadFromBufferUnalignedIntl(byte* ptr)
+        {
+            return FromComponents(Unsafe.ReadUnaligned<long>(ptr), Unsafe.ReadUnaligned<short>(ptr + sizeof(long)));
+        }
+        private static DateTimeOffset ReadFromBufferSpanIntl(Span<byte> span)
+        {
+            return FromComponents(MemoryMarshal.Read<long>(span), MemoryMarshal.Read<short>(span.Slice(sizeof(long))));
+        }
     }
 }

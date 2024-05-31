@@ -3,6 +3,7 @@ using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Protocol;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -34,12 +35,12 @@ public class SampleClass : IRpcObject<int>
 
     [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
     [RpcSend(nameof(RpcOne))]
-    internal virtual RpcTask<int> CallRpcOne(IModularRpcRemoteConnection connection, int? arg1, nint arg2, string? arg3, DateTime arg4) => RpcTask<int>.NotImplemented;
+    internal virtual RpcTask<int> CallRpcOne(IModularRpcRemoteConnection connection, List<string> testArray) => RpcTask<int>.NotImplemented;
 
     [RpcReceive]
-    private async Task<int> RpcOne(IModularRpcRemoteConnection connection, int? value, nint arg2, string arg3, DateTime arg4, CancellationToken token)
+    private async Task<int> RpcOne(IModularRpcRemoteConnection connection, string[] testArray, CancellationToken token)
     {
-        Console.WriteLine($"Value: {value}, {arg2}, \"{arg3}\", {arg4}.");
+        Console.WriteLine($"Value: {string.Join(", ", testArray)}.");
         Console.WriteLine("Start");
         await Task.Delay(TimeSpan.FromSeconds(5d), token);
         Console.WriteLine("Done");
@@ -53,6 +54,6 @@ public class SampleClass : IRpcObject<int>
 
     ~SampleClass()
     {
-        Console.WriteLine("test");
+        Console.WriteLine("sample finalizer ran");
     }
 }

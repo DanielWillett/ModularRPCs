@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -121,5 +122,5 @@ public class SingleParser : BinaryTypeParser<float>
         bytesRead = 4;
         return value;
     }
-    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<float>;
+    public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<float>(config);
 }

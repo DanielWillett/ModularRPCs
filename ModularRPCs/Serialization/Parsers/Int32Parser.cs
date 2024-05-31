@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -106,5 +107,5 @@ public class Int32Parser : BinaryTypeParser<int>
         bytesRead = 4;
         return value;
     }
-    public class Many : UnmanagedValueTypeBinaryArrayTypeParser<int>;
+    public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<int>(config);
 }

@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
     <LangVersion>12.0</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>DanielWillett.ModularRPCs.Test</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

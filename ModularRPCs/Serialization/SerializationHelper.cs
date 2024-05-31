@@ -18,6 +18,9 @@ public static class SerializationHelper
         dict[typeof(TElementType[])] = parser;
         dict[typeof(IList<TElementType>)] = parser;
         dict[typeof(IReadOnlyList<TElementType>)] = parser;
+        dict[typeof(ICollection<TElementType>)] = parser;
+        dict[typeof(IReadOnlyCollection<TElementType>)] = parser;
+        dict[typeof(IEnumerable<TElementType>)] = parser;
         dict[typeof(Span<TElementType>)] = parser;
         dict[typeof(ReadOnlySpan<TElementType>)] = parser;
         if (typeof(TElementType) == typeof(bool))
@@ -42,6 +45,18 @@ public static class SerializationHelper
         parser = parserFactory(typeof(IReadOnlyList<TElementType>));
         if (parser != null)
             dict[typeof(IReadOnlyList<TElementType>)] = parser;
+
+        parser = parserFactory(typeof(ICollection<TElementType>));
+        if (parser != null)
+            dict[typeof(ICollection<TElementType>)] = parser;
+
+        parser = parserFactory(typeof(IReadOnlyCollection<TElementType>));
+        if (parser != null)
+            dict[typeof(IReadOnlyCollection<TElementType>)] = parser;
+
+        parser = parserFactory(typeof(IEnumerable<TElementType>));
+        if (parser != null)
+            dict[typeof(IEnumerable<TElementType>)] = parser;
 
         parser = parserFactory(typeof(Span<TElementType>));
         if (parser != null)

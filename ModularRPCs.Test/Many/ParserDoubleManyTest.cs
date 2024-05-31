@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
 
 namespace ModularRPCs.Test.Many;
@@ -13188,7 +13189,7 @@ partial class ParserManyTests
     })]
     public void TestDouble(double[] values)
     {
-        DoubleParser.Many parser = new DoubleParser.Many();
+        DoubleParser.Many parser = new DoubleParser.Many(new SerializationConfiguration());
         TestManyParserBytes(values, parser);
         TestManyParserStream(values, parser);
     }

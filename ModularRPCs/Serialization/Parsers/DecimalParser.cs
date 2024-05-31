@@ -1,7 +1,10 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class DecimalParser : BinaryTypeParser<decimal>
@@ -152,7 +155,6 @@ public class DecimalParser : BinaryTypeParser<decimal>
         }
 
         value = new decimal(bits);
-
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         }
         finally
@@ -163,5 +165,102 @@ public class DecimalParser : BinaryTypeParser<decimal>
 
         bytesRead = 16;
         return value;
+    }
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<decimal>
+    {
+        public Many(SerializationConfiguration config) : base(config, 16, 1, false, &WriteToBufferIntl, &WriteToBufferIntl, &WriteToBufferSpanIntl,
+            &ReadFromBufferIntl, &ReadFromBufferIntl, &ReadFromBufferSpanIntl)
+        { }
+
+        private static void WriteToBufferIntl(byte* ptr, decimal dec)
+        {
+#if NET5_0_OR_GREATER
+            Span<int> span = new Span<int>(ptr, 4);
+            decimal.TryGetBits(dec, span, out _);
+            if (!BitConverter.IsLittleEndian)
+            {
+                span[0] = BinaryPrimitives.ReverseEndianness(span[0]);
+                span[1] = BinaryPrimitives.ReverseEndianness(span[1]);
+                span[2] = BinaryPrimitives.ReverseEndianness(span[2]);
+                span[3] = BinaryPrimitives.ReverseEndianness(span[3]);
+            }
+#else
+            int[] bytes = decimal.GetBits(dec);
+            MemoryMarshal.Cast<int, byte>(bytes.AsSpan(0, 4)).CopyTo(new Span<byte>(ptr, 16));
+#endif
+        }
+        private static void WriteToBufferSpanIntl(Span<byte> span, decimal dec)
+        {
+#if NET5_0_OR_GREATER
+            Span<int> castSpan = MemoryMarshal.Cast<byte, int>(span);
+            decimal.TryGetBits(dec, castSpan, out _);
+            if (!BitConverter.IsLittleEndian)
+            {
+                castSpan[0] = BinaryPrimitives.ReverseEndianness(castSpan[0]);
+                castSpan[1] = BinaryPrimitives.ReverseEndianness(castSpan[1]);
+                castSpan[2] = BinaryPrimitives.ReverseEndianness(castSpan[2]);
+                castSpan[3] = BinaryPrimitives.ReverseEndianness(castSpan[3]);
+            }
+#else
+            int[] bytes = decimal.GetBits(dec);
+            MemoryMarshal.Cast<int, byte>(bytes.AsSpan(0, 4)).CopyTo(span);
+#endif
+        }
+        private static decimal ReadFromBufferIntl(byte* ptr)
+        {
+#if NET5_0_OR_GREATER
+            if (BitConverter.IsLittleEndian)
+                return new decimal(new ReadOnlySpan<int>(ptr, 4));
+
+            Span<int> span = stackalloc int[4]
+            {
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ptr)),
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ptr + sizeof(int))),
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ptr + sizeof(int) * 2)),
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ptr + sizeof(int) * 3))
+            };
+            return new decimal(span);
+#else
+            int[] bits = new int[4];
+
+            new Span<int>(ptr, 4).CopyTo(bits);
+            if (!BitConverter.IsLittleEndian)
+            {
+                bits[0] = BinaryPrimitives.ReverseEndianness(bits[0]);
+                bits[1] = BinaryPrimitives.ReverseEndianness(bits[1]);
+                bits[2] = BinaryPrimitives.ReverseEndianness(bits[2]);
+                bits[3] = BinaryPrimitives.ReverseEndianness(bits[3]);
+            }
+            return new decimal(bits);
+#endif
+        }
+        private static decimal ReadFromBufferSpanIntl(Span<byte> span)
+        {
+#if NET5_0_OR_GREATER
+            if (BitConverter.IsLittleEndian)
+                return new decimal(MemoryMarshal.Cast<byte, int>(span[..16]));
+
+            Span<int> newSpan = stackalloc int[4]
+            {
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref span[0])),
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref span[sizeof(int)])),
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref span[sizeof(int) * 2])),
+                BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref span[sizeof(int) * 3]))
+            };
+            return new decimal(newSpan);
+#else
+            int[] bits = new int[4];
+
+            MemoryMarshal.Cast<byte, int>(span.Slice(0, 16)).CopyTo(bits);
+            if (!BitConverter.IsLittleEndian)
+            {
+                bits[0] = BinaryPrimitives.ReverseEndianness(bits[0]);
+                bits[1] = BinaryPrimitives.ReverseEndianness(bits[1]);
+                bits[2] = BinaryPrimitives.ReverseEndianness(bits[2]);
+                bits[3] = BinaryPrimitives.ReverseEndianness(bits[3]);
+            }
+            return new decimal(bits);
+#endif
+        }
     }
 }

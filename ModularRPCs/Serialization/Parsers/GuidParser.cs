@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
@@ -96,7 +97,7 @@ public class GuidParser : BinaryTypeParser<Guid>
 
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Guid>
     {
-        public Many() : base(16,
+        public Many(SerializationConfiguration config) : base(config, 16,
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
             1
 #else

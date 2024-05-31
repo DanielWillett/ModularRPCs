@@ -15,12 +15,7 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        Console.WriteLine($"Mono: {MonoImpl.MonoVersion}");
-        Console.WriteLine($"Unity: {MonoImpl.UnityVersion}");
-        Console.WriteLine($"Can use internals: {!Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute}");
-        Console.WriteLine($"Can use overlap buffers: {!Compatibility.IncompatibleWithBufferMemoryCopyOverlap}");
-
-        //await Run(args);
+        await Run(args);
 
         GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, true, true);
 
@@ -51,7 +46,7 @@ public class Program
         string str = "test";
         DateTime dt = DateTime.UtcNow;
 
-        int result = await sc0.CallRpcOne(loopbackRemote, null, val, null, dt);
+        int result = await sc0.CallRpcOne(loopbackRemote, [ "str1", "str2", "str3", "dining time" ]);
         Console.WriteLine($"Result: {result}.");
     }
 

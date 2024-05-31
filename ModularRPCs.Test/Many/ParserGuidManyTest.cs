@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
 using System;
 using System.Linq;
@@ -16485,7 +16486,7 @@ partial class ParserManyTests
     {
         Guid[] guidArr = guids.Length == 0 ? Array.Empty<Guid>() : guids.Split(',').Select(x => Guid.ParseExact(x.Trim(), "N")).ToArray();
 
-        GuidParser.Many parser = new GuidParser.Many();
+        GuidParser.Many parser = new GuidParser.Many(new SerializationConfiguration());
         TestManyParserBytes(guidArr, parser);
         TestManyParserStream(guidArr, parser);
     }

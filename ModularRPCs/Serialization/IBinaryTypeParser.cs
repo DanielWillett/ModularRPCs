@@ -72,56 +72,15 @@ public interface IBinaryTypeParser<T> : IBinaryTypeParser
 /// Array implementation of <see cref="IBinaryTypeParser"/>. Consider inheriting <see cref="ArrayBinaryTypeParser{T}"/> instead.
 /// </summary>
 /// <typeparam name="T">Element type to be serialized.</typeparam>
-public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
+public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T?[]>, IBinaryTypeParser<IEnumerable<T>>, IBinaryTypeParser<IList<T>>, IBinaryTypeParser<IReadOnlyList<T>>, IBinaryTypeParser<ICollection<T>>, IBinaryTypeParser<IReadOnlyCollection<T>>, IBinaryTypeParser<ArraySegment<T>>
 {
     [Pure]
-    int GetSize([InstantHandle] scoped ReadOnlySpan<T> value);
-
-    [Pure]
-    int GetSize([InstantHandle] IList<T> value);
-
-    [Pure]
-    int GetSize([InstantHandle] IReadOnlyList<T> value);
-
-    [Pure]
-    int GetSize([InstantHandle] ICollection<T> value);
-
-    [Pure]
-    int GetSize([InstantHandle] IReadOnlyCollection<T> value);
-
-    [Pure]
-    int GetSize([InstantHandle] IEnumerable<T> value);
-
-    [Pure]
-    int GetSize([InstantHandle] ArraySegment<T> value);
+    int GetSize([InstantHandle] scoped ReadOnlySpan<T?> value);
 
     /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] scoped ReadOnlySpan<T> value, byte* bytes, uint maxSize);
+    unsafe int WriteObject([InstantHandle] scoped ReadOnlySpan<T?> value, byte* bytes, uint maxSize);
 
-    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] IList<T> value, byte* bytes, uint maxSize);
-
-    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] IReadOnlyList<T> value, byte* bytes, uint maxSize);
-
-    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] ICollection<T> value, byte* bytes, uint maxSize);
-
-    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] IReadOnlyCollection<T> value, byte* bytes, uint maxSize);
-
-    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] IEnumerable<T> value, byte* bytes, uint maxSize);
-
-    /// <exception cref="RpcOverflowException">Buffer was not large enough.</exception>
-    unsafe int WriteObject([InstantHandle] ArraySegment<T> value, byte* bytes, uint maxSize);
-    int WriteObject([InstantHandle] scoped ReadOnlySpan<T> value, Stream stream);
-    int WriteObject([InstantHandle] IList<T> value, Stream stream);
-    int WriteObject([InstantHandle] IReadOnlyList<T> value, Stream stream);
-    int WriteObject([InstantHandle] ICollection<T> value, Stream stream);
-    int WriteObject([InstantHandle] IReadOnlyCollection<T> value, Stream stream);
-    int WriteObject([InstantHandle] IEnumerable<T> value, Stream stream);
-    int WriteObject([InstantHandle] ArraySegment<T> value, Stream stream);
+    int WriteObject([InstantHandle] scoped ReadOnlySpan<T?> value, Stream stream);
 
     /// <returns>-1 if the array is <see langword="null"/>, otherwise the length of the new array in elements.</returns>
     /// <exception cref="RpcParseException">Buffer was not large enough.</exception>
@@ -137,7 +96,7 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
     /// <exception cref="RpcParseException">Buffer was not large enough.</exception>
-    unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] scoped Span<T> output, out int bytesRead, bool hasReadLength = true);
+    unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] scoped Span<T?> output, out int bytesRead, bool hasReadLength = true);
 
     /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(byte*,uint,out int)"/> and set <paramref name="hasReadLength"/> to <see langword="true"/>, or guess the max length and set it to <see langword="false"/>.
@@ -145,7 +104,7 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
     /// <exception cref="RpcParseException">Buffer was not large enough.</exception>
-    unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] ArraySegment<T> output, out int bytesRead, bool hasReadLength = true);
+    unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] ArraySegment<T?> output, out int bytesRead, bool hasReadLength = true);
 
     /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(byte*,uint,out int)"/>, set <paramref name="hasReadLength"/> to <see langword="true"/>, and pass that length to <paramref name="measuredCount"/>, or don't read it and set it to <see langword="false"/>.
@@ -153,7 +112,8 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
     /// <param name="setInsteadOfAdding">Makes this function behave like <see cref="ReadObject(byte*,uint,Span{T},out int,bool)"/> instead of adding to the list.</param>
     /// <exception cref="RpcParseException">Buffer was not large enough.</exception>
-    unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] IList<T> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false);
+    /// <exception cref="ArgumentException"><paramref name="output"/> is readonly and <paramref name="setInsteadOfAdding"/> is <see langword="false"/>.</exception>
+    unsafe int ReadObject(byte* bytes, uint maxSize, [InstantHandle] IList<T?> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false);
 
     /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(Stream,out int)"/> and set <paramref name="hasReadLength"/> to <see langword="true"/>, or guess the max length and set it to <see langword="false"/>.
@@ -161,7 +121,7 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
     /// <exception cref="RpcParseException">Stream was not long enough.</exception>
-    int ReadObject(Stream stream, [InstantHandle] scoped Span<T> output, out int bytesRead, bool hasReadLength = true);
+    int ReadObject(Stream stream, [InstantHandle] scoped Span<T?> output, out int bytesRead, bool hasReadLength = true);
 
     /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(Stream,out int)"/> and set <paramref name="hasReadLength"/> to <see langword="true"/>, or guess the max length and set it to <see langword="false"/>.
@@ -169,7 +129,7 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><see langword="false"/> is null and <paramref name="output"/> is not long enough.</exception>
     /// <exception cref="RpcParseException">Stream was not long enough.</exception>
-    int ReadObject(Stream stream, [InstantHandle] ArraySegment<T> output, out int bytesRead, bool hasReadLength = true);
+    int ReadObject(Stream stream, [InstantHandle] ArraySegment<T?> output, out int bytesRead, bool hasReadLength = true);
 
     /// <summary>
     /// Read the array to <paramref name="output"/>. Either use <see cref="ReadArrayLength(Stream,out int)"/>, set <paramref name="hasReadLength"/> to <see langword="true"/>, and pass that length to <paramref name="measuredCount"/>, or don't read it and set it to <see langword="false"/>.
@@ -177,5 +137,6 @@ public interface IArrayBinaryTypeParser<T> : IBinaryTypeParser<T[]>
     /// <returns>Number of elements written to <paramref name="output"/>.</returns>
     /// <param name="setInsteadOfAdding">Makes this function behave like <see cref="ReadObject(Stream,Span{T},out int,bool)"/> instead of adding to the list.</param>
     /// <exception cref="RpcParseException">Stream was not long enough.</exception>
-    int ReadObject(Stream stream, [InstantHandle] IList<T> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false);
+    /// <exception cref="ArgumentException"><paramref name="output"/> is readonly and <paramref name="setInsteadOfAdding"/> is <see langword="false"/>.</exception>
+    int ReadObject(Stream stream, [InstantHandle] IList<T?> output, out int bytesRead, int measuredCount = -1, bool hasReadLength = false, bool setInsteadOfAdding = false);
 }

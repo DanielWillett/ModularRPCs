@@ -1,7 +1,9 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class UIntPtrParser : BinaryTypeParser<nuint>
@@ -84,7 +86,8 @@ public class UIntPtrParser : BinaryTypeParser<nuint>
             : ((ulong)((uint)*bytes << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3]) << 32) | ((uint)bytes[4] << 24 | (uint)bytes[5] << 16 | (uint)bytes[6] << 8 | bytes[7]);
 
         bytesRead = 8;
-        CheckUInt32Overflow(value);
+        if (UIntPtr.Size == 4)
+            CheckUInt32Overflow(value);
         return (nuint)value;
     }
     public override nuint ReadObject(Stream stream, out int bytesRead)
@@ -114,17 +117,74 @@ public class UIntPtrParser : BinaryTypeParser<nuint>
             DefaultSerializer.ArrayPool.Return(span);
         }
 #endif
-        CheckUInt32Overflow(value);
+        if (UIntPtr.Size == 4)
+            CheckUInt32Overflow(value);
 
         bytesRead = 8;
         return (nuint)value;
     }
     private static void CheckUInt32Overflow(ulong value)
     {
-        if (IntPtr.Size == 8)
-            return;
-
         if (value > uint.MaxValue)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, nameof(UIntPtrParser))) { ErrorCode = 9 };
+    }
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<nuint>
+    {
+        public Many(SerializationConfiguration config) : base(config, sizeof(ulong), sizeof(ulong), !BitConverter.IsLittleEndian,
+            &WriteToBufferIntl,
+            &WriteToBufferUnalignedIntl,
+            &WriteToBufferSpanIntl,
+            UIntPtr.Size == 8 ? &ReadFromBufferIntl : &ReadFromBufferIntl32,
+            UIntPtr.Size == 8 ? &ReadFromBufferUnalignedIntl : &ReadFromBufferUnalignedIntl32,
+            UIntPtr.Size == 8 ? &ReadFromBufferSpanIntl : &ReadFromBufferSpanIntl32)
+        {
+
+        }
+        private static void WriteToBufferIntl(byte* ptr, nuint v)
+        {
+            *(nuint*)ptr = v;
+        }
+        private static void WriteToBufferUnalignedIntl(byte* ptr, nuint v)
+        {
+            Unsafe.WriteUnaligned(ptr, v);
+        }
+        private static void WriteToBufferSpanIntl(Span<byte> span, nuint v)
+        {
+            ulong v64 = v;
+            MemoryMarshal.Write(span, ref v64);
+        }
+        private static nuint ReadFromBufferIntl(byte* ptr)
+        {
+            return *(nuint*)ptr;
+        }
+        private static nuint ReadFromBufferIntl32(byte* ptr)
+        {
+            ulong v = *(ulong*)ptr;
+            if (UIntPtr.Size == 4)
+                CheckUInt32Overflow(v);
+            return (nuint)v;
+        }
+        private static nuint ReadFromBufferUnalignedIntl(byte* ptr)
+        {
+            return Unsafe.ReadUnaligned<nuint>(ptr);
+        }
+        private static nuint ReadFromBufferUnalignedIntl32(byte* ptr)
+        {
+            ulong v = Unsafe.ReadUnaligned<ulong>(ptr);
+            if (UIntPtr.Size == 4)
+                CheckUInt32Overflow(v);
+            return (nuint)v;
+        }
+        private static nuint ReadFromBufferSpanIntl(Span<byte> span)
+        {
+            return MemoryMarshal.Read<nuint>(span);
+        }
+        private static nuint ReadFromBufferSpanIntl32(Span<byte> span)
+        {
+            ulong v = MemoryMarshal.Read<ulong>(span);
+            if (UIntPtr.Size == 4)
+                CheckUInt32Overflow(v);
+            return (nuint)v;
+        }
     }
 }

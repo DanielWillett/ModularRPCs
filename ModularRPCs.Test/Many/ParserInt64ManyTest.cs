@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Serialization.Parsers;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 using NUnit.Framework;
 
 namespace ModularRPCs.Test.Many;
@@ -13189,7 +13190,7 @@ partial class ParserManyTests
     })]
     public void TestInt64(long[] values)
     {
-        Int64Parser.Many parser = new Int64Parser.Many();
+        Int64Parser.Many parser = new Int64Parser.Many(new SerializationConfiguration());
         TestManyParserBytes(values, parser);
         TestManyParserStream(values, parser);
     }

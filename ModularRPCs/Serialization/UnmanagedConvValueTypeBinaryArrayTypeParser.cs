@@ -1,4 +1,5 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
 using JetBrains.Annotations;
@@ -22,12 +23,13 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
     private readonly delegate*<byte*, TElementType> _readFromBufferUnaligned;
     private readonly delegate*<Span<byte>, TElementType> _readFromBufferSpan;
 
+    protected readonly SerializationConfiguration Configuration;
     private readonly bool _flipBits;
     private readonly int _maxBufferSize;
     private readonly int _elementSize;
     private readonly int _alignSize;
     public override int ElementSize => _elementSize;
-    protected UnmanagedConvValueTypeBinaryArrayTypeParser(int elementSize, int alignSize, bool flipBits,
+    protected UnmanagedConvValueTypeBinaryArrayTypeParser(SerializationConfiguration config, int elementSize, int alignSize, bool flipBits,
         delegate*<byte*, TElementType, void> writeToBuffer,
         delegate*<byte*, TElementType, void> writeToBufferUnaligned,
         delegate*<Span<byte>, TElementType, void> writeToBufferSpan,
@@ -35,10 +37,12 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         delegate*<byte*, TElementType> readFromBufferUnaligned,
         delegate*<Span<byte>, TElementType> readFromBufferSpan)
     {
+        Configuration = config;
+        Configuration.Lock();
         _flipBits = flipBits;
         _elementSize = elementSize;
         _alignSize = alignSize;
-        _maxBufferSize = DefaultSerializer.MaxBufferSize / elementSize * elementSize;
+        _maxBufferSize = config.MaximumBufferSize / elementSize * elementSize;
         _writeToBuffer = writeToBuffer;
         _writeToBufferUnaligned = writeToBufferUnaligned;
         _writeToBufferSpan = writeToBufferSpan;
@@ -518,7 +522,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int offset = ofs + (size - bytesLeft) / elementSize;
                 int elementsToCopy = sizeToCopy / elementSize;
                 for (int i = 0; i < elementsToCopy; ++i)
@@ -582,7 +586,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int ofs = (size - bytesLeft) / elementSize;
                 int elementsToCopy = sizeToCopy / elementSize;
                 for (int i = 0; i < elementsToCopy; ++i)
@@ -659,7 +663,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int ofs = (size - bytesLeft) / elementSize;
                 int elementsToCopy = sizeToCopy / elementSize;
                 for (int i = 0; i < elementsToCopy; ++i)
@@ -736,7 +740,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int ofs = (size - bytesLeft) / elementSize;
                 int elementsToCopy = sizeToCopy / elementSize;
                 for (int i = 0; i < elementsToCopy; ++i)
@@ -820,7 +824,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int elemToCopy = sizeToCopy / elementSize;
                 int i = 0;
                 while (i < elemToCopy && enumerator.MoveNext())
@@ -905,7 +909,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = size;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int elemToCopy = sizeToCopy / elementSize;
                 int i = 0;
                 while (i < elemToCopy && enumerator.MoveNext())
@@ -994,7 +998,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 int bytesLeft = size;
                 do
                 {
-                    int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     int elemToCopy = sizeToCopy / elementSize;
                     int i = 0;
                     while (i < elemToCopy && enumerator.MoveNext())
@@ -1032,6 +1036,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             bytesRead = (int)index;
             return Array.Empty<TElementType>();
         }
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
 
         TElementType[] arr = new TElementType[length];
         int elementSize = _elementSize;
@@ -1082,6 +1088,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         if (length == 0)
             return 0;
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
+
         bytes += bytesRead;
         int size = bytesRead + length * elementSize;
 
@@ -1129,6 +1137,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         if (length == 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
 
         bytes += bytesRead;
         int size = bytesRead + length * elementSize;
@@ -1200,6 +1210,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         if (length <= 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
 
         bytes += bytesRead;
         int elementSize = _elementSize;
@@ -1295,6 +1307,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         if (length == 0)
             return Array.Empty<TElementType>();
 
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
+
         TElementType[] arr = new TElementType[length];
         int elementSize = _elementSize;
         int arrSize = length * elementSize;
@@ -1362,7 +1376,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)
                 {
@@ -1411,6 +1425,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         if (length == 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
 
         int arrSize = length * elementSize;
         TElementType[] arr = output.Array!;
@@ -1479,7 +1495,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)
                 {
@@ -1529,6 +1545,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         if (length == 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
 
         int arrSize = length * elementSize;
         delegate*<Span<byte>, TElementType> ftn = _readFromBufferSpan;
@@ -1595,7 +1613,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)
                 {
@@ -1671,6 +1689,8 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         if (length == 0)
             return 0;
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TElementType), length, this);
 
         int elementSize = _elementSize;
         int arrSize = length * elementSize;
@@ -1758,7 +1778,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 int bytesLeft = arrSize;
                 do
                 {
-                    int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                    int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                     readCt = stream.Read(buffer, 0, sizeToCopy);
                     if (readCt != sizeToCopy)
                     {
@@ -1888,7 +1908,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             int bytesLeft = arrSize;
             do
             {
-                int sizeToCopy = Math.Min(_maxBufferSize, bytesLeft);
+                int sizeToCopy = Math.Min(buffer.Length, bytesLeft);
                 int elementsToCopy = sizeToCopy / elementSize;
                 readCt = stream.Read(buffer, 0, sizeToCopy);
                 if (readCt != sizeToCopy)

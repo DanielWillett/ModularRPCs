@@ -48,7 +48,7 @@ public interface IRpcRouter
     /// <summary>
     /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.
     /// </summary>
-    int GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo);
+    uint GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
     /// Get the default interface implementations for a proxy class.
@@ -56,12 +56,24 @@ public interface IRpcRouter
     void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
 
     /// <summary>
-    /// Invoke an RPC by it's invocation point. If context switching would occur, <paramref name="bytes"/> MUST BE COPIED.
+    /// Invoke an RPC by it's invocation point. If context switching would occur and <paramref name="canTakeOwnership"/> is <see langword="false"/>, <paramref name="rawData"/> MUST BE COPIED.
     /// </summary>
-    ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token = default);
+    /// <param name="canTakeOwnership">If the backing storage for <paramref name="rawData"/> is safe to use outside the current stack frame. If this is <see langword="false"/>, data should be copied before context switching.</param>
+    ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token = default);
 
     /// <summary>
     /// Invoke an RPC by it's invocation point.
     /// </summary>
     ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
+
+    /// <summary>
+    /// Invoke an RPC by it's invocation point with the overhead already read. If context switching would occur and <paramref name="canTakeOwnership"/> is <see langword="false"/>, <paramref name="rawData"/> MUST BE COPIED.
+    /// </summary>
+    /// <param name="canTakeOwnership">If the backing storage for <paramref name="rawData"/> is safe to use outside the current stack frame. If this is <see langword="false"/>, data should be copied before context switching.</param>
+    ValueTask ReceiveData(in PrimitiveRpcOverhead overhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token = default);
+
+    /// <summary>
+    /// Invoke an RPC by it's invocation point with the overhead already read.
+    /// </summary>
+    ValueTask ReceiveData(in PrimitiveRpcOverhead overhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
 }

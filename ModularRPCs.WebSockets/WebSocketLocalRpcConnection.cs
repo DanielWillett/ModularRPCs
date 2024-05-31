@@ -1,24 +1,46 @@
-﻿using System;
-using DanielWillett.ModularRpcs.Abstractions;
+﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Data;
+using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
+using System;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.WebSockets;
-public abstract class WebSocketLocalRpcConnection : IModularRpcConnection
+public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, IContiguousBufferProgressUpdateDispatcher, IRefSafeLoggable
 {
     protected readonly CancellationTokenSource CancellationTokenSource;
+    protected readonly ContiguousBuffer Buffer;
+    protected readonly IRpcSerializer Serializer;
+    private int _taskRunning;
+    private object? _logger;
+
+    /// <inheritdoc />
+    public event ContiguousBufferProgressUpdate BufferProgressUpdated
+    {
+        add => Buffer.BufferProgressUpdated += value;
+        remove => Buffer.BufferProgressUpdated -= value;
+    }
     public abstract bool IsClosed { get; }
-    protected abstract WebSocket WebSocket { get; }
     public IRpcRouter Router { get; }
-    protected WebSocketLocalRpcConnection(IRpcRouter router)
+    protected internal abstract WebSocket WebSocket { get; }
+    protected internal abstract SemaphoreSlim Semaphore { get; }
+    protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, int bufferSize)
     {
         Router = router;
+        Serializer = serializer;
+        Buffer = new ContiguousBuffer((IModularRpcLocalConnection)this, bufferSize);
         CancellationTokenSource = new CancellationTokenSource();
     }
-    internal void StartListening()
+    internal bool TryStartListening()
     {
+        if (Interlocked.CompareExchange(ref _taskRunning, 1, 0) != 0)
+            return false;
+
         Task.Run(ListenTask, CancellationTokenSource.Token);
+        return true;
     }
     private async Task ListenTask()
     {
@@ -28,16 +50,16 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection
             {
                 if (WebSocket is not { State: WebSocketState.Open })
                 {
-                    Logging.LogInfo($"Reconnecting WebSocket because state is {WebSocket?.State.ToString() ?? "null"}.");
-                    await _semaphore.WaitAsync(_cts.Token);
+                    this.LogInformation($"Reconnecting WebSocket because state is {WebSocket?.State.ToString() ?? "null"}.");
+                    await Semaphore.WaitAsync();
                     try
                     {
                         if (WebSocket is not { State: WebSocketState.Open })
-                            await Connect();
+                            await Reconnect(CancellationTokenSource.Token);
                     }
                     finally
                     {
-                        _semaphore.Release();
+                        Semaphore.Release();
                     }
 
                     if (WebSocket is not { State: WebSocketState.Open })
@@ -47,25 +69,46 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection
                     }
                 }
 
-                WebSocketReceiveResult result = await WebSocket.ReceiveAsync(_networkBuffer.Buffer, _cts.Token).ConfigureAwait(false);
+                WebSocketReceiveResult result = await WebSocket.ReceiveAsync(new ArraySegment<byte>(Buffer.Buffer), CancellationTokenSource.Token).ConfigureAwait(false);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    Logging.LogWarning($"Received close: {result.CloseStatus?.ToString() ?? "No closing status"} ({result.CloseStatusDescription ?? "<unknown reason>"}).");
-                    Close();
+                    this.LogWarning($"Received close: {result.CloseStatus?.ToString() ?? "No closing status"} ({result.CloseStatusDescription ?? "<unknown reason>"}).");
+                    await CloseAsync(CancellationToken.None);
+                    Interlocked.CompareExchange(ref _taskRunning, 0, 1);
                     return;
                 }
-                _networkBuffer.ProcessBuffer(result.Count);
+
+                Buffer.ProcessBuffer((uint)result.Count, Serializer, RpcBufferParseCallback);
             }
             catch (Exception ex)
             {
-                if (!CheckCommonErrors(ex))
-                {
-                    Logging.LogWarning("Error listening for message.");
-                    Logging.LogException(ex);
-                }
+                this.LogWarning(ex, "Error listening for message.");
             }
         }
+
+        Interlocked.CompareExchange(ref _taskRunning, 0, 1);
     }
+    private void RpcBufferParseCallback(ReadOnlySpan<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead)
+    {
+        ValueTask vt = Router.ReceiveData(in overhead, ((IModularRpcLocalConnection)this).Remote, Serializer, data, canTakeOwnership, CancellationTokenSource.Token);
+        
+        if (vt.IsCompleted)
+            return;
+        
+        Task.Run(async () =>
+        {
+            try
+            {
+                await vt.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this.LogError(ex, "Failed to execute rpc read callback.");
+            }
+        });
+    }
+
+    protected internal abstract Task Reconnect(CancellationToken token = default);
     internal void DisposeIntl()
     {
         try
@@ -81,4 +124,6 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection
     }
     public abstract ValueTask DisposeAsync();
     public abstract ValueTask CloseAsync(CancellationToken token = default);
+    ref object? IRefSafeLoggable.Logger => ref _logger;
+    LoggerType IRefSafeLoggable.LoggerType { get; set; }
 }

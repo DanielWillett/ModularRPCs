@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
+using DanielWillett.ModularRpcs.Configuration;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -18,6 +19,11 @@ public interface IRpcSerializer
     /// </summary>
     /// <remarks>Primitive types also include some fixed-size system types like DateTime[Offset], TimeSpan, Guid, etc.</remarks>
     bool CanFastReadPrimitives { get; }
+
+    /// <summary>
+    /// The configuration currently loaded in this serializer. This is immutable.
+    /// </summary>
+    SerializationConfiguration Configuration { get; }
 
     /// <summary>
     /// Get the size of an object in bytes.

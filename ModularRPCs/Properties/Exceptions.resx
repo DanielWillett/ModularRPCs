@@ -142,7 +142,7 @@
     <value>The given type must be a reference type (not a value type).</value>
   </data>
   <data name="ConnectionNotLoopback" xml:space="preserve">
-    <value>Connection must be of type 'LoopbackRpcServerConnection'.</value>
+    <value>Connection must be of type LoopbackRpcServersideRemoteConnection</value>
   </data>
   <data name="RpcConnectionClosedException" xml:space="preserve">
     <value>This RPC connection is closed.</value>
@@ -332,5 +332,29 @@
   </data>
   <data name="InvalidCastExceptionInvalidType" xml:space="preserve">
     <value>The type '{0}' is not a valid type for the binary type parser: '{1}'.</value>
+  </data>
+  <data name="RpcParseExceptionArrayTooLongIBinaryTypeParser" xml:space="preserve">
+    <value>This binary type parser ({0}) is configured to not create enumerables of type {1} with a length larger than {2}.</value>
+  </data>
+  <data name="InvalidOperationExceptionConfigLocked" xml:space="preserve">
+    <value>This configuration object has already been used and can no longer be modified.</value>
+  </data>
+  <data name="ContiguousBufferMessageTooShort" xml:space="preserve">
+    <value>Incoming message has a size smaller than the minimum overhead size: {0} B.</value>
+  </data>
+  <data name="ContiguousBufferSizeHashMismatch" xml:space="preserve">
+    <value>Incoming message ({0}) doesn't have a matching sequential size hash, it's likely the packet got corrupted somehow.</value>
+  </data>
+  <data name="ContiguousBufferOutOfMemory" xml:space="preserve">
+    <value>Out of Memory trying to allocate {0} B for message "{1}".</value>
+  </data>
+  <data name="ContiguousBufferOverflow" xml:space="preserve">
+    <value>Overflow exception hit trying to allocate {0} B for message "{1}".</value>
+  </data>
+  <data name="ContiguousBufferOversizedMessage" xml:space="preserve">
+    <value>Incoming message "{0}" (including header data) has a size of {1} B which is greater than the max ({2} B).</value>
+  </data>
+  <data name="ContiguousBufferException" xml:space="preserve">
+    <value>There was an error parsing the overhead for incoming message "{0}".</value>
   </data>
 </root>

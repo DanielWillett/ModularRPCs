@@ -12,7 +12,7 @@ public partial class ParserManyTests
 {
     private unsafe void TestManyParserBytes<T>(T[] values, IArrayBinaryTypeParser<T> parser)
     {
-        uint maxSize = 33576960u;
+        uint maxSize = 604385280U;
         fixed (byte* bufferSrc = new byte[maxSize])
         {
             for (bool useObjToWrite = false; ; useObjToWrite = true)
@@ -207,7 +207,7 @@ public partial class ParserManyTests
                 int pos = 0;
                 for (int i = 0; i < arrCtNoBit; ++i)
                 {
-                    T[] readArray = parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead);
+                    T[] readArray = ((IBinaryTypeParser<T[]>)parser).ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead);
                     pos += bytesRead;
                     Assert.That(readArray, Is.EqualTo(values));
                 }
@@ -294,40 +294,80 @@ public partial class ParserManyTests
 
                 Assert.That(pos, Is.EqualTo(ct));
 
-                pos = 0;
-                Span<T> arr4 = null!;
-                Span<T>* spanPtr = &arr4;
-                tr = __makeref(spanPtr);
-                for (int i = 0; i < arrCt; ++i)
+                if (typeof(T).IsValueType)
                 {
-                    parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
-                    pos += bytesRead;
-                    Assert.That(arr4.ToArray(), Is.EqualTo(values));
-                    if (i > arrCt / 2)
+                    pos = 0;
+                    Span<T> arr4 = null!;
+                    Span<T>* spanPtr = &arr4;
+                    tr = __makeref(spanPtr);
+                    for (int i = 0; i < arrCt; ++i)
                     {
-                        arr4 = new T[values.Length];
+                        parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
+                        pos += bytesRead;
+                        Assert.That(arr4.ToArray(), Is.EqualTo(values));
+                        if (i > arrCt / 2)
+                        {
+                            arr4 = new T[values.Length];
+                        }
+                        else
+                        {
+                            arr4 = null;
+                        }
                     }
-                    else
+
+                    Assert.That(pos, Is.EqualTo(ct));
+
+                    pos = 0;
+                    ReadOnlySpan<T> arr5 = null!;
+                    ReadOnlySpan<T>* roSpanPtr = &arr5;
+                    tr = __makeref(roSpanPtr);
+                    for (int i = 0; i < arrCt; ++i)
                     {
-                        arr4 = null;
+                        parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
+                        pos += bytesRead;
+                        Assert.That(arr5.ToArray(), Is.EqualTo(values));
+                        arr5 = null;
                     }
+
+                    Assert.That(pos, Is.EqualTo(ct));
                 }
-
-                Assert.That(pos, Is.EqualTo(ct));
-
-                pos = 0;
-                ReadOnlySpan<T> arr5 = null!;
-                ReadOnlySpan<T>* roSpanPtr = &arr5;
-                tr = __makeref(roSpanPtr);
-                for (int i = 0; i < arrCt; ++i)
+                else if (typeof(T) == typeof(string))
                 {
-                    parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
-                    pos += bytesRead;
-                    Assert.That(arr5.ToArray(), Is.EqualTo(values));
-                    arr5 = null;
-                }
+                    pos = 0;
+                    Span<string> arr4 = null!;
+                    Span<string>* spanPtr = &arr4;
+                    tr = __makeref(spanPtr);
+                    for (int i = 0; i < arrCt; ++i)
+                    {
+                        parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
+                        pos += bytesRead;
+                        Assert.That(arr4.ToArray(), Is.EqualTo(values));
+                        if (i > arrCt / 2)
+                        {
+                            arr4 = new string[values.Length];
+                        }
+                        else
+                        {
+                            arr4 = null;
+                        }
+                    }
 
-                Assert.That(pos, Is.EqualTo(ct));
+                    Assert.That(pos, Is.EqualTo(ct));
+
+                    pos = 0;
+                    ReadOnlySpan<string> arr5 = null!;
+                    ReadOnlySpan<string>* roSpanPtr = &arr5;
+                    tr = __makeref(roSpanPtr);
+                    for (int i = 0; i < arrCt; ++i)
+                    {
+                        parser.ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead, tr);
+                        pos += bytesRead;
+                        Assert.That(arr5.ToArray(), Is.EqualTo(values));
+                        arr5 = null;
+                    }
+
+                    Assert.That(pos, Is.EqualTo(ct));
+                }
 
                 if (bitArrayParser != null)
                 {
@@ -877,7 +917,7 @@ public partial class ParserManyTests
             int pos = ParserTests.BufferSize;
             for (int i = 0; i < arrCtNoBit; ++i)
             {
-                T[] readArray = parser.ReadObject(memStream, out int bytesRead);
+                T[] readArray = ((IBinaryTypeParser<T[]>)parser).ReadObject(memStream, out int bytesRead);
                 pos += bytesRead;
                 Assert.That(readArray, Is.EqualTo(values));
             }
@@ -975,46 +1015,93 @@ public partial class ParserManyTests
             Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
             Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
 
-            memStream.Seek(0, SeekOrigin.Begin);
-            ParserTests.CheckBuffer(memStream);
-            pos = ParserTests.BufferSize;
-            Span<T> arr4 = null!;
-            Span<T>* spanPtr = &arr4;
-            tr = __makeref(spanPtr);
-            for (int i = 0; i < arrCt; ++i)
+            if (typeof(T).IsValueType)
             {
-                parser.ReadObject(memStream, out int bytesRead, tr);
-                pos += bytesRead;
-                Assert.That(arr4.ToArray(), Is.EqualTo(values));
-                if (i > arrCt / 2)
+                memStream.Seek(0, SeekOrigin.Begin);
+                ParserTests.CheckBuffer(memStream);
+                pos = ParserTests.BufferSize;
+                Span<T> arr4 = null!;
+                Span<T>* spanPtr = &arr4;
+                tr = __makeref(spanPtr);
+                for (int i = 0; i < arrCt; ++i)
                 {
-                    arr4 = new T[values.Length];
+                    parser.ReadObject(memStream, out int bytesRead, tr);
+                    pos += bytesRead;
+                    Assert.That(arr4.ToArray(), Is.EqualTo(values));
+                    if (i > arrCt / 2)
+                    {
+                        arr4 = new T[values.Length];
+                    }
+                    else
+                    {
+                        arr4 = null;
+                    }
                 }
-                else
+
+                Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
+                Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
+
+                memStream.Seek(0, SeekOrigin.Begin);
+                ParserTests.CheckBuffer(memStream);
+                pos = ParserTests.BufferSize;
+                ReadOnlySpan<T> arr5 = null!;
+                ReadOnlySpan<T>* roSpanPtr = &arr5;
+                tr = __makeref(roSpanPtr);
+                for (int i = 0; i < arrCt; ++i)
                 {
-                    arr4 = null;
+                    parser.ReadObject(memStream, out int bytesRead, tr);
+                    pos += bytesRead;
+                    Assert.That(arr5.ToArray(), Is.EqualTo(values));
+                    arr5 = null;
                 }
+
+                Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
+                Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
+            }
+            else if (typeof(T) == typeof(string))
+            {
+                memStream.Seek(0, SeekOrigin.Begin);
+                ParserTests.CheckBuffer(memStream);
+                pos = ParserTests.BufferSize;
+                Span<string> arr4 = null!;
+                Span<string>* spanPtr = &arr4;
+                tr = __makeref(spanPtr);
+                for (int i = 0; i < arrCt; ++i)
+                {
+                    parser.ReadObject(memStream, out int bytesRead, tr);
+                    pos += bytesRead;
+                    Assert.That(arr4.ToArray(), Is.EqualTo(values));
+                    if (i > arrCt / 2)
+                    {
+                        arr4 = new string[values.Length];
+                    }
+                    else
+                    {
+                        arr4 = null;
+                    }
+                }
+
+                Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
+                Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
+
+                memStream.Seek(0, SeekOrigin.Begin);
+                ParserTests.CheckBuffer(memStream);
+                pos = ParserTests.BufferSize;
+                ReadOnlySpan<string> arr5 = null!;
+                ReadOnlySpan<string>* roSpanPtr = &arr5;
+                tr = __makeref(roSpanPtr);
+                for (int i = 0; i < arrCt; ++i)
+                {
+                    parser.ReadObject(memStream, out int bytesRead, tr);
+                    pos += bytesRead;
+                    Assert.That(arr5.ToArray(), Is.EqualTo(values));
+                    arr5 = null;
+                }
+
+                Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
+                Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
             }
 
-            Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
-            Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
-
-            memStream.Seek(0, SeekOrigin.Begin);
-            ParserTests.CheckBuffer(memStream);
-            pos = ParserTests.BufferSize;
-            ReadOnlySpan<T> arr5 = null!;
-            ReadOnlySpan<T>* roSpanPtr = &arr5;
-            tr = __makeref(roSpanPtr);
-            for (int i = 0; i < arrCt; ++i)
-            {
-                parser.ReadObject(memStream, out int bytesRead, tr);
-                pos += bytesRead;
-                Assert.That(arr5.ToArray(), Is.EqualTo(values));
-                arr5 = null;
-            }
-
-            Assert.That(pos, Is.EqualTo(ct + ParserTests.BufferSize));
-            Assert.That(memStream.ReadByte(), Is.EqualTo(-1)); // end of stream
 
             if (bitArrayParser != null)
             {

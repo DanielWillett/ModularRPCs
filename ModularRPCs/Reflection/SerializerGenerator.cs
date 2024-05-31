@@ -15,6 +15,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -959,6 +960,9 @@ internal sealed class SerializerGenerator
         }
     }
 
+    /// <summary>
+    /// Used as a sanity check to usually catch argument mismatches.
+    /// </summary>
     internal int CreateMethodSignature(RuntimeMethodHandle handle)
     {
         // ReSharper disable once RedundantSuppressNullableWarningExpression
@@ -982,7 +986,26 @@ internal sealed class SerializerGenerator
             try
             {
                 if (type.IsByRef)
+                {
                     type = type.GetElementType()!;
+                }
+                else if (type is { IsArray: false, IsValueType: false } && type != typeof(string))
+                {
+                    // IEnumerable's are turned into arrays of their elements for matching purposes
+                    Type? intxType;
+                    if (type is { IsInterface: true, IsGenericType: true } && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    {
+                        intxType = type;
+                    }
+                    else
+                    {
+                        intxType = type
+                            .GetInterfaces()
+                            .FirstOrDefault(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+                    }
+                    if (intxType != null)
+                        type = intxType.GetGenericArguments()[0].MakeArrayType();
+                }
             }
             catch (NotSupportedException) { }
 

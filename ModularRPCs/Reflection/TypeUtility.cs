@@ -3,6 +3,7 @@ using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
@@ -176,7 +177,7 @@ internal static class TypeUtility
     public static unsafe void WriteTypeCode(TypeCode tc, IRpcSerializer serializer, object value, byte* ptr, ref uint index, uint size)
     {
         bool canFastRead = serializer.CanFastReadPrimitives;
-        if (canFastRead && size - index < GetTypeCodeSize(tc))
+        if (canFastRead && tc != TypeCode.String && size - index < GetTypeCodeSize(tc))
             throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
 
         switch (tc)
@@ -542,13 +543,278 @@ internal static class TypeUtility
                 break;
         }
     }
+
+    public static unsafe object? ReadTypeCode(TypeCode tc, IRpcSerializer serializer, Stream stream, out int bytesRead)
+    {
+        if (tc == TypeCode.String)
+        {
+            return serializer.ReadObject<string?>(stream, out bytesRead);
+        }
+
+        bool canFastRead = serializer.CanFastReadPrimitives;
+        if (!canFastRead)
+        {
+            switch (tc)
+            {
+                case TypeCode.DBNull:
+                    bytesRead = 0;
+                    return DBNull.Value;
+
+                case TypeCode.SByte:
+                    return serializer.ReadObject<sbyte>(stream, out bytesRead);
+
+                case TypeCode.Byte:
+                    return serializer.ReadObject<byte>(stream, out bytesRead);
+
+                case TypeCode.Boolean:
+                    return serializer.ReadObject<bool>(stream, out bytesRead);
+
+                case TypeCode.Int16:
+                    return serializer.ReadObject<short>(stream, out bytesRead);
+
+                case TypeCode.UInt16:
+                    return serializer.ReadObject<ushort>(stream, out bytesRead);
+
+                case TypeCode.Char:
+                    return serializer.ReadObject<char>(stream, out bytesRead);
+
+                case TypeCode.Int32:
+                    return serializer.ReadObject<int>(stream, out bytesRead);
+
+                case TypeCode.UInt32:
+                    return serializer.ReadObject<uint>(stream, out bytesRead);
+
+                case TypeCode.Int64:
+                    return serializer.ReadObject<long>(stream, out bytesRead);
+
+                case TypeCode.UInt64:
+                    return serializer.ReadObject<ulong>(stream, out bytesRead);
+
+                case TypeCode.Single:
+                    return serializer.ReadObject<float>(stream, out bytesRead);
+
+                case TypeCode.Double:
+                    return serializer.ReadObject<double>(stream, out bytesRead);
+
+                case TypeCode.Decimal:
+                    return serializer.ReadObject<decimal>(stream, out bytesRead);
+
+                case TypeCode.DateTime:
+                    return serializer.ReadObject<DateTime>(stream, out bytesRead);
+
+                case TypeCodeTimeSpan:
+                    return serializer.ReadObject<TimeSpan>(stream, out bytesRead);
+
+                case TypeCodeGuid:
+                    return serializer.ReadObject<Guid>(stream, out bytesRead);
+
+                case TypeCodeDateTimeOffset:
+                    return serializer.ReadObject<DateTimeOffset>(stream, out bytesRead);
+
+                default:
+                    bytesRead = 0;
+                    return null!;
+            }
+        }
+
+        int sz = GetTypeCodeSize(tc);
+#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        byte* ptr = stackalloc byte[sz];
+        int rdCt = stream.Read(new Span<byte>(ptr, sz));
+        bytesRead = rdCt;
+        if (rdCt != sz)
+            throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+        uint index = 0;
+        return ReadTypeCode(tc, serializer, ptr, sz, ref index, out bytesRead);
+#else
+        byte[] buffer = DefaultSerializer.ArrayPool.Rent(sz);
+        try
+        {
+            int rdCt = stream.Read(buffer, 0, sz);
+            bytesRead = rdCt;
+            if (rdCt != sz)
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+            object? rtnValue;
+            switch (tc)
+            {
+                case TypeCode.DBNull:
+                    bytesRead = 0;
+                    rtnValue = DBNull.Value;
+                    break;
+
+                case TypeCode.SByte:
+                    rtnValue = unchecked((sbyte)buffer[0]);
+                    bytesRead = 1;
+                    break;
+
+                case TypeCode.Byte:
+                    rtnValue = buffer[0];
+                    bytesRead = 1;
+                    break;
+
+                case TypeCode.Boolean:
+                    rtnValue = buffer[0] != 0;
+                    bytesRead = 1;
+                    break;
+
+                case TypeCode.Int16:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<short>(ref buffer[0])
+                        : unchecked((short)(buffer[0] << 8 | buffer[1]));
+                    bytesRead = 2;
+                    break;
+
+                case TypeCode.UInt16:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<ushort>(ref buffer[0])
+                        : unchecked((ushort)(buffer[0] << 8 | buffer[1]));
+                    bytesRead = 2;
+                    break;
+
+                case TypeCode.Char:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<char>(ref buffer[0])
+                        : unchecked((char)(buffer[0] << 8 | buffer[1]));
+                    bytesRead = 2;
+                    break;
+
+                case TypeCode.Int32:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<int>(ref buffer[0])
+                        : buffer[0] << 24 | buffer[1] << 16 | buffer[2] << 8 | buffer[3];
+                    bytesRead = 4;
+                    break;
+
+                case TypeCode.UInt32:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<int>(ref buffer[0])
+                        : (uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3];
+                    bytesRead = 4;
+                    break;
+
+                case TypeCode.Int64:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
+                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+                    bytesRead = 8;
+                    break;
+
+                case TypeCode.UInt64:
+                    rtnValue = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<ulong>(ref buffer[0])
+                        : ((ulong)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+                    bytesRead = 8;
+                    break;
+
+                case TypeCode.Single:
+                    int i32 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<int>(ref buffer[0])
+                        : buffer[0] << 24 | buffer[1] << 16 | buffer[2] << 8 | buffer[3];
+                    rtnValue = *(float*)&i32;
+                    bytesRead = 4;
+                    break;
+
+                case TypeCode.Double:
+                    long i64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
+                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+                    rtnValue = *(double*)&i64;
+                    bytesRead = 8;
+                    break;
+
+                case TypeCode.Decimal:
+                    int[] bits = new int[4];
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Unsafe.CopyBlockUnaligned(ref Unsafe.As<int, byte>(ref bits[0]), ref buffer[0], 16);
+                    }
+                    else
+                    {
+                        bits[0] = buffer[00] << 24 | buffer[01] << 16 | buffer[02] << 8 | buffer[03];
+                        bits[1] = buffer[04] << 24 | buffer[05] << 16 | buffer[06] << 8 | buffer[07];
+                        bits[2] = buffer[08] << 24 | buffer[09] << 16 | buffer[10] << 8 | buffer[11];
+                        bits[3] = buffer[12] << 24 | buffer[13] << 16 | buffer[14] << 8 | buffer[15];
+                    }
+
+                    rtnValue = new decimal(bits);
+                    bytesRead = 16;
+                    break;
+
+                case TypeCode.DateTime:
+                    long z64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
+                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+                    DateTimeKind kind = (DateTimeKind)((z64 >> 62) & 0b11);
+                    z64 &= ~(0b11L << 62);
+                    rtnValue = new DateTime(z64, kind);
+                    bytesRead = 8;
+                    break;
+
+                case TypeCodeTimeSpan:
+                    z64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
+                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+                    rtnValue = new TimeSpan(z64);
+                    bytesRead = 8;
+                    break;
+
+                case TypeCodeGuid:
+                    byte[] span = DefaultSerializer.ArrayPool.Rent(16);
+                    try
+                    {
+                        Unsafe.CopyBlockUnaligned(ref span[0], ref buffer[0], 16u);
+                        rtnValue = new Guid(span);
+                    }
+                    finally
+                    {
+                        DefaultSerializer.ArrayPool.Return(span);
+                    }
+                    bytesRead = 16;
+                    break;
+
+                case TypeCodeDateTimeOffset:
+                    z64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
+                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+
+                    short offset = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<short>(ref buffer[8])
+                        : unchecked((short)(buffer[8] << 8 | buffer[9]));
+
+                    rtnValue = new DateTimeOffset(z64, TimeSpan.FromMinutes(offset));
+                    bytesRead = 10;
+                    break;
+
+                default:
+                    rtnValue = null!;
+                    bytesRead = 0;
+                    break;
+            }
+
+            return rtnValue;
+        }
+        finally
+        {
+            DefaultSerializer.ArrayPool.Return(buffer);
+        }
+#endif
+    }
+
     public static unsafe object? ReadTypeCode(TypeCode tc, IRpcSerializer serializer, byte* data, int maxSize, ref uint index, out int bytesRead)
     {
+        if (tc == TypeCode.String)
+        {
+            return serializer.ReadObject<string?>(data + index, (uint)maxSize - index, out bytesRead);
+        }
+
+        bool canFastRead = serializer.CanFastReadPrimitives;
         int sz = GetTypeCodeSize(tc);
-        if (maxSize - index < sz)
+        if (canFastRead && tc != TypeCode.String && maxSize - index < sz)
             throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        object rtnValue;
+        object? rtnValue;
         switch (tc)
         {
             case TypeCode.DBNull:
@@ -556,12 +822,8 @@ internal static class TypeUtility
                 rtnValue = DBNull.Value;
                 break;
 
-            case TypeCode.String:
-                rtnValue = serializer.ReadObject<string>(data + index, (uint)maxSize - index, out bytesRead);
-                break;
-
             case TypeCode.SByte:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = unchecked( (sbyte)data[index] );
                     bytesRead = 1;
@@ -571,7 +833,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Byte:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = data[index];
                     bytesRead = 1;
@@ -581,7 +843,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Boolean:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = data[index] != 0;
                     bytesRead = 1;
@@ -591,7 +853,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Int16:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<short>(data + index)
@@ -603,7 +865,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.UInt16:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<ushort>(data + index)
@@ -615,7 +877,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Char:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<char>(data + index)
@@ -627,7 +889,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Int32:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<int>(data + index)
@@ -639,7 +901,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.UInt32:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<int>(data + index)
@@ -652,7 +914,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Int64:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<long>(data + index)
@@ -664,7 +926,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.UInt64:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     rtnValue = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<ulong>(data + index)
@@ -677,7 +939,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Single:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     int i32 = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<int>(data + index)
@@ -691,7 +953,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Double:
-                if (serializer.CanFastReadPrimitives)
+                if (canFastRead)
                 {
                     long i64 = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<long>(data + index)
@@ -704,7 +966,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.Decimal:
-                if (!serializer.CanFastReadPrimitives)
+                if (!canFastRead)
                 {
                     rtnValue = serializer.ReadObject<decimal>(data + index, (uint)maxSize - index, out bytesRead);
                     break;
@@ -740,7 +1002,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCode.DateTime:
-                if (!serializer.CanFastReadPrimitives)
+                if (!canFastRead)
                 {
                     rtnValue = serializer.ReadObject<DateTime>(data + index, (uint)maxSize - index, out bytesRead);
                     break;
@@ -756,21 +1018,21 @@ internal static class TypeUtility
                 break;
 
             case TypeCodeTimeSpan:
-                if (!serializer.CanFastReadPrimitives)
+                if (!canFastRead)
                 {
                     rtnValue = serializer.ReadObject<TimeSpan>(data + index, (uint)maxSize - index, out bytesRead);
                     break;
                 }
 
                 z64 = BitConverter.IsLittleEndian
-                    ? Unsafe.ReadUnaligned<long>(data)
+                    ? Unsafe.ReadUnaligned<long>(data + index)
                     : unchecked( ((long)((uint)data[index] << 24 | (uint)data[index + 1] << 16 | (uint)data[index + 2] << 8 | data[index + 3]) << 32) | ((uint)data[index + 4] << 24 | (uint)data[index + 5] << 16 | (uint)data[index + 6] << 8 | data[index + 7]) );
                 rtnValue = new TimeSpan(z64);
                 bytesRead = 8;
                 break;
 
             case TypeCodeGuid:
-                if (!serializer.CanFastReadPrimitives)
+                if (!canFastRead)
                 {
                     rtnValue = serializer.ReadObject<Guid>(data + index, (uint)maxSize - index, out bytesRead);
                     break;
@@ -794,7 +1056,7 @@ internal static class TypeUtility
                 break;
 
             case TypeCodeDateTimeOffset:
-                if (!serializer.CanFastReadPrimitives)
+                if (!canFastRead)
                 {
                     rtnValue = serializer.ReadObject<DateTimeOffset>(data + index, (uint)maxSize - index, out bytesRead);
                     break;

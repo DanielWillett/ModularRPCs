@@ -1,16 +1,15 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
-using System.Threading;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
 /// <summary>
-/// Extensions for interacting between 
+/// Extensions for registering ModularRPC services with an <see cref="IServiceCollection"/>.
 /// </summary>
 public static class ModularRpcExtensions
 {
@@ -29,34 +28,14 @@ public static class ModularRpcExtensions
     /// Uses the registered <see cref="ILoggerFactory"/> to create and assign an <see cref="ILogger{ProxyGenerator}"/> for the <see cref="ProxyGenerator"/> singleton.
     /// </summary>
     /// <exception cref="InvalidOperationException">There is no service of type <see cref="ILoggerFactory"/>.</exception>
-    public static IServiceProvider UseLoggingForProxyGenerator(this IServiceProvider serviceProvider)
+    public static IServiceProvider ApplyLoggerTo(this IServiceProvider serviceProvider, IRefSafeLoggable loggable)
     {
         ILoggerFactory logFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-        ILogger<ProxyGenerator> logger = logFactory.CreateLogger<ProxyGenerator>();
-        
-        UseLoggingForProxyGenerator(logger);
+        ILogger logger = logFactory.CreateLogger(loggable.GetType());
+
+        loggable.SetLogger(logger);
 
         return serviceProvider;
-    }
-
-    /// <summary>
-    /// Adds the given <see cref="ILogger{ProxyGenerator}"/> to the <see cref="ProxyGenerator"/> singleton.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">There is no service of type <see cref="ILoggerFactory"/>.</exception>
-    public static void UseLoggingForProxyGenerator(ILogger? logger)
-    {
-        object? oldLogger = Interlocked.Exchange(ref ProxyGenerator.Instance.Logger, logger);
-        if (oldLogger is not IDisposable disp)
-            return;
-
-        try
-        {
-            disp.Dispose();
-        }
-        catch (Exception ex)
-        {
-            logger?.LogError(ex, $"Error disposing old logger after adding new {logger.GetType().Name} logger.");
-        }
     }
 
     /// <summary>

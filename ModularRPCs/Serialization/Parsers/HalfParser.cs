@@ -1,8 +1,11 @@
 ﻿#if NET5_0_OR_GREATER
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class HalfParser : BinaryTypeParser<Half>
@@ -104,6 +107,62 @@ public class HalfParser : BinaryTypeParser<Half>
 
         bytesRead = 2;
         return *(Half*)&value;
+    }
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Half>
+    {
+        public Many(SerializationConfiguration config) : base(config, sizeof(ushort), sizeof(ushort), !BitConverter.IsLittleEndian,
+            &WriteToBufferIntl,
+            &WriteToBufferUnalignedIntl,
+            &WriteToBufferSpanIntl,
+            &ReadFromBufferIntl,
+            &ReadFromBufferUnalignedIntl,
+            &ReadFromBufferSpanIntl)
+        {
+
+        }
+
+        protected override Half FlipBits(Half toFlip)
+        {
+            ushort flip = *(ushort*)&toFlip;
+            flip = BinaryPrimitives.ReverseEndianness(flip);
+            return *(Half*)flip;
+        }
+        protected override void FlipBits(byte* bytes, int hdrSize, int size)
+        {
+            Unsafe.WriteUnaligned(bytes, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(bytes)));
+        }
+        protected override void FlipBits(byte[] bytes, int hdrSize, int size)
+        {
+            Unsafe.WriteUnaligned(ref bytes[0], BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref bytes[0])));
+        }
+        private static void WriteToBufferIntl(byte* ptr, Half v)
+        {
+            *(ushort*)ptr = *(ushort*)&v;
+        }
+        private static void WriteToBufferUnalignedIntl(byte* ptr, Half v)
+        {
+            Unsafe.WriteUnaligned(ptr, *(ushort*)&v);
+        }
+        private static void WriteToBufferSpanIntl(Span<byte> span, Half v)
+        {
+            ushort v16 = *(ushort*)&v;
+            MemoryMarshal.Write(span, ref v16);
+        }
+        private static Half ReadFromBufferIntl(byte* ptr)
+        {
+            ushort packed = *(ushort*)ptr;
+            return *(Half*)&packed;
+        }
+        private static Half ReadFromBufferUnalignedIntl(byte* ptr)
+        {
+            ushort packed = Unsafe.ReadUnaligned<ushort>(ptr);
+            return *(Half*)&packed;
+        }
+        private static Half ReadFromBufferSpanIntl(Span<byte> span)
+        {
+            ushort packed = MemoryMarshal.Read<ushort>(span);
+            return *(Half*)&packed;
+        }
     }
 }
 #endif

@@ -1,7 +1,9 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class TimeSpanParser : BinaryTypeParser<TimeSpan>
@@ -115,5 +117,38 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
 
         bytesRead = 8;
         return new TimeSpan(value);
+    }
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<TimeSpan>
+    {
+        public Many(SerializationConfiguration config) : base(config, sizeof(long), sizeof(long), !BitConverter.IsLittleEndian, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+            &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
+        {
+
+        }
+        private static void WriteToBufferIntl(byte* ptr, TimeSpan timeSpan)
+        {
+            *(long*)ptr = timeSpan.Ticks;
+        }
+        private static void WriteToBufferUnalignedIntl(byte* ptr, TimeSpan timeSpan)
+        {
+            Unsafe.WriteUnaligned(ptr, timeSpan.Ticks);
+        }
+        private static void WriteToBufferSpanIntl(Span<byte> span, TimeSpan timeSpan)
+        {
+            long ticks = timeSpan.Ticks;
+            MemoryMarshal.Write(span, ref ticks);
+        }
+        private static TimeSpan ReadFromBufferIntl(byte* ptr)
+        {
+            return new TimeSpan(*(long*)ptr);
+        }
+        private static TimeSpan ReadFromBufferUnalignedIntl(byte* ptr)
+        {
+            return new TimeSpan(Unsafe.ReadUnaligned<long>(ptr));
+        }
+        private static TimeSpan ReadFromBufferSpanIntl(Span<byte> span)
+        {
+            return new TimeSpan(MemoryMarshal.Read<long>(span));
+        }
     }
 }

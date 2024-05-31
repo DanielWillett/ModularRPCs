@@ -22,7 +22,7 @@ namespace DanielWillett.ModularRpcs.Properties {
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    public class Exceptions {
+    internal class Exceptions {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
@@ -36,7 +36,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         ///   Returns the cached ResourceManager instance used by this class.
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-        public static global::System.Resources.ResourceManager ResourceManager {
+        internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
                     global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("DanielWillett.ModularRpcs.Properties.Exceptions", typeof(Exceptions).Assembly);
@@ -51,7 +51,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         ///   resource lookups using this strongly typed resource class.
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-        public static global::System.Globalization.CultureInfo Culture {
+        internal static global::System.Globalization.CultureInfo Culture {
             get {
                 return resourceCulture;
             }
@@ -63,34 +63,88 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to This BinaryTypeParser has IsVariableSize set to true but didn&apos;t override GetSize..
         /// </summary>
-        public static string BinaryTypeParserNotVariableSizeGetSizeNotImplemented {
+        internal static string BinaryTypeParserNotVariableSizeGetSizeNotImplemented {
             get {
                 return ResourceManager.GetString("BinaryTypeParserNotVariableSizeGetSizeNotImplemented", resourceCulture);
             }
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Connection must be of type &apos;LoopbackRpcServerConnection&apos;..
+        ///   Looks up a localized string similar to Connection must be of type LoopbackRpcServersideRemoteConnection.
         /// </summary>
-        public static string ConnectionNotLoopback {
+        internal static string ConnectionNotLoopback {
             get {
                 return ResourceManager.GetString("ConnectionNotLoopback", resourceCulture);
             }
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to There was an error parsing the overhead for incoming message &quot;{0}&quot;..
+        /// </summary>
+        internal static string ContiguousBufferException {
+            get {
+                return ResourceManager.GetString("ContiguousBufferException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Incoming message has a size smaller than the minimum overhead size: {0} B..
+        /// </summary>
+        internal static string ContiguousBufferMessageTooShort {
+            get {
+                return ResourceManager.GetString("ContiguousBufferMessageTooShort", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Out of Memory trying to allocate {0} B for message &quot;{1}&quot;..
+        /// </summary>
+        internal static string ContiguousBufferOutOfMemory {
+            get {
+                return ResourceManager.GetString("ContiguousBufferOutOfMemory", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Overflow exception hit trying to allocate {0} B for message &quot;{1}&quot;..
+        /// </summary>
+        internal static string ContiguousBufferOverflow {
+            get {
+                return ResourceManager.GetString("ContiguousBufferOverflow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Incoming message &quot;{0}&quot; (including header data) has a size of {1} B which is greater than the max ({2} B)..
+        /// </summary>
+        internal static string ContiguousBufferOversizedMessage {
+            get {
+                return ResourceManager.GetString("ContiguousBufferOversizedMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The ContiguousBuffer failed to separate out a message segment, likely due to bad data..
         /// </summary>
-        public static string ContiguousBufferParseException {
+        internal static string ContiguousBufferParseException {
             get {
                 return ResourceManager.GetString("ContiguousBufferParseException", resourceCulture);
             }
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Incoming message ({0}) doesn&apos;t have a matching sequential size hash, it&apos;s likely the packet got corrupted somehow..
+        /// </summary>
+        internal static string ContiguousBufferSizeHashMismatch {
+            get {
+                return ResourceManager.GetString("ContiguousBufferSizeHashMismatch", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Must pass either stream data or binary data to SendDataAsync..
         /// </summary>
-        public static string DidNotPassAnyDataToRpcSendDataAsync {
+        internal static string DidNotPassAnyDataToRpcSendDataAsync {
             get {
                 return ResourceManager.GetString("DidNotPassAnyDataToRpcSendDataAsync", resourceCulture);
             }
@@ -99,7 +153,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given identifier type is not valid. Expected: &apos;{0}&apos;, actual: &apos;{1}&apos;..
         /// </summary>
-        public static string GetObjectByIdentifierIdentityTypeNotCorrectType {
+        internal static string GetObjectByIdentifierIdentityTypeNotCorrectType {
             get {
                 return ResourceManager.GetString("GetObjectByIdentifierIdentityTypeNotCorrectType", resourceCulture);
             }
@@ -108,7 +162,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier still had it&apos;s default value after the base constructor..
         /// </summary>
-        public static string InstanceIdDefaultValue {
+        internal static string InstanceIdDefaultValue {
             get {
                 return ResourceManager.GetString("InstanceIdDefaultValue", resourceCulture);
             }
@@ -117,7 +171,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier was not set in the base constructor..
         /// </summary>
-        public static string InstanceIdNotSet {
+        internal static string InstanceIdNotSet {
             get {
                 return ResourceManager.GetString("InstanceIdNotSet", resourceCulture);
             }
@@ -126,7 +180,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to An {1} of {0} and this id has already been registered..
         /// </summary>
-        public static string InstanceWithThisIdAlreadyExists {
+        internal static string InstanceWithThisIdAlreadyExists {
             get {
                 return ResourceManager.GetString("InstanceWithThisIdAlreadyExists", resourceCulture);
             }
@@ -135,7 +189,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use is not accessible or overridable by the proxy class. RPC send methods must be virtual or abstract (therefore non-static). To use internal constructors or methods, it&apos;s required to add &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; to your AssemblyInfo file..
         /// </summary>
-        public static string InternalsNotVisibleMemberAccessException {
+        internal static string InternalsNotVisibleMemberAccessException {
             get {
                 return ResourceManager.GetString("InternalsNotVisibleMemberAccessException", resourceCulture);
             }
@@ -144,16 +198,25 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The type &apos;{0}&apos; is not a valid type for the binary type parser: &apos;{1}&apos;..
         /// </summary>
-        public static string InvalidCastExceptionInvalidType {
+        internal static string InvalidCastExceptionInvalidType {
             get {
                 return ResourceManager.GetString("InvalidCastExceptionInvalidType", resourceCulture);
             }
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to This configuration object has already been used and can no longer be modified..
+        /// </summary>
+        internal static string InvalidOperationExceptionConfigLocked {
+            get {
+                return ResourceManager.GetString("InvalidOperationExceptionConfigLocked", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Must be of type &apos;IModularRpcRemoteConnection&apos;, &apos;IEnumerable&lt;IModularRpcRemoteConnection&gt;&apos;, or null..
         /// </summary>
-        public static string InvokeRpcConnectionsInvalidType {
+        internal static string InvokeRpcConnectionsInvalidType {
             get {
                 return ResourceManager.GetString("InvokeRpcConnectionsInvalidType", resourceCulture);
             }
@@ -162,7 +225,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Endpoint is not valid, expected clientside endpoint..
         /// </summary>
-        public static string LoopbackRemoteConnectionExpectedClientsideEndpoint {
+        internal static string LoopbackRemoteConnectionExpectedClientsideEndpoint {
             get {
                 return ResourceManager.GetString("LoopbackRemoteConnectionExpectedClientsideEndpoint", resourceCulture);
             }
@@ -171,7 +234,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Endpoint is not valid, expected serverside endpoint..
         /// </summary>
-        public static string LoopbackRemoteConnectionExpectedServersideEndpoint {
+        internal static string LoopbackRemoteConnectionExpectedServersideEndpoint {
             get {
                 return ResourceManager.GetString("LoopbackRemoteConnectionExpectedServersideEndpoint", resourceCulture);
             }
@@ -180,7 +243,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Method must have a declaring type..
         /// </summary>
-        public static string MethodHasNoDeclaringType {
+        internal static string MethodHasNoDeclaringType {
             get {
                 return ResourceManager.GetString("MethodHasNoDeclaringType", resourceCulture);
             }
@@ -189,7 +252,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given method &apos;{0}&apos; was not a call/invoke method. It must be decorated with the RpcSendAttribute..
         /// </summary>
-        public static string MethodNotCallMethod {
+        internal static string MethodNotCallMethod {
             get {
                 return ResourceManager.GetString("MethodNotCallMethod", resourceCulture);
             }
@@ -198,7 +261,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given method &apos;{0}&apos; was not a receive method. It must be decorated with the RpcReceiveAttribute..
         /// </summary>
-        public static string MethodNotReceiveMethod {
+        internal static string MethodNotReceiveMethod {
             get {
                 return ResourceManager.GetString("MethodNotReceiveMethod", resourceCulture);
             }
@@ -207,7 +270,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given type is not able to have an identifier..
         /// </summary>
-        public static string ObjectNotIdentifyableType {
+        internal static string ObjectNotIdentifyableType {
             get {
                 return ResourceManager.GetString("ObjectNotIdentifyableType", resourceCulture);
             }
@@ -216,7 +279,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given output buffer is not big enough to put all elements in after reading in the binary type parser: &apos;{0}&apos;..
         /// </summary>
-        public static string OutputListOutOfRangeIBinaryParser {
+        internal static string OutputListOutOfRangeIBinaryParser {
             get {
                 return ResourceManager.GetString("OutputListOutOfRangeIBinaryParser", resourceCulture);
             }
@@ -225,7 +288,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The passed output list is readonly while reading in binary type parser: &apos;{0}&apos;..
         /// </summary>
-        public static string OutputListReadOnlyIBinaryParser {
+        internal static string OutputListReadOnlyIBinaryParser {
             get {
                 return ResourceManager.GetString("OutputListReadOnlyIBinaryParser", resourceCulture);
             }
@@ -234,7 +297,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use was not found. Private constructors are not supported with RPC proxies..
         /// </summary>
-        public static string PrivatesNotVisibleMissingMethodException {
+        internal static string PrivatesNotVisibleMissingMethodException {
             get {
                 return ResourceManager.GetString("PrivatesNotVisibleMissingMethodException", resourceCulture);
             }
@@ -243,7 +306,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to This RPC connection is closed..
         /// </summary>
-        public static string RpcConnectionClosedException {
+        internal static string RpcConnectionClosedException {
             get {
                 return ResourceManager.GetString("RpcConnectionClosedException", resourceCulture);
             }
@@ -252,7 +315,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point..
         /// </summary>
-        public static string RpcEndpointNotFoundException {
+        internal static string RpcEndpointNotFoundException {
             get {
                 return ResourceManager.GetString("RpcEndpointNotFoundException", resourceCulture);
             }
@@ -261,7 +324,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point. The signature hash was a mis-match, likely caused by a version mismatch between server and client..
         /// </summary>
-        public static string RpcEndpointNotFoundExceptionMismatchHash {
+        internal static string RpcEndpointNotFoundExceptionMismatchHash {
             get {
                 return ResourceManager.GetString("RpcEndpointNotFoundExceptionMismatchHash", resourceCulture);
             }
@@ -270,7 +333,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Unable to invoke this RPC ({0}) because returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void..
         /// </summary>
-        public static string RpcFireAndForgetExceptionMultipleConnections {
+        internal static string RpcFireAndForgetExceptionMultipleConnections {
             get {
                 return ResourceManager.GetString("RpcFireAndForgetExceptionMultipleConnections", resourceCulture);
             }
@@ -279,7 +342,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Fire-and-forget methods can not return a value, such is the case in {0}..
         /// </summary>
-        public static string RpcFireAndForgetExceptionReturnValue {
+        internal static string RpcFireAndForgetExceptionReturnValue {
             get {
                 return ResourceManager.GetString("RpcFireAndForgetExceptionReturnValue", resourceCulture);
             }
@@ -288,7 +351,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to GetResult can not be explicitly called by user code..
         /// </summary>
-        public static string RpcGetResultUsageException {
+        internal static string RpcGetResultUsageException {
             get {
                 return ResourceManager.GetString("RpcGetResultUsageException", resourceCulture);
             }
@@ -297,7 +360,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to An injected parameter in an RPC receive method is not able to be injected..
         /// </summary>
-        public static string RpcInjectionException {
+        internal static string RpcInjectionException {
             get {
                 return ResourceManager.GetString("RpcInjectionException", resourceCulture);
             }
@@ -306,7 +369,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Injected parameter &apos;{0}&apos; of type {1} in method {2} is not able to be injected..
         /// </summary>
-        public static string RpcInjectionExceptionInfo {
+        internal static string RpcInjectionExceptionInfo {
             get {
                 return ResourceManager.GetString("RpcInjectionExceptionInfo", resourceCulture);
             }
@@ -315,7 +378,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Unable to find an available instance of {0} to invoke {1} with..
         /// </summary>
-        public static string RpcInjectionExceptionInstanceNull {
+        internal static string RpcInjectionExceptionInstanceNull {
             get {
                 return ResourceManager.GetString("RpcInjectionExceptionInstanceNull", resourceCulture);
             }
@@ -324,7 +387,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to A parameter in an RPC is not serializable..
         /// </summary>
-        public static string RpcInvalidParameterException {
+        internal static string RpcInvalidParameterException {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterException", resourceCulture);
             }
@@ -333,7 +396,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Generic methods are not supported, as is the case with {0}..
         /// </summary>
-        public static string RpcInvalidParameterExceptionGenericMethod {
+        internal static string RpcInvalidParameterExceptionGenericMethod {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionGenericMethod", resourceCulture);
             }
@@ -342,7 +405,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Parameter #{0}, {1} in {2} is not serializable. {3}..
         /// </summary>
-        public static string RpcInvalidParameterExceptionInfo {
+        internal static string RpcInvalidParameterExceptionInfo {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionInfo", resourceCulture);
             }
@@ -351,7 +414,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Parameter of nullable type {0} is not serializable. {1}..
         /// </summary>
-        public static string RpcInvalidParameterExceptionInfoNoNullableParamInfo {
+        internal static string RpcInvalidParameterExceptionInfoNoNullableParamInfo {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionInfoNoNullableParamInfo", resourceCulture);
             }
@@ -360,7 +423,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Parameter of type {0} is not serializable. {1}..
         /// </summary>
-        public static string RpcInvalidParameterExceptionInfoNoParamInfo {
+        internal static string RpcInvalidParameterExceptionInfoNoParamInfo {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionInfoNoParamInfo", resourceCulture);
             }
@@ -369,7 +432,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Unable to find an IBinaryTypeParser for the type.
         /// </summary>
-        public static string RpcInvalidParameterExceptionNoParserFound {
+        internal static string RpcInvalidParameterExceptionNoParserFound {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionNoParserFound", resourceCulture);
             }
@@ -378,7 +441,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Out parameters are not supported.
         /// </summary>
-        public static string RpcInvalidParameterExceptionOutMessage {
+        internal static string RpcInvalidParameterExceptionOutMessage {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionOutMessage", resourceCulture);
             }
@@ -387,7 +450,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The return type of method &apos;{0}&apos; is not supported. It must be void, RpcTask, or RpcTask&lt;T&gt;..
         /// </summary>
-        public static string RpcInvalidParameterExceptionReturnType {
+        internal static string RpcInvalidParameterExceptionReturnType {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionReturnType", resourceCulture);
             }
@@ -396,7 +459,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Type &apos;{0}&apos; can not be injected in this context.
         /// </summary>
-        public static string RpcInvalidParameterInvalidInjection {
+        internal static string RpcInvalidParameterInvalidInjection {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterInvalidInjection", resourceCulture);
             }
@@ -405,7 +468,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to There can not be more than one connection arguments. If you need more than one, pass an IEnumerable&lt;IModularRpcRemoteConnection&gt;.
         /// </summary>
-        public static string RpcInvalidParameterMultipleConnectionsInvokeMethod {
+        internal static string RpcInvalidParameterMultipleConnectionsInvokeMethod {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterMultipleConnectionsInvokeMethod", resourceCulture);
             }
@@ -414,7 +477,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to There was an error invoking the RPC..
         /// </summary>
-        public static string RpcInvocationException {
+        internal static string RpcInvocationException {
             get {
                 return ResourceManager.GetString("RpcInvocationException", resourceCulture);
             }
@@ -423,7 +486,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to There was a {1} invoking RPC &apos;{0}&apos;. {2}..
         /// </summary>
-        public static string RpcInvocationExceptionWithInvocationPointMessage {
+        internal static string RpcInvocationExceptionWithInvocationPointMessage {
             get {
                 return ResourceManager.GetString("RpcInvocationExceptionWithInvocationPointMessage", resourceCulture);
             }
@@ -432,7 +495,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to There are no connections available to perform the given action..
         /// </summary>
-        public static string RpcNoConnectionsException {
+        internal static string RpcNoConnectionsException {
             get {
                 return ResourceManager.GetString("RpcNoConnectionsException", resourceCulture);
             }
@@ -441,7 +504,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to There are no connections available in the connection lifetime when trying to invoke {0}..
         /// </summary>
-        public static string RpcNoConnectionsExceptionConnectionLifetime {
+        internal static string RpcNoConnectionsExceptionConnectionLifetime {
             get {
                 return ResourceManager.GetString("RpcNoConnectionsExceptionConnectionLifetime", resourceCulture);
             }
@@ -450,7 +513,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to This RPC caller was not inherited by a parent class. Make sure you&apos;re getting this service&apos;s object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions..
         /// </summary>
-        public static string RpcNotImplemented {
+        internal static string RpcNotImplemented {
             get {
                 return ResourceManager.GetString("RpcNotImplemented", resourceCulture);
             }
@@ -459,7 +522,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The buffer overflowed while writing an RPC&apos;s arguments..
         /// </summary>
-        public static string RpcOverflowException {
+        internal static string RpcOverflowException {
             get {
                 return ResourceManager.GetString("RpcOverflowException", resourceCulture);
             }
@@ -468,7 +531,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The buffer overflowed while writing from the binary type parser: &apos;{0}&apos;..
         /// </summary>
-        public static string RpcOverflowExceptionIBinaryTypeParser {
+        internal static string RpcOverflowExceptionIBinaryTypeParser {
             get {
                 return ResourceManager.GetString("RpcOverflowExceptionIBinaryTypeParser", resourceCulture);
             }
@@ -477,7 +540,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Failed to encode endpoint for type &apos;{0}&apos;. The method name was longer than 65535 UTF8 bytes..
         /// </summary>
-        public static string RpcOverflowExceptionMethodNameTooLong {
+        internal static string RpcOverflowExceptionMethodNameTooLong {
             get {
                 return ResourceManager.GetString("RpcOverflowExceptionMethodNameTooLong", resourceCulture);
             }
@@ -486,7 +549,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Failed to encode endpoint for type &apos;{0}&apos;, method &apos;{0}&apos;. A parameter type was longer than 65535 UTF8 bytes..
         /// </summary>
-        public static string RpcOverflowExceptionParameterTypeNameTooLong {
+        internal static string RpcOverflowExceptionParameterTypeNameTooLong {
             get {
                 return ResourceManager.GetString("RpcOverflowExceptionParameterTypeNameTooLong", resourceCulture);
             }
@@ -495,7 +558,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Failed to encode endpoint for type &apos;{0}&apos;, method &apos;{0}&apos;. There were more than 65535 arguments..
         /// </summary>
-        public static string RpcOverflowExceptionTooManyArguments {
+        internal static string RpcOverflowExceptionTooManyArguments {
             get {
                 return ResourceManager.GetString("RpcOverflowExceptionTooManyArguments", resourceCulture);
             }
@@ -504,7 +567,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Failed to encode endpoint for method &apos;{0}&apos;. The type name was longer than 65535 UTF8 bytes..
         /// </summary>
-        public static string RpcOverflowExceptionTypeNameTooLong {
+        internal static string RpcOverflowExceptionTypeNameTooLong {
             get {
                 return ResourceManager.GetString("RpcOverflowExceptionTypeNameTooLong", resourceCulture);
             }
@@ -513,7 +576,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead, likely due to bad data..
         /// </summary>
-        public static string RpcOverheadParseException {
+        internal static string RpcOverheadParseException {
             get {
                 return ResourceManager.GetString("RpcOverheadParseException", resourceCulture);
             }
@@ -522,7 +585,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the buffer was too short..
         /// </summary>
-        public static string RpcOverheadParseExceptionBufferRunOut {
+        internal static string RpcOverheadParseExceptionBufferRunOut {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionBufferRunOut", resourceCulture);
             }
@@ -531,7 +594,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the declaring type was not available on the receving end..
         /// </summary>
-        public static string RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound {
+        internal static string RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound", resourceCulture);
             }
@@ -540,7 +603,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the identifier &apos;{0}&apos; has not been created locally..
         /// </summary>
-        public static string RpcOverheadParseExceptionIdentifierNotExists {
+        internal static string RpcOverheadParseExceptionIdentifierNotExists {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionIdentifierNotExists", resourceCulture);
             }
@@ -549,7 +612,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the type code &apos;{0}&apos; is not a known type code..
         /// </summary>
-        public static string RpcOverheadParseExceptionInvalidTypeCode {
+        internal static string RpcOverheadParseExceptionInvalidTypeCode {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionInvalidTypeCode", resourceCulture);
             }
@@ -558,7 +621,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the stream ended too early..
         /// </summary>
-        public static string RpcOverheadParseExceptionStreamRunOut {
+        internal static string RpcOverheadParseExceptionStreamRunOut {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionStreamRunOut", resourceCulture);
             }
@@ -567,7 +630,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the string identifier had a length well over the max, likely due to corrupted data..
         /// </summary>
-        public static string RpcOverheadParseExceptionStringLengthOverflow {
+        internal static string RpcOverheadParseExceptionStringLengthOverflow {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionStringLengthOverflow", resourceCulture);
             }
@@ -576,7 +639,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead because the identifier type &apos;{0}&apos; couldn&apos;t be found..
         /// </summary>
-        public static string RpcOverheadParseExceptionUnknownIdentifierType {
+        internal static string RpcOverheadParseExceptionUnknownIdentifierType {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionUnknownIdentifierType", resourceCulture);
             }
@@ -585,7 +648,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a proper overhead, unknown RpcDescriptor: {0}..
         /// </summary>
-        public static string RpcOverheadParseExceptionUnknownRpcDescriptor {
+        internal static string RpcOverheadParseExceptionUnknownRpcDescriptor {
             get {
                 return ResourceManager.GetString("RpcOverheadParseExceptionUnknownRpcDescriptor", resourceCulture);
             }
@@ -594,16 +657,25 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to read a message, likely due to bad data..
         /// </summary>
-        public static string RpcParseException {
+        internal static string RpcParseException {
             get {
                 return ResourceManager.GetString("RpcParseException", resourceCulture);
             }
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to This binary type parser ({0}) is configured to not create enumerables of type {1} with a length larger than {2}..
+        /// </summary>
+        internal static string RpcParseExceptionArrayTooLongIBinaryTypeParser {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionArrayTooLongIBinaryTypeParser", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the buffer was too short..
         /// </summary>
-        public static string RpcParseExceptionBufferRunOut {
+        internal static string RpcParseExceptionBufferRunOut {
             get {
                 return ResourceManager.GetString("RpcParseExceptionBufferRunOut", resourceCulture);
             }
@@ -612,7 +684,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the buffer was too short while reading from the binary type parser: &apos;{0}&apos;..
         /// </summary>
-        public static string RpcParseExceptionBufferRunOutIBinaryTypeParser {
+        internal static string RpcParseExceptionBufferRunOutIBinaryTypeParser {
             get {
                 return ResourceManager.GetString("RpcParseExceptionBufferRunOutIBinaryTypeParser", resourceCulture);
             }
@@ -621,7 +693,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the native int value was too long for this system while reading from the binary type parser: &apos;{0}&apos;..
         /// </summary>
-        public static string RpcParseExceptionBufferRunOutNativeIntOverflow {
+        internal static string RpcParseExceptionBufferRunOutNativeIntOverflow {
             get {
                 return ResourceManager.GetString("RpcParseExceptionBufferRunOutNativeIntOverflow", resourceCulture);
             }
@@ -630,7 +702,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to RPC returned a value of type &apos;{0}&apos; when local expected it to return &apos;{1}&apos;..
         /// </summary>
-        public static string RpcParseExceptionInvalidReturnType {
+        internal static string RpcParseExceptionInvalidReturnType {
             get {
                 return ResourceManager.GetString("RpcParseExceptionInvalidReturnType", resourceCulture);
             }
@@ -639,7 +711,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the stream ended too early..
         /// </summary>
-        public static string RpcParseExceptionStreamRunOut {
+        internal static string RpcParseExceptionStreamRunOut {
             get {
                 return ResourceManager.GetString("RpcParseExceptionStreamRunOut", resourceCulture);
             }
@@ -648,7 +720,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the stream ended too early while reading from the binary type parser: &apos;{0}&apos;..
         /// </summary>
-        public static string RpcParseExceptionStreamRunOutIBinaryTypeParser {
+        internal static string RpcParseExceptionStreamRunOutIBinaryTypeParser {
             get {
                 return ResourceManager.GetString("RpcParseExceptionStreamRunOutIBinaryTypeParser", resourceCulture);
             }
@@ -657,7 +729,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to RPC returned a value of type &apos;{0}&apos;, which could not be identified. Local expected it to return &apos;{1}&apos;..
         /// </summary>
-        public static string RpcParseExceptionUnknownReturnType {
+        internal static string RpcParseExceptionUnknownReturnType {
             get {
                 return ResourceManager.GetString("RpcParseExceptionUnknownReturnType", resourceCulture);
             }
@@ -666,7 +738,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given type must be a non-sealed, non-abstract class to be used as an RPC proxy..
         /// </summary>
-        public static string TypeNotInheritable {
+        internal static string TypeNotInheritable {
             get {
                 return ResourceManager.GetString("TypeNotInheritable", resourceCulture);
             }
@@ -675,7 +747,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given type and its declaring types must be public (or internal, given &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; is in your AssemblyInfo file) to be used as an RPC proxy..
         /// </summary>
-        public static string TypeNotPublic {
+        internal static string TypeNotPublic {
             get {
                 return ResourceManager.GetString("TypeNotPublic", resourceCulture);
             }
@@ -684,7 +756,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The given type must be a reference type (not a value type)..
         /// </summary>
-        public static string TypeNotReferenceType {
+        internal static string TypeNotReferenceType {
             get {
                 return ResourceManager.GetString("TypeNotReferenceType", resourceCulture);
             }
@@ -693,7 +765,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Unity message method &apos;{0}&apos; must be non-sealed, non-private, and virtual or abstract so the proxy class can override it..
         /// </summary>
-        public static string TypeUnityMessageMethodNotVirtualOrAbstract {
+        internal static string TypeUnityMessageMethodNotVirtualOrAbstract {
             get {
                 return ResourceManager.GetString("TypeUnityMessageMethodNotVirtualOrAbstract", resourceCulture);
             }
@@ -702,7 +774,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         /// <summary>
         ///   Looks up a localized string similar to There was an unexpected error trying to find a known member: {0}..
         /// </summary>
-        public static string UnexpectedMemberAccessExceptionFailedToFind {
+        internal static string UnexpectedMemberAccessExceptionFailedToFind {
             get {
                 return ResourceManager.GetString("UnexpectedMemberAccessExceptionFailedToFind", resourceCulture);
             }
