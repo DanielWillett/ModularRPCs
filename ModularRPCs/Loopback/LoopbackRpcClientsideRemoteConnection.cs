@@ -1,12 +1,11 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
-using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Loopback;
 public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection, IModularRpcClientsideConnection
@@ -15,11 +14,13 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
     public LoopbackRpcClientsideLocalConnection Local { get; internal set; }
     public LoopbackEndpoint Endpoint { get; }
     public bool IsClosed { get; internal set; }
-    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, LoopbackRpcServersideRemoteConnection server)
+    public IRpcConnectionLifetime? Lifetime { get; }
+    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcConnectionLifetime? lifetime, LoopbackRpcServersideRemoteConnection server)
     {
         if (endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedClientsideEndpoint, nameof(endPoint));
         Endpoint = endPoint;
+        Lifetime = lifetime;
         IsClosed = true;
         Local = new LoopbackRpcClientsideLocalConnection(this, router);
         server.Client = this;
@@ -47,10 +48,13 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
     }
 
     public ValueTask DisposeAsync() => CloseAsync();
-    public ValueTask CloseAsync(CancellationToken token = default)
+    public async ValueTask CloseAsync(CancellationToken token = default)
     {
         Local.IsClosed = true;
         IsClosed = true;
-        return default;
+        if (Lifetime != null)
+        {
+            await Lifetime.TryRemoveConnection(this, CancellationToken.None);
+        }
     }
 }

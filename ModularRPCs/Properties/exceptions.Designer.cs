@@ -70,15 +70,6 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Connection must be of type LoopbackRpcServersideRemoteConnection.
-        /// </summary>
-        internal static string ConnectionNotLoopback {
-            get {
-                return ResourceManager.GetString("ConnectionNotLoopback", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to There was an error parsing the overhead for incoming message &quot;{0}&quot;..
         /// </summary>
         internal static string ContiguousBufferException {
@@ -327,6 +318,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcEndpointNotFoundExceptionMismatchHash {
             get {
                 return ResourceManager.GetString("RpcEndpointNotFoundExceptionMismatchHash", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to add new connection to IRpcConnectionLifetime..
+        /// </summary>
+        internal static string RpcExceptionUnableToAddConnectionToLifetime {
+            get {
+                return ResourceManager.GetString("RpcExceptionUnableToAddConnectionToLifetime", resourceCulture);
             }
         }
         
@@ -777,6 +777,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string UnexpectedMemberAccessExceptionFailedToFind {
             get {
                 return ResourceManager.GetString("UnexpectedMemberAccessExceptionFailedToFind", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Endpoint must have been created using WebSocketEndpoint.AsServer with a valid WebSocket object..
+        /// </summary>
+        internal static string WebSocketNotServerEndpoint {
+            get {
+                return ResourceManager.GetString("WebSocketNotServerEndpoint", resourceCulture);
             }
         }
     }

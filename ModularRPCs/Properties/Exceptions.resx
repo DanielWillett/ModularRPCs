@@ -141,9 +141,6 @@
   <data name="TypeNotReferenceType" xml:space="preserve">
     <value>The given type must be a reference type (not a value type).</value>
   </data>
-  <data name="ConnectionNotLoopback" xml:space="preserve">
-    <value>Connection must be of type LoopbackRpcServersideRemoteConnection</value>
-  </data>
   <data name="RpcConnectionClosedException" xml:space="preserve">
     <value>This RPC connection is closed.</value>
   </data>
@@ -356,5 +353,11 @@
   </data>
   <data name="ContiguousBufferException" xml:space="preserve">
     <value>There was an error parsing the overhead for incoming message "{0}".</value>
+  </data>
+  <data name="WebSocketNotServerEndpoint" xml:space="preserve">
+    <value>Endpoint must have been created using WebSocketEndpoint.AsServer with a valid WebSocket object.</value>
+  </data>
+  <data name="RpcExceptionUnableToAddConnectionToLifetime" xml:space="preserve">
+    <value>Failed to add new connection to IRpcConnectionLifetime.</value>
   </data>
 </root>

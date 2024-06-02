@@ -9,6 +9,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.WebSockets;
+
+/// <summary>
+/// Base class for the listening portion of a <see cref="System.Net.WebSockets.WebSocket"/> connection.
+/// </summary>
 public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, IContiguousBufferProgressUpdateDispatcher, IRefSafeLoggable
 {
     protected readonly CancellationTokenSource CancellationTokenSource;
@@ -25,11 +29,14 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     }
     public abstract bool IsClosed { get; }
     public IRpcRouter Router { get; }
+    public WebSocketEndpoint Endpoint { get; }
     protected internal abstract WebSocket WebSocket { get; }
+    protected internal abstract bool CanReconnect { get; }
     protected internal abstract SemaphoreSlim Semaphore { get; }
-    protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, int bufferSize)
+    protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketEndpoint endpoint, int bufferSize)
     {
         Router = router;
+        Endpoint = endpoint;
         Serializer = serializer;
         Buffer = new ContiguousBuffer((IModularRpcLocalConnection)this, bufferSize);
         CancellationTokenSource = new CancellationTokenSource();
@@ -50,22 +57,30 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
             {
                 if (WebSocket is not { State: WebSocketState.Open })
                 {
-                    this.LogInformation($"Reconnecting WebSocket because state is {WebSocket?.State.ToString() ?? "null"}.");
-                    await Semaphore.WaitAsync();
-                    try
+                    if (CanReconnect)
                     {
-                        if (WebSocket is not { State: WebSocketState.Open })
-                            await Reconnect(CancellationTokenSource.Token);
-                    }
-                    finally
-                    {
-                        Semaphore.Release();
-                    }
+                        this.LogInformation($"Reconnecting WebSocket because state is {WebSocket?.State.ToString() ?? "null"}.");
+                        await Semaphore.WaitAsync();
+                        try
+                        {
+                            if (WebSocket is not { State: WebSocketState.Open })
+                                await Reconnect(CancellationTokenSource.Token);
+                        }
+                        finally
+                        {
+                            Semaphore.Release();
+                        }
 
-                    if (WebSocket is not { State: WebSocketState.Open })
+                        if (WebSocket is not { State: WebSocketState.Open })
+                        {
+                            await Task.Delay(10000);
+                            continue;
+                        }
+                    }
+                    else
                     {
-                        await Task.Delay(10000);
-                        continue;
+                        await CloseAsync(CancellationToken.None);
+                        break;
                     }
                 }
 
@@ -108,7 +123,11 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         });
     }
 
-    protected internal abstract Task Reconnect(CancellationToken token = default);
+    /// <summary>
+    /// Force the underlying connection to reconnect.
+    /// </summary>
+    /// <exception cref="NotSupportedException">Not supported server-side.</exception>
+    public abstract Task Reconnect(CancellationToken token = default);
     internal void DisposeIntl()
     {
         try

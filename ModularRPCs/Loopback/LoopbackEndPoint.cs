@@ -29,27 +29,19 @@ public class LoopbackEndpoint(bool isServer) : IModularRpcRemoteEndpoint
     {
         if (IsServer)
         {
-            LoopbackRpcServersideRemoteConnection serverConnection = new LoopbackRpcServersideRemoteConnection(this, router, serializer);
-            _ = new LoopbackRpcClientsideRemoteConnection(CreateOtherSide(), router, serverConnection);
+            LoopbackRpcServersideRemoteConnection serverConnection = new LoopbackRpcServersideRemoteConnection(this, router, connectionLifetime);
+            _ = new LoopbackRpcClientsideRemoteConnection(CreateOtherSide(), router, lifetime: null, serverConnection);
 
-            serverConnection.IsClosed = false;
-            serverConnection.Local.IsClosed = false;
-            serverConnection.Client.IsClosed = false;
-            serverConnection.Client.Local.IsClosed = false;
+            await serverConnection.Local.InitializeConnectionAsync(token);
 
             await connectionLifetime.TryAddNewConnection(serverConnection, token);
             return serverConnection;
         }
 
-        LoopbackRpcServersideRemoteConnection serverRemote = new LoopbackRpcServersideRemoteConnection(CreateOtherSide(), router, serializer);
-        LoopbackRpcClientsideRemoteConnection clientConnection = new LoopbackRpcClientsideRemoteConnection(this, router, serverRemote);
+        LoopbackRpcServersideRemoteConnection serverRemote = new LoopbackRpcServersideRemoteConnection(CreateOtherSide(), router, lifetime: null);
+        LoopbackRpcClientsideRemoteConnection clientConnection = new LoopbackRpcClientsideRemoteConnection(this, router, connectionLifetime, serverRemote);
 
-        await serverRemote.Local.InitializeConnectionAsync(serverRemote, token);
-        
-        clientConnection.IsClosed = false;
-        clientConnection.Local.IsClosed = false;
-        clientConnection.Server.IsClosed = false;
-        clientConnection.Server.Local.IsClosed = false;
+        await serverRemote.Local.InitializeConnectionAsync(token);
 
         await connectionLifetime.TryAddNewConnection(clientConnection, token);
         return clientConnection;

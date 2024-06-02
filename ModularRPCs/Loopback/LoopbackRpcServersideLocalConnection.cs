@@ -1,6 +1,5 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,7 +8,7 @@ public class LoopbackRpcServersideLocalConnection : IModularRpcAuthoritativePare
 {
     public bool IsClosed { get; internal set; }
     public IRpcRouter Router { get; }
-    public LoopbackRpcServersideRemoteConnection Remote { get; private set; }
+    public LoopbackRpcServersideRemoteConnection Remote { get;}
     IModularRpcRemoteConnection IModularRpcLocalConnection.Remote => Remote;
     internal LoopbackRpcServersideLocalConnection(LoopbackRpcServersideRemoteConnection remote, IRpcRouter router)
     {
@@ -17,17 +16,12 @@ public class LoopbackRpcServersideLocalConnection : IModularRpcAuthoritativePare
         Router = router;
         IsClosed = true;
     }
-    public Task InitializeConnectionAsync(IModularRpcRemoteConnection connection, CancellationToken token = default)
+    public Task InitializeConnectionAsync(CancellationToken token = default)
     {
-        if (connection is not LoopbackRpcServersideRemoteConnection remote)
-            throw new ArgumentException(Properties.Exceptions.ConnectionNotLoopback, nameof(connection));
-
-        Remote = remote;
-        remote.Local = this;
         IsClosed = false;
-        remote.IsClosed = false;
-        remote.Client.IsClosed = false;
-        remote.Client.Local.IsClosed = false;
+        Remote.IsClosed = false;
+        Remote.Client.IsClosed = false;
+        Remote.Client.Local.IsClosed = false;
         return Task.CompletedTask;
     }
     public ValueTask DisposeAsync() => CloseAsync();

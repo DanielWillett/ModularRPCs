@@ -1,6 +1,5 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
-using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
@@ -15,10 +14,12 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
     public LoopbackRpcClientsideRemoteConnection Client { get; internal set; } = null!;
     public LoopbackEndpoint Endpoint { get; }
     public bool IsClosed { get; internal set; }
-    internal LoopbackRpcServersideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcSerializer serializer)
+    public IRpcConnectionLifetime? Lifetime { get; }
+    internal LoopbackRpcServersideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcConnectionLifetime? lifetime)
     {
         if (!endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedServersideEndpoint, nameof(endPoint));
+        Lifetime = lifetime;
         IsClosed = true;
         Endpoint = endPoint;
         Local = new LoopbackRpcServersideLocalConnection(this, router);
@@ -45,12 +46,15 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
     }
 
     public ValueTask DisposeAsync() => CloseAsync();
-    public ValueTask CloseAsync(CancellationToken token = default)
+    public async ValueTask CloseAsync(CancellationToken token = default)
     {
         IsClosed = true;
         Local.IsClosed = true;
         Client.IsClosed = true;
         Client.Local.IsClosed = true;
-        return default;
+        if (Lifetime != null)
+        {
+            await Lifetime.TryRemoveConnection(this, CancellationToken.None);
+        }
     }
 }

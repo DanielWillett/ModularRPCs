@@ -4,5 +4,5 @@ using System.Threading.Tasks;
 namespace DanielWillett.ModularRpcs.Abstractions;
 public interface IModularRpcAuthoritativeParentConnection : IModularRpcLocalConnection, IModularRpcServersideConnection
 {
-    Task InitializeConnectionAsync(IModularRpcRemoteConnection connection, CancellationToken token = default);
+    Task InitializeConnectionAsync(CancellationToken token = default);
 }
