@@ -1,4 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Routing;
+﻿using System.Collections.Generic;
+using System.Collections.Concurrent;
+using DanielWillett.ModularRpcs.Routing;
 
 namespace DanielWillett.ModularRpcs.Abstractions;
 
@@ -16,4 +18,9 @@ public interface IModularRpcLocalConnection : IModularRpcConnection
     /// The remote side of this connection.
     /// </summary>
     IModularRpcRemoteConnection Remote { get; }
+
+    /// <summary>
+    /// Generic string-keyed tags for third party usage. Recommended to use a <see cref="ConcurrentDictionary{TKey,TValue}"/>.
+    /// </summary>
+    IDictionary<string, object> Tags { get; }
 }

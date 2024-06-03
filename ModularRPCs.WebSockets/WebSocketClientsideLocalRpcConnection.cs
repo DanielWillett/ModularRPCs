@@ -3,6 +3,7 @@ using DanielWillett.ModularRpcs.Routing;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.WebSockets;
@@ -17,7 +18,8 @@ public class WebSocketClientsideLocalRpcConnection : WebSocketLocalRpcConnection
     protected internal override bool CanReconnect => true;
     public override bool IsClosed => Remote.IsClosed;
     internal WebSocketClientsideRemoteRpcConnection Remote { get; }
-    internal WebSocketClientsideLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketClientsideRemoteRpcConnection remote, int bufferSize = 4096) : base(router, serializer, remote.Endpoint, bufferSize)
+    internal WebSocketClientsideLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketClientsideRemoteRpcConnection remote, bool autoReconnect, PlateauingDelay delaySettings, int bufferSize = 4096)
+        : base(router, serializer, remote.Endpoint, bufferSize, autoReconnect, delaySettings)
     {
         Remote = remote;
         Remote.Local = this;

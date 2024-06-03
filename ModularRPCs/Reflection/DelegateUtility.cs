@@ -13,7 +13,7 @@ internal static class DelegateUtility
                                   ? nestParent.DefineNestedType(name, TypeAttributes.NestedPublic | TypeAttributes.Sealed | TypeAttributes.AutoClass, typeof(MulticastDelegate))
                                   : proxyGen.ModuleBuilder.DefineType(name, TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.AutoClass, typeof(MulticastDelegate));
         
-        if (generics != null)
+        if (generics is { Length: > 0 })
         {
             GenericTypeParameterBuilder[] gens = typeBuilder.DefineGenericParameters(generics);
             for (int i = 0; i < paramTypes.Length; i++)

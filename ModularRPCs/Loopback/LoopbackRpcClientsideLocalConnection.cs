@@ -1,4 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +11,7 @@ public class LoopbackRpcClientsideLocalConnection : IModularRpcClientsideConnect
     public bool IsClosed { get; internal set; }
     public IRpcRouter Router { get; }
     public LoopbackRpcClientsideRemoteConnection Remote { get; }
+    public IDictionary<string, object> Tags { get; } = new ConcurrentDictionary<string, object>();
     IModularRpcRemoteConnection IModularRpcLocalConnection.Remote => Remote;
     internal LoopbackRpcClientsideLocalConnection(LoopbackRpcClientsideRemoteConnection remote, IRpcRouter router)
     {

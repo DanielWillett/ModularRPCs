@@ -51,8 +51,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     public IRpcSerializer Serializer => _defaultSerializer;
     public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime)
     {
-        _defaultSerializer = defaultSerializer;
-        _connectionLifetime = lifetime;
+        _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
+        _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
     }
     private ulong GetNewMessageId()
     {
@@ -233,13 +233,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 int len = rawData.Length - (int)primitiveOverhead.OverheadSize;
                 fixed (byte* ptr = &rawData[(int)primitiveOverhead.OverheadSize])
                 {
-                    _listeningTasks.TryGetValue(primitiveOverhead.MessageId, out task);
+                    _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     IRpcInvocationPoint? invPt = task?.Endpoint;
                     index = 0;
                     ex = ReadException(invPt, ptr, (uint)len, ref index, serializer);
                 }
 
                 task?.TriggerComplete(ex);
+                FinishListening(task);
                 break;
 
             case OvhCodeIdValueRtnSuccess:
@@ -247,7 +248,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 len = rawData.Length - (int)primitiveOverhead.OverheadSize;
                 fixed (byte* ptr = &rawData[(int)primitiveOverhead.OverheadSize])
                 {
-                    _listeningTasks.TryGetValue(primitiveOverhead.MessageId, out task);
+                    _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     index = 0;
                     rtn = ReadReturnValue(serializer, task, ptr, len, ref index);
                 }
@@ -267,12 +268,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         Accessor.ExceptionFormatter.Format(taskType))
                     ));
                 }
-
+                FinishListening(task);
                 break;
 
             case OvhCodeIdVoidRtnSuccess:
-                _listeningTasks.TryGetValue(primitiveOverhead.MessageId, out task);
+                _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                 task?.TriggerComplete(null);
+                FinishListening(task);
                 break;
         }
 
@@ -297,15 +299,16 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 return InvokeInvocationPoint(overhead.Rpc, overhead, serializer, stream, token);
 
             case OvhCodeIdException:
-                _listeningTasks.TryGetValue(primitiveOverhead.MessageId, out RpcTask? task);
+                _listeningTasks.TryRemove(primitiveOverhead.MessageId, out RpcTask? task);
                 IRpcInvocationPoint? invPt = task?.Endpoint;
                 Exception ex = ReadException(invPt, stream, serializer);
 
                 task?.TriggerComplete(ex);
+                FinishListening(task);
                 break;
 
             case OvhCodeIdValueRtnSuccess:
-                _listeningTasks.TryGetValue(primitiveOverhead.MessageId, out task);
+                _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                 object? rtn = ReadReturnValue(serializer, task, stream);
 
                 if (rtn == null || task == null)
@@ -323,12 +326,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         Accessor.ExceptionFormatter.Format(taskType))
                     ));
                 }
-
+                FinishListening(task);
                 break;
 
             case OvhCodeIdVoidRtnSuccess:
-                _listeningTasks.TryGetValue(primitiveOverhead.MessageId, out task);
+                _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                 task?.TriggerComplete(null);
+                FinishListening(task);
                 break;
         }
 
@@ -362,7 +366,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
 
             rpcTask = !callMethodInfo.IsFireAndForget
-                ? CreateRpcTaskListener(sourceMethodHandle, messageId) 
+                ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId) 
                 : new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
 
             int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
@@ -382,6 +386,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 {
                     HandleInvokeException(sourceMethodHandle, ex);
                     rpcTask.TriggerComplete(ex);
+                    FinishListening(rpcTask);
                 }
 
                 return true;
@@ -400,7 +405,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         if (connections is IModularRpcRemoteConnection remote1)
         {
             rpcTask = !callMethodInfo.IsFireAndForget
-                ? CreateRpcTaskListener(sourceMethodHandle, messageId)
+                ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
                 : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
 
             try
@@ -414,6 +419,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             {
                 HandleInvokeException(sourceMethodHandle, ex);
                 rpcTask.TriggerComplete(ex);
+                FinishListening(rpcTask);
             }
 
             return rpcTask;
@@ -442,6 +448,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             {
                 HandleInvokeException(sourceMethodHandle, ex);
                 rpcTask.TriggerComplete(ex);
+                FinishListening(rpcTask);
             }
         }
 
@@ -450,6 +457,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         // maybe throw exceptions if all threw
         rpcTask.TriggerComplete(null);
+        FinishListening(rpcTask);
         return rpcTask;
     }
     private ValueTask HandleValueTaskReply(ValueTask valueTask, RpcOverhead overhead)
@@ -478,16 +486,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 if (rpcTask is { IsFireAndForget: true })
                 {
                     rpcTask.TriggerComplete(null);
+                    FinishListening(rpcTask);
                 }
             }
             catch (Exception ex)
             {
                 HandleInvokeException(sourceMethodHandle, ex);
                 rpcTask?.TriggerComplete(ex);
+                FinishListening(rpcTask);
             }
         };
     }
-    private RpcTask CreateRpcTaskListener(RuntimeMethodHandle sourceMethodHandle, ulong messageId)
+    private RpcTask CreateRpcTaskListener(in RpcCallMethodInfo callInfo, RuntimeMethodHandle sourceMethodHandle, ulong messageId)
     {
         MethodInfo method = (MethodBase.GetMethodFromHandle(sourceMethodHandle) as MethodInfo)!;
 
@@ -499,12 +509,46 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         
         rpcTask.MessageId = messageId;
         rpcTask.SubMessageId = 1;
-        StartListening(rpcTask, messageId);
+        StartListening(rpcTask, messageId, callInfo.Timeout);
         return rpcTask;
     }
-    private void StartListening(RpcTask rpcTask, ulong messageId)
+    private static void FinishListening(RpcTask? rpcTask)
+    {
+        if (rpcTask == null)
+            return;
+
+        Timer? timer = Interlocked.Exchange(ref rpcTask.Timer, null);
+        if (timer == null)
+            return;
+
+        try
+        {
+            timer.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+        catch (ObjectDisposedException)
+        {
+            // ignored
+        }
+        timer.Dispose();
+    }
+    private void StartListening(RpcTask rpcTask, ulong messageId, TimeSpan timeout)
     {
         _listeningTasks.TryAdd(messageId, rpcTask);
+        rpcTask.Timeout = timeout;
+        if (timeout == Timeout.InfiniteTimeSpan || rpcTask.IsFireAndForget)
+            return;
+        
+        rpcTask.Timer = new Timer(RpcTaskTimerCompleted, rpcTask, timeout, Timeout.InfiniteTimeSpan);
+    }
+    private void RpcTaskTimerCompleted(object state)
+    {
+        if (state is not RpcTask rpcTask)
+            return;
+
+        if (!rpcTask.GetAwaiter().IsCompleted && _listeningTasks.TryRemove(rpcTask.MessageId, out _))
+            rpcTask.TriggerComplete(new RpcTimeoutException(rpcTask.Timeout));
+
+        FinishListening(rpcTask);
     }
     private void HandleInvokeException(RuntimeMethodHandle sourceMethodHandle, Exception ex)
     {
@@ -712,6 +756,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         !hasName ? hasId ? typeId.ToString(CultureInfo.InvariantCulture) : "unknown type" : typeName,
                         Accessor.ExceptionFormatter.Format(taskType)))
                 );
+                FinishListening(task);
             }
 
             if (type == null)
@@ -731,6 +776,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             task.TriggerComplete(new RpcParseException(
                 string.Format(Properties.Exceptions.RpcParseExceptionUnknownReturnType, tc.ToString(), Accessor.ExceptionFormatter.Format(taskType))
             ));
+            FinishListening(task);
         }
 
         index += (uint)bytesRead;
@@ -811,6 +857,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         !hasName ? hasId ? typeId.ToString(CultureInfo.InvariantCulture) : "unknown type" : typeName,
                         Accessor.ExceptionFormatter.Format(taskType)))
                 );
+                FinishListening(task);
             }
 
             if (type == null)
@@ -830,7 +877,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         task.TriggerComplete(new RpcParseException(
                 string.Format(Properties.Exceptions.RpcParseExceptionUnknownReturnType, tc.ToString(), Accessor.ExceptionFormatter.Format(taskType))
             ));
-
+        FinishListening(task);
         return rtnValue;
     }
 

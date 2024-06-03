@@ -45,6 +45,7 @@ public static class LoggingExtensions
             // ignored
         }
     }
+
     /// <summary>
     /// Tells an <see cref="IRefSafeLoggable"/> object to use <paramref name="logger"/> to log messages.
     /// </summary>
@@ -53,6 +54,17 @@ public static class LoggingExtensions
     {
         SwapLoggerAndDispose(loggable, logger ?? throw new ArgumentNullException(nameof(logger)));
         loggable.LoggerType = LoggerType.ReflectionToolsLogger;
+    }
+
+    /// <summary>
+    /// Tells an <see cref="IRefSafeLoggable"/> object to use another <see cref="IRefSafeLoggable"/> to log messages.
+    /// </summary>
+    /// <remarks>It is possible to dead-lock execution if loggers have circular references. Avoid this at all costs.</remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="logger"/> is <see langword="null"/>.</exception>
+    public static void SetLogger(this IRefSafeLoggable loggable, IRefSafeLoggable logger)
+    {
+        SwapLoggerAndDispose(loggable, logger ?? throw new ArgumentNullException(nameof(logger)));
+        loggable.LoggerType = LoggerType.RefSafeLoggable;
     }
 
     /// <summary>
@@ -108,57 +120,67 @@ public static class LoggingExtensions
     /// </summary>
     public static void LogInformation(this IRefSafeLoggable loggable, Exception? ex, string? message)
     {
-        LoggerType type = loggable.LoggerType;
-        object? logger = loggable.Logger;
-        switch (type)
+        while (true)
         {
-            default:
-                return;
-
-            case LoggerType.Console:
-                string hdr = "[INF] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
-                if (message != null)
-                    hdr += " " + message;
-                if (ex != null)
-                    hdr += Environment.NewLine + ex;
-                Console.WriteLine(hdr);
-                return;
-
-            case LoggerType.Callback:
-                if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
-                    callback(loggable.GetType(), LogSeverity.Information, ex, message);
-
-                return;
-
-            case LoggerType.MicrosoftLogger:
-                LogMsLogger(logger, LogSeverity.Information, ex, message);
-                return;
-
-            case LoggerType.ReflectionToolsLogger:
-                if (logger is not IReflectionToolsLogger reflLogger)
+            LoggerType type = loggable.LoggerType;
+            object? logger = loggable.Logger;
+            switch (type)
+            {
+                default:
                     return;
 
-                string src = Accessor.Formatter.Format(loggable.GetType());
-                if (message != null)
-                    reflLogger.LogInfo(src, message);
-                if (ex != null)
-                    reflLogger.LogInfo(src, ex.ToString());
-                return;
-
-            case LoggerType.ReflectionToolsAccessor:
-                if (logger is not IAccessor accessor)
+                case LoggerType.Console:
+                    string hdr = "[INF] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
+                    if (message != null)
+                        hdr += " " + message;
+                    if (ex != null)
+                        hdr += Environment.NewLine + ex;
+                    Console.WriteLine(hdr);
                     return;
 
-                reflLogger = accessor.Logger!;
-                if (reflLogger == null)
+                case LoggerType.Callback:
+                    if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
+                        callback(loggable.GetType(), LogSeverity.Information, ex, message);
+
                     return;
 
-                src = accessor.Formatter.Format(loggable.GetType());
-                if (message != null)
-                    reflLogger.LogInfo(src, message);
-                if (ex != null)
-                    reflLogger.LogInfo(src, ex.ToString());
-                return;
+                case LoggerType.MicrosoftLogger:
+                    LogMsLogger(logger, LogSeverity.Information, ex, message);
+                    return;
+
+                case LoggerType.ReflectionToolsLogger:
+                    if (logger is not IReflectionToolsLogger reflLogger)
+                        return;
+
+                    string src = Accessor.Formatter.Format(loggable.GetType());
+                    if (message != null)
+                        reflLogger.LogInfo(src, message);
+                    if (ex != null)
+                        reflLogger.LogInfo(src, ex.ToString());
+                    return;
+
+                case LoggerType.ReflectionToolsAccessor:
+                    if (logger is not IAccessor accessor)
+                        return;
+
+                    reflLogger = accessor.Logger!;
+                    if (reflLogger == null)
+                        return;
+
+                    src = accessor.Formatter.Format(loggable.GetType());
+                    if (message != null)
+                        reflLogger.LogInfo(src, message);
+                    if (ex != null)
+                        reflLogger.LogInfo(src, ex.ToString());
+                    return;
+
+                case LoggerType.RefSafeLoggable:
+                    if (logger is not IRefSafeLoggable loggable2)
+                        return;
+
+                    loggable = loggable2;
+                    break;
+            }
         }
     }
 
@@ -172,57 +194,67 @@ public static class LoggingExtensions
     /// </summary>
     public static void LogDebug(this IRefSafeLoggable loggable, Exception? ex, string? message)
     {
-        LoggerType type = loggable.LoggerType;
-        object? logger = loggable.Logger;
-        switch (type)
+        while (true)
         {
-            default:
-                return;
-
-            case LoggerType.Console:
-                string hdr = "[DBG] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
-                if (message != null)
-                    hdr += " " + message;
-                if (ex != null)
-                    hdr += Environment.NewLine + ex;
-                Console.WriteLine(hdr);
-                return;
-
-            case LoggerType.Callback:
-                if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
-                    callback(loggable.GetType(), LogSeverity.Debug, ex, message);
-
-                return;
-
-            case LoggerType.MicrosoftLogger:
-                LogMsLogger(logger, LogSeverity.Debug, ex, message);
-                return;
-
-            case LoggerType.ReflectionToolsLogger:
-                if (logger is not IReflectionToolsLogger reflLogger)
+            LoggerType type = loggable.LoggerType;
+            object? logger = loggable.Logger;
+            switch (type)
+            {
+                default:
                     return;
 
-                string src = Accessor.Formatter.Format(loggable.GetType());
-                if (message != null)
-                    reflLogger.LogDebug(src, message);
-                if (ex != null)
-                    reflLogger.LogDebug(src, ex.ToString());
-                return;
-
-            case LoggerType.ReflectionToolsAccessor:
-                if (logger is not IAccessor accessor)
+                case LoggerType.Console:
+                    string hdr = "[DBG] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
+                    if (message != null)
+                        hdr += " " + message;
+                    if (ex != null)
+                        hdr += Environment.NewLine + ex;
+                    Console.WriteLine(hdr);
                     return;
 
-                reflLogger = accessor.Logger!;
-                if (reflLogger == null)
+                case LoggerType.Callback:
+                    if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
+                        callback(loggable.GetType(), LogSeverity.Debug, ex, message);
+
                     return;
 
-                src = accessor.Formatter.Format(loggable.GetType());
-                if (message != null)
-                    reflLogger.LogDebug(src, message);
-                if (ex != null)
-                    reflLogger.LogDebug(src, ex.ToString());
-                return;
+                case LoggerType.MicrosoftLogger:
+                    LogMsLogger(logger, LogSeverity.Debug, ex, message);
+                    return;
+
+                case LoggerType.ReflectionToolsLogger:
+                    if (logger is not IReflectionToolsLogger reflLogger)
+                        return;
+
+                    string src = Accessor.Formatter.Format(loggable.GetType());
+                    if (message != null)
+                        reflLogger.LogDebug(src, message);
+                    if (ex != null)
+                        reflLogger.LogDebug(src, ex.ToString());
+                    return;
+
+                case LoggerType.ReflectionToolsAccessor:
+                    if (logger is not IAccessor accessor)
+                        return;
+
+                    reflLogger = accessor.Logger!;
+                    if (reflLogger == null)
+                        return;
+
+                    src = accessor.Formatter.Format(loggable.GetType());
+                    if (message != null)
+                        reflLogger.LogDebug(src, message);
+                    if (ex != null)
+                        reflLogger.LogDebug(src, ex.ToString());
+                    return;
+
+                case LoggerType.RefSafeLoggable:
+                    if (logger is not IRefSafeLoggable loggable2)
+                        return;
+
+                    loggable = loggable2;
+                    break;
+            }
         }
     }
 
@@ -236,57 +268,67 @@ public static class LoggingExtensions
     /// </summary>
     public static void LogWarning(this IRefSafeLoggable loggable, Exception? ex, string? message)
     {
-        LoggerType type = loggable.LoggerType;
-        object? logger = loggable.Logger;
-        switch (type)
+        while (true)
         {
-            default:
-                return;
-
-            case LoggerType.Console:
-                string hdr = "[WRN] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
-                if (message != null)
-                    hdr += " " + message;
-                if (ex != null)
-                    hdr += Environment.NewLine + ex;
-                Console.WriteLine(hdr);
-                return;
-
-            case LoggerType.Callback:
-                if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
-                    callback(loggable.GetType(), LogSeverity.Warning, ex, message);
-
-                return;
-
-            case LoggerType.MicrosoftLogger:
-                LogMsLogger(logger, LogSeverity.Warning, ex, message);
-                return;
-
-            case LoggerType.ReflectionToolsLogger:
-                if (logger is not IReflectionToolsLogger reflLogger)
+            LoggerType type = loggable.LoggerType;
+            object? logger = loggable.Logger;
+            switch (type)
+            {
+                default:
                     return;
 
-                string src = Accessor.Formatter.Format(loggable.GetType());
-                if (message != null)
-                    reflLogger.LogWarning(src, message);
-                if (ex != null)
-                    reflLogger.LogWarning(src, ex.ToString());
-                return;
-
-            case LoggerType.ReflectionToolsAccessor:
-                if (logger is not IAccessor accessor)
+                case LoggerType.Console:
+                    string hdr = "[WRN] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
+                    if (message != null)
+                        hdr += " " + message;
+                    if (ex != null)
+                        hdr += Environment.NewLine + ex;
+                    Console.WriteLine(hdr);
                     return;
 
-                reflLogger = accessor.Logger!;
-                if (reflLogger == null)
+                case LoggerType.Callback:
+                    if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
+                        callback(loggable.GetType(), LogSeverity.Warning, ex, message);
+
                     return;
 
-                src = accessor.Formatter.Format(loggable.GetType());
-                if (message != null)
-                    reflLogger.LogWarning(src, message);
-                if (ex != null)
-                    reflLogger.LogWarning(src, ex.ToString());
-                return;
+                case LoggerType.MicrosoftLogger:
+                    LogMsLogger(logger, LogSeverity.Warning, ex, message);
+                    return;
+
+                case LoggerType.ReflectionToolsLogger:
+                    if (logger is not IReflectionToolsLogger reflLogger)
+                        return;
+
+                    string src = Accessor.Formatter.Format(loggable.GetType());
+                    if (message != null)
+                        reflLogger.LogWarning(src, message);
+                    if (ex != null)
+                        reflLogger.LogWarning(src, ex.ToString());
+                    return;
+
+                case LoggerType.ReflectionToolsAccessor:
+                    if (logger is not IAccessor accessor)
+                        return;
+
+                    reflLogger = accessor.Logger!;
+                    if (reflLogger == null)
+                        return;
+
+                    src = accessor.Formatter.Format(loggable.GetType());
+                    if (message != null)
+                        reflLogger.LogWarning(src, message);
+                    if (ex != null)
+                        reflLogger.LogWarning(src, ex.ToString());
+                    return;
+
+                case LoggerType.RefSafeLoggable:
+                    if (logger is not IRefSafeLoggable loggable2)
+                        return;
+
+                    loggable = loggable2;
+                    break;
+            }
         }
     }
 
@@ -300,49 +342,58 @@ public static class LoggingExtensions
     /// </summary>
     public static void LogError(this IRefSafeLoggable loggable, Exception? ex, string? message)
     {
-        LoggerType type = loggable.LoggerType;
-        object? logger = loggable.Logger;
-        switch (type)
+        while (true)
         {
-            default:
-                return;
-
-            case LoggerType.Console:
-                string hdr = "[ERR] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
-                if (message != null)
-                    hdr += " " + message;
-                if (ex != null)
-                    hdr += Environment.NewLine + ex;
-                Console.WriteLine(hdr);
-                return;
-
-            case LoggerType.Callback:
-                if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
-                    callback(loggable.GetType(), LogSeverity.Error, ex, message);
-
-                return;
-
-            case LoggerType.MicrosoftLogger:
-                LogMsLogger(logger, LogSeverity.Error, ex, message);
-                return;
-
-            case LoggerType.ReflectionToolsLogger:
-                if (logger is not IReflectionToolsLogger reflLogger)
-                    return;
-                
-                reflLogger.LogError(Accessor.Formatter.Format(loggable.GetType()), ex, message);
-                return;
-
-            case LoggerType.ReflectionToolsAccessor:
-                if (logger is not IAccessor accessor)
+            LoggerType type = loggable.LoggerType;
+            object? logger = loggable.Logger;
+            switch (type)
+            {
+                default:
                     return;
 
-                reflLogger = accessor.Logger!;
-                if (reflLogger == null)
+                case LoggerType.Console:
+                    string hdr = "[ERR] [" + Accessor.Formatter.Format(loggable.GetType()) + "]";
+                    if (message != null)
+                        hdr += " " + message;
+                    if (ex != null)
+                        hdr += Environment.NewLine + ex;
+                    Console.WriteLine(hdr);
                     return;
 
-                reflLogger.LogError(accessor.Formatter.Format(loggable.GetType()), ex, message);
-                return;
+                case LoggerType.Callback:
+                    if (logger is Action<Type, LogSeverity, Exception?, string?> callback)
+                        callback(loggable.GetType(), LogSeverity.Error, ex, message);
+
+                    return;
+
+                case LoggerType.MicrosoftLogger:
+                    LogMsLogger(logger, LogSeverity.Error, ex, message);
+                    return;
+
+                case LoggerType.ReflectionToolsLogger:
+                    if (logger is not IReflectionToolsLogger reflLogger)
+                        return;
+
+                    reflLogger.LogError(Accessor.Formatter.Format(loggable.GetType()), ex, message);
+                    return;
+
+                case LoggerType.ReflectionToolsAccessor:
+                    if (logger is not IAccessor accessor)
+                        return;
+
+                    reflLogger = accessor.Logger!;
+                    if (reflLogger == null)
+                        return;
+
+                    reflLogger.LogError(accessor.Formatter.Format(loggable.GetType()), ex, message);
+                    return;
+
+                case LoggerType.RefSafeLoggable:
+                    if (logger is not IRefSafeLoggable loggable2)
+                        return;
+                    loggable = loggable2;
+                    break;
+            }
         }
     }
     private static void LogMsLogger(object? logger, LogSeverity severity, Exception? ex, string? message)

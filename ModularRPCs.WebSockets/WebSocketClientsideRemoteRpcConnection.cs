@@ -40,10 +40,12 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
         await Semaphore.WaitAsync(10000, token);
+        bool alreadyDisposed = true;
         try
         {
             if (Interlocked.Exchange(ref _disp, 1) != 0)
                 return;
+            alreadyDisposed = false;
             Local.DisposeIntl();
             IsClosed = true;
             if (WebSocket.State == WebSocketState.Open)
@@ -62,7 +64,10 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         finally
         {
             Semaphore.Release();
-            await Lifetime.TryRemoveConnection(this, CancellationToken.None);
+            if (!alreadyDisposed)
+            {
+                await Lifetime.TryRemoveConnection(this, CancellationToken.None);
+            }
         }
     }
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;

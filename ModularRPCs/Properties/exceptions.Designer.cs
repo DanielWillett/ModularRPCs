@@ -70,6 +70,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given component type, {0}, was not a Unity type..
+        /// </summary>
+        internal static string ComponentTypeNotUnityType {
+            get {
+                return ResourceManager.GetString("ComponentTypeNotUnityType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to There was an error parsing the overhead for incoming message &quot;{0}&quot;..
         /// </summary>
         internal static string ContiguousBufferException {
@@ -178,6 +187,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given type to instantiate, {0}, is not a Unity type..
+        /// </summary>
+        internal static string InstantiatedTypeNotUnityType {
+            get {
+                return ResourceManager.GetString("InstantiatedTypeNotUnityType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use is not accessible or overridable by the proxy class. RPC send methods must be virtual or abstract (therefore non-static). To use internal constructors or methods, it&apos;s required to add &apos;[assembly: InternalsVisibleTo(&quot;ModularRPCs.Proxy&quot;)]&apos; to your AssemblyInfo file..
         /// </summary>
         internal static string InternalsNotVisibleMemberAccessException {
@@ -255,6 +273,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string MethodNotReceiveMethod {
             get {
                 return ResourceManager.GetString("MethodNotReceiveMethod", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to This object must have been passed an IServiceProvider when it was created..
+        /// </summary>
+        internal static string NoServiceProvider {
+            get {
+                return ResourceManager.GetString("NoServiceProvider", resourceCulture);
             }
         }
         
@@ -732,6 +759,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcParseExceptionUnknownReturnType {
             get {
                 return ResourceManager.GetString("RpcParseExceptionUnknownReturnType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RPC invocation timed out after {0} with no response..
+        /// </summary>
+        internal static string RpcTimeoutException {
+            get {
+                return ResourceManager.GetString("RpcTimeoutException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to A service of type &apos;{0}&apos; wasn&apos;t available in the service provider..
+        /// </summary>
+        internal static string ServiceNotFound {
+            get {
+                return ResourceManager.GetString("ServiceNotFound", resourceCulture);
             }
         }
         

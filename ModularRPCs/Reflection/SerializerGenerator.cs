@@ -38,6 +38,8 @@ internal sealed class SerializerGenerator
         typeof(RpcFlags)
     ];
 
+    // ReSharper disable once UseArrayEmptyMethod (no reason to make new instance of static class for GenericTypeParameterBuilder)
+    private static readonly GenericTypeParameterBuilder[] EmptyTypeParams = new GenericTypeParameterBuilder[0];
     private readonly ConcurrentDictionary<int, Type> _argBuilders = new ConcurrentDictionary<int, Type>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, int> _methodSigHashCache = new ConcurrentDictionary<RuntimeMethodHandle, int>();
     private readonly ProxyGenerator _proxyGenerator;
@@ -66,14 +68,24 @@ internal sealed class SerializerGenerator
         TypeBuilder typeBuilder = _proxyGenerator.ModuleBuilder.DefineType("SerializerType" + typePrefix, TypeAttributes.Abstract | TypeAttributes.Sealed | TypeAttributes.Public);
 
         string[] genParamNames = new string[typeCt];
-        for (int i = 0; i < typeCt; ++i)
-            genParamNames[i] = "T" + i.ToString(CultureInfo.InvariantCulture);
+        GenericTypeParameterBuilder[] genParams;
+        Type[] currentGenericParameters;
+        if (typeCt != 0)
+        {
+            for (int i = 0; i < typeCt; ++i)
+                genParamNames[i] = "T" + i.ToString(CultureInfo.InvariantCulture);
 
-        GenericTypeParameterBuilder[] genParams = typeBuilder.DefineGenericParameters(genParamNames);
+            genParams = typeBuilder.DefineGenericParameters(genParamNames);
 
-        Type[] currentGenericParameters = new Type[genParams.Length];
-        for (int i = 0; i < genParams.Length; ++i)
-            currentGenericParameters[i] = genParams[i].UnderlyingSystemType;
+            currentGenericParameters = new Type[genParams.Length];
+            for (int i = 0; i < genParams.Length; ++i)
+                currentGenericParameters[i] = genParams[i].UnderlyingSystemType;
+        }
+        else
+        {
+            genParams = EmptyTypeParams;
+            currentGenericParameters = Type.EmptyTypes;
+        }
 
         ConstructorBuilder typeInitializer = typeBuilder.DefineTypeInitializer();
         
@@ -119,7 +131,9 @@ internal sealed class SerializerGenerator
         typeBuilder.DefineField(WriteToBytesMethodField, writeBytesDelegateType, FieldAttributes.Static | FieldAttributes.Public);
         typeBuilder.DefineField(WriteToStreamMethodField, writeStreamDelegateType, FieldAttributes.Static | FieldAttributes.Public);
 
-        Type thisType = typeBuilder.MakeGenericType(currentGenericParameters);
+        Type thisType = currentGenericParameters.Length > 0
+            ? typeBuilder.MakeGenericType(currentGenericParameters)
+            : typeBuilder;
 
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
         {
@@ -691,7 +705,18 @@ internal sealed class SerializerGenerator
     }
     private static object? InjectFromServiceProvider(object? serviceProvider, Type type)
     {
-        return serviceProvider != null ? InjectFromServiceProviderIntl(serviceProvider, type) : null;
+        if (serviceProvider is not IEnumerable<IServiceProvider> multiple)
+        {
+            return serviceProvider is IServiceProvider ? InjectFromServiceProviderIntl(serviceProvider, type) : null;
+        }
+
+        foreach (IServiceProvider provider in multiple)
+        {
+            if (provider != null)
+                return InjectFromServiceProviderIntl(serviceProvider, type);
+        }
+
+        return null;
     }
     private static object InjectFromServiceProviderIntl(object serviceProvider, Type type)
     {

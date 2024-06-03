@@ -1,4 +1,5 @@
-﻿using DanielWillett.ReflectionTools.Emit;
+﻿using System;
+using DanielWillett.ReflectionTools.Emit;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -10,17 +11,19 @@ public struct RpcCallMethodInfo
     public uint KnownId;
     public RpcEndpointTarget Endpoint;
     public bool HasIdentifier;
+    public TimeSpan Timeout;
 
     private static readonly FieldInfo HasIdentifierField = typeof(RpcCallMethodInfo).GetField(nameof(HasIdentifier), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo IsFireAndForgetField = typeof(RpcCallMethodInfo).GetField(nameof(IsFireAndForget), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo SignatureHashField = typeof(RpcCallMethodInfo).GetField(nameof(SignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo EndpointField = typeof(RpcCallMethodInfo).GetField(nameof(Endpoint), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo KnownIdField = typeof(RpcCallMethodInfo).GetField(nameof(KnownId), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo TimeoutField = typeof(RpcCallMethodInfo).GetField(nameof(Timeout), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
 
     /// <summary>
     /// Create a <see cref="RpcCallMethodInfo"/> from a call/invoke method.
     /// </summary>
-    public static RpcCallMethodInfo FromCallMethod(MethodInfo method, bool isFireAndForget)
+    public static RpcCallMethodInfo FromCallMethod(ProxyGenerator generator, MethodInfo method, bool isFireAndForget)
     {
         RpcCallMethodInfo info = default;
         info.IsFireAndForget = isFireAndForget;
@@ -28,6 +31,7 @@ public struct RpcCallMethodInfo
         info.Endpoint = RpcEndpointTarget.FromCallMethod(method);
         info.HasIdentifier = method is { IsStatic: false, DeclaringType: not null }
                              && method.DeclaringType.GetField(ProxyGenerator.Instance.IdentifierFieldName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) != null;
+        info.Timeout = TypeUtility.GetTimeoutFromMethod(method, generator.DefaultTimeout);
         return info;
     }
 
@@ -54,6 +58,11 @@ public struct RpcCallMethodInfo
         il.Emit(OpCodes.Dup);
         il.Emit(OpCodes.Ldc_I4, unchecked( (int)KnownId ));
         il.Emit(OpCodes.Stfld, KnownIdField);
+
+        il.Emit(OpCodes.Dup);
+        il.Emit(OpCodes.Ldc_I8, Timeout.Ticks);
+        il.Emit(OpCodes.Newobj, CommonReflectionCache.TimeSpanTicksCtor);
+        il.Emit(OpCodes.Stfld, TimeoutField);
 
         // il.Emit(OpCodes.Dup);
         il.Emit(OpCodes.Ldflda, EndpointField);

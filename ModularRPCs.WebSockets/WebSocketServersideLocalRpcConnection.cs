@@ -26,7 +26,7 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
     protected internal override WebSocket WebSocket => Remote.WebSocketIntl;
     protected internal override SemaphoreSlim Semaphore => Remote.Semaphore;
     internal WebSocketServersideLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketEndpoint endpoint, int bufferSize)
-        : base(router, serializer, endpoint, bufferSize)
+        : base(router, serializer, endpoint, bufferSize, false, default)
     {
         _awaiter = new WebSocketServersideLocalRpcConnectionAwaiter(this);
         _isClosed = true;
@@ -35,6 +35,7 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
     {
         Remote.IsClosed = false;
         _isClosed = false;
+        TryStartListening();
         return Task.CompletedTask;
     }
 

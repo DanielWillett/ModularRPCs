@@ -33,7 +33,7 @@ public class SampleClass : IRpcObject<int>
         Console.WriteLine($"Called base ctor ({test1}, {test2})");
     }
 
-    [RpcTimeout(10 * RpcTimeoutAttribute.Seconds)]
+    [RpcTimeout(10 * Timeouts.Seconds)]
     [RpcSend(nameof(RpcOne))]
     internal virtual RpcTask<int> CallRpcOne(IModularRpcRemoteConnection connection, List<string> testArray) => RpcTask<int>.NotImplemented;
 

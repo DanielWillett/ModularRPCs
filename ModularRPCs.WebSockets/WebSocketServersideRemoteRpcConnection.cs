@@ -12,9 +12,16 @@ namespace DanielWillett.ModularRpcs.WebSockets;
 public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnection<WebSocketServersideLocalRpcConnection>, IModularRpcClientsideConnection, IModularRpcRemoteConnection
 {
     private int _disp;
-    public WebSocketServersideRemoteRpcConnection(WebSocket webSocket, WebSocketServersideLocalRpcConnection connection, IRpcConnectionLifetime lifetime, int bufferSize = 4096)
+    private readonly bool _leaveOpen;
+    public WebSocketServersideRemoteRpcConnection(
+        WebSocket webSocket,
+        WebSocketServersideLocalRpcConnection connection,
+        IRpcConnectionLifetime lifetime,
+        bool leaveOpen,
+        int bufferSize = 4096)
         : base(webSocket, connection.Endpoint, lifetime, bufferSize)
     {
+        _leaveOpen = leaveOpen;
         IsClosed = webSocket.State != WebSocketState.Open;
         connection.Remote = this;
         Local = connection;
@@ -22,12 +29,18 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
         await Semaphore.WaitAsync(10000, token);
+        bool alreadyDisposed = true;
         try
         {
             if (Interlocked.Exchange(ref _disp, 1) != 0)
                 return;
+            alreadyDisposed = false;
             Local.DisposeIntl();
             IsClosed = true;
+            
+            if (_leaveOpen)
+                return;
+
             if (WebSocketIntl.State == WebSocketState.Open)
             {
                 try
@@ -44,7 +57,10 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         finally
         {
             Semaphore.Release();
-            await Lifetime.TryRemoveConnection(this, CancellationToken.None);
+            if (!alreadyDisposed)
+            {
+                await Lifetime.TryRemoveConnection(this, CancellationToken.None);
+            }
         }
     }
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;

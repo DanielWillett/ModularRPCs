@@ -13,6 +13,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.Test", "Modular
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.Test.Standalone", "ModularRPCs.Test.Standalone\ModularRPCs.Test.Standalone.csproj", "{A3243319-1879-4AB7-A656-40302253F85E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.Unity", "ModularRPCs.Unity\ModularRPCs.Unity.csproj", "{6B0ED543-8100-4A2E-9067-549502284B87}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{A3243319-1879-4AB7-A656-40302253F85E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A3243319-1879-4AB7-A656-40302253F85E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A3243319-1879-4AB7-A656-40302253F85E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6B0ED543-8100-4A2E-9067-549502284B87}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B0ED543-8100-4A2E-9067-549502284B87}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B0ED543-8100-4A2E-9067-549502284B87}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B0ED543-8100-4A2E-9067-549502284B87}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

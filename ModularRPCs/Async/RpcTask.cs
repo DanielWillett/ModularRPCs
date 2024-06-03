@@ -10,6 +10,8 @@ public class RpcTask
     private protected RpcTaskAwaiter Awaiter = null!;
     internal Exception? Exception;
     internal ConcurrentBag<Exception>? Exceptions;
+    internal Timer? Timer;
+    internal TimeSpan Timeout;
     internal int CompleteCount = 1;
 
     /// <summary>

@@ -360,4 +360,19 @@
   <data name="RpcExceptionUnableToAddConnectionToLifetime" xml:space="preserve">
     <value>Failed to add new connection to IRpcConnectionLifetime.</value>
   </data>
+  <data name="NoServiceProvider" xml:space="preserve">
+    <value>This object must have been passed an IServiceProvider when it was created.</value>
+  </data>
+  <data name="ServiceNotFound" xml:space="preserve">
+    <value>A service of type '{0}' wasn't available in the service provider.</value>
+  </data>
+  <data name="ComponentTypeNotUnityType" xml:space="preserve">
+    <value>The given component type, {0}, was not a Unity type.</value>
+  </data>
+  <data name="InstantiatedTypeNotUnityType" xml:space="preserve">
+    <value>The given type to instantiate, {0}, is not a Unity type.</value>
+  </data>
+  <data name="RpcTimeoutException" xml:space="preserve">
+    <value>The RPC invocation timed out after {0} with no response.</value>
+  </data>
 </root>

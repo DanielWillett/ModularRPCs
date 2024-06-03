@@ -267,6 +267,14 @@ internal static class CommonReflectionCache
                                                                         );
 
     /// <summary>
+    /// <see cref="TimeSpan(long)"/>
+    /// </summary>
+    internal static readonly ConstructorInfo TimeSpanTicksCtor = typeof(TimeSpan).GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(long) ], null)
+                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(TimeSpan))
+                                                                     .WithParameter<long>("ticks")
+                                                                 );
+
+    /// <summary>
     /// <see cref="IRpcSerializer.GetSize(TypedReference)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerGetSizeByTRef;

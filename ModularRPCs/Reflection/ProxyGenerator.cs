@@ -18,6 +18,9 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Threading;
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+using System.Diagnostics.CodeAnalysis;
+#endif
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
@@ -26,7 +29,7 @@ namespace DanielWillett.ModularRpcs.Reflection;
 /// </summary>
 public sealed class ProxyGenerator : IRefSafeLoggable
 {
-    private readonly ConcurrentDictionary<Type, Type> _proxies = new ConcurrentDictionary<Type, Type>();
+    private readonly ConcurrentDictionary<Type, ProxyTypeInfo> _proxies = new ConcurrentDictionary<Type, ProxyTypeInfo>();
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerStream> _invokeMethodsStream = new ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerStream>();
@@ -87,6 +90,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     public string GetInstanceMethodName => "GetInstance<RPC_Proxy>";
 
     /// <summary>
+    /// Name of the public instance field created for unity objects to set the router after Awake() is called.
+    /// </summary>
+    public string UnityRouterFieldName => "_router<RPC_Proxy>";
+
+    /// <summary>
     /// Name of the instance method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the overload: <c>bool Release()</c>.
     /// Virtual or abstract methods in parent classes will be overridden and base-called.
     /// </summary>
@@ -103,6 +111,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// </summary>
     /// <remarks>Defaults to 512.</remarks>
     public int MaxSizeForStackalloc { get; set; } = 512;
+
+    /// <summary>
+    /// Default timeout for all RPCs unless otherwise specified with a <see cref="RpcTimeoutAttribute"/>.
+    /// </summary>
+    /// <remarks>Defaults to 15 seconds.</remarks>
+    public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(15d);
 
     internal SerializerGenerator SerializerGenerator { get; }
     internal AssemblyBuilder AssemblyBuilder { get; }
@@ -150,78 +164,95 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, params object[] constructorParameters) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, params object[] constructorParameters) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder, object[] constructorParameters) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes) where TRpcClass : class
         => (TRpcClass)CreateProxy(router, typeof(TRpcClass), nonPublic, binder, constructorParameters, culture, activationAttributes);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public object CreateProxy(IRpcRouter router, Type type)
         => CreateProxy(router, type, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public object CreateProxy(IRpcRouter router, Type type, bool nonPublic)
         => CreateProxy(router, type, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public object CreateProxy(IRpcRouter router, Type type, params object[] constructorParameters)
         => CreateProxy(router, type, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, params object[] constructorParameters)
         => CreateProxy(router, type, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder, object[] constructorParameters)
         => CreateProxy(router, type, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
+    /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder, object[] constructorParameters, CultureInfo culture, object[]? activationAttributes)
     {
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
-        Type newType = _proxies.GetOrAdd(type, CreateProxyType);
+        ProxyTypeInfo newType = _proxies.GetOrAdd(type, CreateProxyType);
 
         try
         {
-            if (constructorParameters == null || constructorParameters.Length == 0)
+            if (newType.SetUnityRouterField == null)
             {
-                constructorParameters = [ router ];
-            }
-            else
-            {
-                object[] oldParams = constructorParameters;
-                constructorParameters = new object[oldParams.Length + 1];
-                constructorParameters[0] = router;
-                Array.Copy(oldParams, 0, constructorParameters, 0, oldParams.Length);
+                if (constructorParameters == null || constructorParameters.Length == 0)
+                {
+                    constructorParameters = [ router ];
+                }
+                else
+                {
+                    object[] oldParams = constructorParameters;
+                    constructorParameters = new object[oldParams.Length + 1];
+                    constructorParameters[0] = router;
+                    Array.Copy(oldParams, 0, constructorParameters, 0, oldParams.Length);
+                }
             }
 
             object newProxiedObject = Activator.CreateInstance(
-                newType,
+                newType.Type,
                 BindingFlags.CreateInstance | BindingFlags.Instance | (nonPublic ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public),
                 binder,
                 constructorParameters,
                 culture,
                 activationAttributes
             )!;
+
+            newType.SetUnityRouterField?.Invoke(newProxiedObject, router);
 
             return newProxiedObject;
         }
@@ -250,6 +281,19 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
 
     /// <summary>
+    /// Check to see if a type was generated by <see cref="ProxyGenerator"/>.
+    /// </summary>
+    public bool IsProxyType(Type type)
+    {
+        if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            type = type.BaseType!;
+        else
+            return false;
+
+        return _proxies.ContainsKey(type);
+    }
+
+    /// <summary>
     /// Returns the RPC proxy type of <typeparamref name="TRpcClass"/>.
     /// </summary>
     /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
@@ -267,7 +311,59 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
 
+        return _proxies.GetOrAdd(type, CreateProxyType).Type;
+    }
+
+    /// <summary>
+    /// Returns the RPC proxy type of <typeparamref name="TRpcClass"/> if it's already been created.
+    /// </summary>
+    /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
+    public bool TryGetProxyType<TRpcClass>(
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        [MaybeNullWhen(false)]
+#endif
+        out Type proxyType) where TRpcClass : class
+    {
+        return TryGetProxyType(typeof(TRpcClass), out proxyType);
+    }
+
+    /// <summary>
+    /// Returns the RPC proxy type of <paramref name="type"/> if it's already been created.
+    /// </summary>
+    /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
+    public bool TryGetProxyType(Type type,
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        [MaybeNullWhen(false)]
+#endif
+        out Type proxyType
+        )
+    {
+        if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            type = type.BaseType!;
+        if (_proxies.TryGetValue(type, out ProxyTypeInfo info))
+        {
+            proxyType = info.Type;
+            return true;
+        }
+
+        proxyType = null!;
+        return false;
+    }
+
+    internal ProxyTypeInfo GetProxyTypeInfo(Type type)
+    {
+        if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            type = type.BaseType!;
+
         return _proxies.GetOrAdd(type, CreateProxyType);
+    }
+
+    internal bool TryGetProxyTypeInfo(Type type, out ProxyTypeInfo info)
+    {
+        if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
+            type = type.BaseType!;
+
+        return _proxies.TryGetValue(type, out info);
     }
 
     /// <summary>
@@ -359,7 +455,10 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         )(obj);
     }
 
-    private TypeBuilder StartProxyType(Type type, bool typeGivesInternalAccess, bool useAwakeMethod, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField)
+    private TypeBuilder StartProxyType(Type type,
+        bool typeGivesInternalAccess, bool unity,
+        out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField,
+        out FieldBuilder? unityRouterField)
     {
         TypeBuilder typeBuilder = ModuleBuilder.DefineType(type.Name + "<RPC_Proxy>",
             TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
@@ -383,12 +482,13 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             }
         }
 
-        MethodInfo? existingAwakeMethod = null,
+        MethodInfo? existingStartMethod = null,
                     existingDestroyMethod = null;
-        if (useAwakeMethod)
+        unityRouterField = null;
+        if (unity)
         {
-            existingAwakeMethod = type.GetMethod(
-                "Awake",
+            existingStartMethod = type.GetMethod(
+                "Start",
                 BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy,
                 null,
                 CallingConventions.Any,
@@ -396,9 +496,9 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 null
             );
 
-            if (existingAwakeMethod != null && !VisibilityUtility.IsMethodOverridable(existingAwakeMethod, typeGivesInternalAccess))
+            if (existingStartMethod != null && !VisibilityUtility.IsMethodOverridable(existingStartMethod, typeGivesInternalAccess))
             {
-                throw new ArgumentException(string.Format(Properties.Exceptions.TypeUnityMessageMethodNotVirtualOrAbstract, Accessor.ExceptionFormatter.Format(existingAwakeMethod, includeDefinitionKeywords: true)), nameof(type));
+                throw new ArgumentException(string.Format(Properties.Exceptions.TypeUnityMessageMethodNotVirtualOrAbstract, Accessor.ExceptionFormatter.Format(existingStartMethod, includeDefinitionKeywords: true)), nameof(type));
             }
 
             existingDestroyMethod = type.GetMethod(
@@ -414,6 +514,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             {
                 throw new ArgumentException(string.Format(Properties.Exceptions.TypeUnityMessageMethodNotVirtualOrAbstract, Accessor.ExceptionFormatter.Format(existingDestroyMethod, includeDefinitionKeywords: true)), nameof(type));
             }
+
+            unityRouterField = typeBuilder.DefineField(UnityRouterFieldName, typeof(IRpcRouter), FieldAttributes.Public);
         }
 
         Type? interfaceType = type.GetInterfaces().FirstOrDefault(intx => intx.IsGenericType && intx.GetGenericTypeDefinition() == typeof(IRpcObject<>));
@@ -427,7 +529,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         proxyContextField = typeBuilder.DefineField(
             ProxyContextFieldName,
             typeof(ProxyContext),
-            FieldAttributes.Private | (!useAwakeMethod ? FieldAttributes.InitOnly : 0)
+            FieldAttributes.Private | (!unity ? FieldAttributes.InitOnly : 0)
         );
 
         bool isIdNullable;
@@ -452,7 +554,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             idField = typeBuilder.DefineField(
                 IdentifierFieldName,
                 isIdNullable ? elementType! : idType,
-                FieldAttributes.Private | (!useAwakeMethod ? FieldAttributes.InitOnly : 0)
+                FieldAttributes.Private | (!unity ? FieldAttributes.InitOnly : 0)
             );
 
             // define field to track if the object has been removed already
@@ -514,15 +616,15 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             }
 
             ParameterInfo[] parameters = baseCtor.GetParameters();
-            int paramCt = parameters.Length + (!useAwakeMethod ? 1 : 0);
+            int paramCt = parameters.Length + (!unity ? 1 : 0);
             Type[] types = new Type[paramCt];
             Type[][] reqMods = new Type[paramCt][];
             Type[][] optMods = new Type[paramCt][];
-            if (!useAwakeMethod)
+            if (!unity)
                 types[0] = typeof(IRpcRouter);
             for (int i = 0; i < parameters.Length; ++i)
             {
-                int index = i + (!useAwakeMethod ? 1 : 0);
+                int index = i + (!unity ? 1 : 0);
                 ParameterInfo p = parameters[i];
                 types[index] = p.ParameterType;
                 reqMods[index] = p.GetRequiredCustomModifiers();
@@ -533,9 +635,9 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
             il = builder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
-            if (!useAwakeMethod)
+            if (!unity)
             {
-                EmitLoadProxyContext(il, type, proxyContextField);
+                EmitLoadProxyContext(il, type, proxyContextField, null);
             }
 
             il.Emit(OpCodes.Ldarg_0);
@@ -545,7 +647,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
             il.Emit(OpCodes.Call, baseCtor);
             
-            if (!useAwakeMethod && idType != null)
+            if (!unity && idType != null)
             {
                 EmitIdCheck(il, type, interfaceType!, idType, isIdNullable, typeGivesInternalAccess, elementType, getHasValueMethod, getValueMethod, dictTryAddMethod, idField, dictField);
             }
@@ -553,25 +655,25 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             il.Emit(OpCodes.Ret);
         }
 
-        if (useAwakeMethod)
+        if (unity)
         {
-            MethodBuilder awakeMethod = typeBuilder.DefineMethod("Awake",
-                existingAwakeMethod != null
-                    ? MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final | (existingAwakeMethod.Attributes & MethodAttributes.MemberAccessMask)
+            MethodBuilder startMethod = typeBuilder.DefineMethod("Start",
+                existingStartMethod != null
+                    ? MethodAttributes.HideBySig | MethodAttributes.Virtual | MethodAttributes.Final | (existingStartMethod.Attributes & MethodAttributes.MemberAccessMask)
                     : MethodAttributes.Private,
                 CallingConventions.Standard,
-                existingAwakeMethod?.ReturnType ?? typeof(void),
+                existingStartMethod?.ReturnType ?? typeof(void),
                 null, null, Type.EmptyTypes, null, null
             );
 
-            il = awakeMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+            il = startMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
-            EmitLoadProxyContext(il, type, proxyContextField);
+            EmitLoadProxyContext(il, type, proxyContextField, unityRouterField);
 
-            if (existingAwakeMethod != null)
+            if (existingStartMethod != null)
             {
                 il.Emit(OpCodes.Ldarg_0);
-                il.Emit(OpCodes.Call, existingAwakeMethod);
+                il.Emit(OpCodes.Call, existingStartMethod);
             }
 
             if (idType != null)
@@ -650,7 +752,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             
             EmitFinalizer(finalizerMethod, type, baseFinalizerMethod, baseReleaseMethod, dictField, idField, dictTryRemoveMethod, suppressFinalizeField);
 
-            if (useAwakeMethod)
+            if (unity)
             {
                 MethodBuilder onDestroyMethod = typeBuilder.DefineMethod("OnDestroy",
                     existingDestroyMethod != null
@@ -816,10 +918,18 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             il.Emit(OpCodes.Ret);
         }
     }
-    private void EmitLoadProxyContext(IOpCodeEmitter il, Type type, FieldInfo proxyContextField)
+    private void EmitLoadProxyContext(IOpCodeEmitter il, Type type, FieldInfo proxyContextField, FieldInfo? unityRouterField)
     {
         // get proxy context
-        il.Emit(OpCodes.Ldarg_1);
+        if (unityRouterField == null)
+        {
+            il.Emit(OpCodes.Ldarg_1);
+        }
+        else
+        {
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Ldfld, unityRouterField);
+        }
         il.Emit(OpCodes.Ldtoken, type);
         il.Emit(OpCodes.Call, Accessor.GetMethod(Type.GetTypeFromHandle)!);
         il.Emit(OpCodes.Ldarg_0);
@@ -1120,17 +1230,18 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         il.Emit(OpCodes.Newobj, _identifierErrorConstructor);
         il.Emit(OpCodes.Throw);
     }
-    private Type CreateProxyType(Type type)
+    private ProxyTypeInfo CreateProxyType(Type type)
     {
-        bool useAwakeMethod = false;
+        bool unity = false;
+        ProxyTypeInfo info = default;
 
-        // unity objects can not use constructors, so instead we add an Awake() method.
+        // unity objects can not use constructors, so instead we add a Start() method.
         type.ForEachBaseType((bt, _) =>
         {
             if (!TypeUtility.GetAssemblyQualifiedNameNoVersion(bt).Equals("UnityEngine.Object, UnityEngine.CoreModule", StringComparison.Ordinal))
                 return true;
 
-            useAwakeMethod = true;
+            unity = true;
             return false;
         });
 
@@ -1156,8 +1267,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type));
 
         IOpCodeEmitter? typeInitIl = null;
-
-        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, useAwakeMethod, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField);
+        
+        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
 
         foreach (MethodInfo method in methods)
         {
@@ -1263,7 +1374,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 }
             }
 
-            serializerCache = serializerCache.MakeGenericType(genericArguments);
+            if (serializerCache.IsGenericTypeDefinition)
+                serializerCache = serializerCache.MakeGenericType(genericArguments);
 
             FieldInfo getSizeMethod = serializerCache.GetField(SerializerGenerator.GetSizeMethodField)
                                        ?? throw new UnexpectedMemberAccessException(new MethodDefinition(SerializerGenerator.GetSizeMethodField)
@@ -1297,7 +1409,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly
             );
             
-            RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(method, isFireAndForget);
+            RpcCallMethodInfo rpcCall = RpcCallMethodInfo.FromCallMethod(this, method, isFireAndForget);
             
             typeInitializer ??= builder.DefineTypeInitializer();
             typeInitIl ??= typeInitializer.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
@@ -1811,15 +1923,22 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         {
             // ReSharper disable once RedundantSuppressNullableWarningExpression
 #if NETSTANDARD2_0
-            return builder.CreateTypeInfo()!;
+            info.Type = builder.CreateTypeInfo()!;
 #else
-            return builder.CreateType()!;
+            info.Type = builder.CreateType()!;
 #endif
         }
         catch (TypeLoadException ex)
         {
             throw new ArgumentException(Properties.Exceptions.TypeNotPublic, nameof(type), ex);
         }
+
+        if (unityRouterField != null)
+        {
+            info.SetUnityRouterField = Accessor.GenerateInstanceSetter<object, IRpcRouter>(unityRouterField, throwOnError: true);
+        }
+
+        return info;
     }
     internal RpcInvokeHandlerStream GetInvokeStreamMethod(MethodInfo method)
     {
@@ -1901,4 +2020,10 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         Stream stream,
         CancellationToken token
     );
+
+    internal struct ProxyTypeInfo
+    {
+        public Type Type;
+        public InstanceSetter<object, IRpcRouter>? SetUnityRouterField;
+    }
 }

@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -1202,6 +1203,23 @@ internal static class TypeUtility
 
         result = method != null ? ResolveMethodResult.Success : ResolveMethodResult.MethodNotFound;
         return result == ResolveMethodResult.Success;
+    }
+    public static TimeSpan GetTimeoutFromMethod(MethodBase method, TimeSpan defaultTimeout)
+    {
+        RpcTimeoutAttribute? attribue = method.GetAttributeSafe<RpcTimeoutAttribute>();
+        if (attribue == null)
+        {
+            if (method.DeclaringType == null)
+                return defaultTimeout;
+
+            attribue = method.DeclaringType.GetAttributeSafe<RpcTimeoutAttribute>();
+            if (attribue == null)
+                return defaultTimeout;
+        }
+
+        return attribue.Timeout < 0
+            ? Timeout.InfiniteTimeSpan
+            : TimeSpan.FromMilliseconds(attribue.Timeout);
     }
 }
 

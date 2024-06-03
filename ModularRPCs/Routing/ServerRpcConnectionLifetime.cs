@@ -55,7 +55,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             _connections.Add(connection);
         }
 
-        return new ValueTask<bool>(false);
+        return new ValueTask<bool>(true);
     }
 
     public async ValueTask<bool> TryRemoveConnection(IModularRpcRemoteConnection connection, CancellationToken token = default)
@@ -70,6 +70,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
                     continue;
 
                 removed = conn;
+                _connections.RemoveAt(i);
                 break;
             }
         }

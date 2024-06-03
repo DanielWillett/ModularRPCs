@@ -4,6 +4,8 @@ using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,9 +20,10 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     protected readonly CancellationTokenSource CancellationTokenSource;
     protected readonly ContiguousBuffer Buffer;
     protected readonly IRpcSerializer Serializer;
+    private PlateauingDelay _delayCalc;
+    private readonly bool _autoReconnect;
     private int _taskRunning;
     private object? _logger;
-
     /// <inheritdoc />
     public event ContiguousBufferProgressUpdate BufferProgressUpdated
     {
@@ -33,13 +36,19 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     protected internal abstract WebSocket WebSocket { get; }
     protected internal abstract bool CanReconnect { get; }
     protected internal abstract SemaphoreSlim Semaphore { get; }
-    protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketEndpoint endpoint, int bufferSize)
+    public IDictionary<string, object> Tags { get; } = new ConcurrentDictionary<string, object>();
+    protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketEndpoint endpoint, int bufferSize, bool autoReconnect, PlateauingDelay delaySettings)
     {
+        _autoReconnect = autoReconnect;
         Router = router;
         Endpoint = endpoint;
         Serializer = serializer;
         Buffer = new ContiguousBuffer((IModularRpcLocalConnection)this, bufferSize);
+        Buffer.SetLogger(this);
         CancellationTokenSource = new CancellationTokenSource();
+        // ReSharper disable once VirtualMemberCallInConstructor
+        if (autoReconnect && CanReconnect)
+            _delayCalc = new PlateauingDelay(delaySettings.Plateau, delaySettings.Amplifier, delaySettings.StartingTrials);
     }
     internal bool TryStartListening()
     {
@@ -57,7 +66,7 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
             {
                 if (WebSocket is not { State: WebSocketState.Open })
                 {
-                    if (CanReconnect)
+                    if (CanReconnect && _autoReconnect)
                     {
                         this.LogInformation($"Reconnecting WebSocket because state is {WebSocket?.State.ToString() ?? "null"}.");
                         await Semaphore.WaitAsync();
@@ -65,6 +74,10 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                         {
                             if (WebSocket is not { State: WebSocketState.Open })
                                 await Reconnect(CancellationTokenSource.Token);
+                        }
+                        catch (Exception ex)
+                        {
+                            this.LogDebug(ex, "Failed to reconnect");
                         }
                         finally
                         {

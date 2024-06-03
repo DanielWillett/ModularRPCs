@@ -52,5 +52,10 @@ public enum LoggerType
     /// <summary>
     /// <see cref="IAccessor"/>
     /// </summary>
-    ReflectionToolsAccessor
+    ReflectionToolsAccessor,
+
+    /// <summary>
+    /// Another <see cref="IRefSafeLoggable"/>.
+    /// </summary>
+    RefSafeLoggable
 }
