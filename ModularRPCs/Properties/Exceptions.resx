@@ -375,4 +375,7 @@
   <data name="RpcTimeoutException" xml:space="preserve">
     <value>The RPC invocation timed out after {0} with no response.</value>
   </data>
+  <data name="ArgumentNotBroadcast" xml:space="preserve">
+    <value>This endpoint is not a broadcast endpoint.</value>
+  </data>
 </root>

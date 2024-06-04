@@ -61,6 +61,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to This endpoint is not a broadcast endpoint..
+        /// </summary>
+        internal static string ArgumentNotBroadcast {
+            get {
+                return ResourceManager.GetString("ArgumentNotBroadcast", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This BinaryTypeParser has IsVariableSize set to true but didn&apos;t override GetSize..
         /// </summary>
         internal static string BinaryTypeParserNotVariableSizeGetSizeNotImplemented {

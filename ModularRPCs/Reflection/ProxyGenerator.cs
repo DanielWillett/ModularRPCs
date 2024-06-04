@@ -1270,6 +1270,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         
         TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
 
+        List<string> takenMethodNames = new List<string>();
         foreach (MethodInfo method in methods)
         {
             if (!method.IsDefinedSafe<RpcSendAttribute>() || method.DeclaringType == typeof(object))
@@ -1404,7 +1405,23 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                                                     .Returning<int>()
                                                 );
 
-            FieldBuilder methodInfoField = builder.DefineField(string.Format(CallMethodInfoFieldFormat, method.Name),
+            string fieldMethodName = method.Name;
+            if (!takenMethodNames.Contains(fieldMethodName))
+            {
+                takenMethodNames.Add(fieldMethodName);
+            }
+            else for (int i = 1; ; ++i)
+            {
+                string newName = fieldMethodName + "<ovl" + i.ToString(CultureInfo.InvariantCulture) + ">";
+                if (takenMethodNames.Contains(newName))
+                    continue;
+
+                takenMethodNames.Add(newName);
+                fieldMethodName = newName;
+                break;
+            }
+
+            FieldBuilder methodInfoField = builder.DefineField(string.Format(CallMethodInfoFieldFormat, fieldMethodName),
                 typeof(RpcCallMethodInfo),
                 FieldAttributes.Static | FieldAttributes.Assembly | FieldAttributes.InitOnly
             );
@@ -1435,6 +1452,13 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 method.ReturnParameter?.GetRequiredCustomModifiers(),
                 method.ReturnParameter?.GetOptionalCustomModifiers(),
                 types, reqMods, optMods);
+
+            methodBuilder.SetCustomAttribute(
+                new CustomAttributeBuilder(
+                    CommonReflectionCache.CallerInfoFieldNameAttributeCtor,
+                    [ fieldMethodName ]
+                )
+            );
 
 #if DEBUG
             methodBuilder.InitLocals = true;
@@ -2025,5 +2049,14 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     {
         public Type Type;
         public InstanceSetter<object, IRpcRouter>? SetUnityRouterField;
+    }
+
+    /// <summary>
+    /// Interal API used for specifying the name of the caller info field on an overrided call method.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class CallerInfoFieldNameAttribute(string fieldName) : Attribute
+    {
+        public string FieldName { get; } = fieldName;
     }
 }

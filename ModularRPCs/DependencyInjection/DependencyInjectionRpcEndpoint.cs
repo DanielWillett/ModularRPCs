@@ -35,26 +35,26 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         ServiceProviders = other.ServiceProviders;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, int signatureHash)
-        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
     {
         ServiceProvider = serviceProvider;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, int signatureHash)
-        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
     {
         ServiceProvider = serviceProvider;
     }
     
-    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, int signatureHash)
-        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
     {
         ServiceProviders = serviceProviders;
     }
 
-    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, int signatureHash)
-        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
     {
         ServiceProviders = serviceProviders;
     }
@@ -81,16 +81,11 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound) { ErrorCode = 4 };
 
         if (ServiceProviders == null)
-            return ServiceProvider!.GetService(DeclaringType);
+            return TypeUtility.GetService(ServiceProvider!, DeclaringType);
 
-        foreach (IServiceProvider provider in ServiceProviders)
-        {
-            object service = provider.GetService(DeclaringType);
-            if (service != null)
-                return service;
-        }
+        object? provider = (object?)ServiceProviders ?? ServiceProvider;
 
-        return null;
+        return provider == null ? null : TypeUtility.GetServiceFromUnknownProviderType(provider, DeclaringType);
     }
 
     public override IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)

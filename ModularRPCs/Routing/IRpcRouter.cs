@@ -1,13 +1,14 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Async;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Protocol;
 
 namespace DanielWillett.ModularRpcs.Routing;
 
@@ -31,13 +32,13 @@ public interface IRpcRouter
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier);
+    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, int byteSize, object? identifier);
 
     /// <summary>
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier);
+    IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, int byteSize, object? identifier);
 
     /// <summary>
     /// Invoke an RPC from a 'call' method.
@@ -76,4 +77,9 @@ public interface IRpcRouter
     /// Invoke an RPC by it's invocation point with the overhead already read.
     /// </summary>
     ValueTask ReceiveData(in PrimitiveRpcOverhead overhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
+
+    /// <summary>
+    /// Find the listener method for a broadcast <see cref="RpcEndpoint"/>, or <see langword="null"/> if it can't be found.
+    /// </summary>
+    MethodInfo? FindBroadcastListener(RpcEndpoint endpoint);
 }

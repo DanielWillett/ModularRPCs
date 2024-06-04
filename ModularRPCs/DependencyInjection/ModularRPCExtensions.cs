@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -37,7 +38,8 @@ public static class ModularRpcExtensions
     /// </summary>
     /// <param name="isServer">Will this side be acting as the server or client? Affects which type of <see cref="IRpcConnectionLifetime"/> is added.</param>
     public static IServiceCollection AddModularRpcs(this IServiceCollection serviceCollection, bool isServer,
-        Action<IServiceProvider, SerializationConfiguration, IDictionary<Type, IBinaryTypeParser>, IList<IBinaryParserFactory>>? configureSerialization = null)
+        Action<IServiceProvider, SerializationConfiguration, IDictionary<Type, IBinaryTypeParser>, IList<IBinaryParserFactory>>? configureSerialization = null,
+        IEnumerable<Assembly>? searchedAssemblies = null)
     {
         // proxy generator
         AddProxyGenerator(serviceCollection);
@@ -89,7 +91,11 @@ public static class ModularRpcExtensions
         {
             serviceCollection.Add(new ServiceDescriptor(typeof(IRpcRouter), serviceProvider =>
             {
-                DependencyInjectionRpcRouter router = new DependencyInjectionRpcRouter(serviceProvider);
+                DependencyInjectionRpcRouter router =
+                    searchedAssemblies != null
+                    ? new DependencyInjectionRpcRouter(serviceProvider, searchedAssemblies)
+                    : new DependencyInjectionRpcRouter(serviceProvider);
+
                 serviceProvider.ApplyLoggerTo(router);
                 return router;
             }, ServiceLifetime.Singleton));

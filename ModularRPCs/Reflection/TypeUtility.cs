@@ -3,7 +3,10 @@ using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -14,6 +17,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace DanielWillett.ModularRpcs.Reflection;
 internal static class TypeUtility
 {
+    private static readonly ConcurrentDictionary<Type, Type[]> ServiceInterfaces = new ConcurrentDictionary<Type, Type[]>();
     public const TypeCode MaxUsedTypeCode = (TypeCode)20;
     public const TypeCode TypeCodeTimeSpan = (TypeCode)17;
     public const TypeCode TypeCodeGuid = (TypeCode)19;
@@ -1220,6 +1224,81 @@ internal static class TypeUtility
         return attribue.Timeout < 0
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromMilliseconds(attribue.Timeout);
+    }
+    internal static object? GetServiceFromUnknownProviderType(object serviceProvider, Type declaringType)
+    {
+        if (serviceProvider is not IEnumerable<IServiceProvider> multiple)
+        {
+            return serviceProvider is IServiceProvider sp ? GetService(sp, declaringType) : null;
+        }
+
+        bool isIntx = declaringType.IsInterface;
+
+        object? intxMatch = null;
+        foreach (IServiceProvider provider in multiple)
+        {
+            object? service = GetService(provider, declaringType, checkInterfaces: false);
+            if (service != null)
+                return service;
+
+            if (!isIntx)
+                intxMatch ??= GetService(provider, declaringType, checkDeclaringType: false);
+        }
+
+        return intxMatch;
+    }
+    internal static object? GetService(IServiceProvider serviceProvider, Type declaringType, bool checkDeclaringType = true, bool checkInterfaces = true)
+    {
+        if (checkDeclaringType)
+        {
+            object? service = serviceProvider.GetService(declaringType);
+            if (service != null)
+                return service;
+        }
+
+        if (!checkInterfaces)
+            return null;
+
+        // try to get service by it's interfaces (cached in ServiceInterfaces).
+        Type[] intx = ServiceInterfaces.GetOrAdd(declaringType, static declaringType =>
+        {
+            RpcServiceTypeAttribute[] attributes = declaringType.GetAttributesSafe<RpcServiceTypeAttribute>();
+            if (attributes.Length == 0)
+                return declaringType.GetInterfaces();
+
+            int ct = attributes.Count(attribute =>
+                attribute.ServiceType != null
+                && attribute.ServiceType != declaringType
+                && attribute.ServiceType.IsAssignableFrom(declaringType)
+            );
+
+            if (ct == 0)
+                return Type.EmptyTypes;
+
+            Type[] attrArray = new Type[ct];
+            for (int i = attributes.Length - 1; i >= 0; --i)
+            {
+                RpcServiceTypeAttribute attribute = attributes[i];
+
+                if (attribute.ServiceType != null
+                    && attribute.ServiceType != declaringType
+                    && attribute.ServiceType.IsAssignableFrom(declaringType))
+                {
+                    attrArray[--ct] = attribute.ServiceType;
+                }
+            }
+
+            return attrArray;
+        });
+
+        for (int i = 0; i < intx.Length; ++i)
+        {
+            object? service = serviceProvider.GetService(intx[i]);
+            if (service != null)
+                return service;
+        }
+
+        return null;
     }
 }
 

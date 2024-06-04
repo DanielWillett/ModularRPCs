@@ -275,6 +275,14 @@ internal static class CommonReflectionCache
                                                                  );
 
     /// <summary>
+    /// <see cref="ProxyGenerator.CallerInfoFieldNameAttribute(string)"/>
+    /// </summary>
+    internal static readonly ConstructorInfo CallerInfoFieldNameAttributeCtor = typeof(ProxyGenerator.CallerInfoFieldNameAttribute).GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(string) ], null)
+                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(ProxyGenerator.CallerInfoFieldNameAttribute))
+                                                                     .WithParameter<string>("fieldName")
+                                                                 );
+
+    /// <summary>
     /// <see cref="IRpcSerializer.GetSize(TypedReference)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerGetSizeByTRef;

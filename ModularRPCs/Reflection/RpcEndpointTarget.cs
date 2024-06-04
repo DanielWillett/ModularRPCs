@@ -13,7 +13,7 @@ public struct RpcEndpointTarget
     /// Normally, the send method specifies the receive method, which must be marked with a <see cref="RpcReceiveAttribute"/>.
     /// In some cases, however, the receive method can specify the send method, acting as a listener.
     /// </summary>
-    public bool IsDeclaringSendMethod;
+    public bool IsBroadcast;
 
     private RpcEndpoint? _endpoint;
 
@@ -23,7 +23,7 @@ public struct RpcEndpointTarget
     public bool ParameterTypesAreBindOnly;
     public int SignatureHash;
 
-    private static readonly FieldInfo IsDeclaringSendMethodField = typeof(RpcEndpointTarget).GetField(nameof(IsDeclaringSendMethod), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo IsDeclaringSendMethodField = typeof(RpcEndpointTarget).GetField(nameof(IsBroadcast), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo MethodNameField = typeof(RpcEndpointTarget).GetField(nameof(MethodName), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo DeclaringTypeNameField = typeof(RpcEndpointTarget).GetField(nameof(DeclaringTypeName), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo ParameterTypesField = typeof(RpcEndpointTarget).GetField(nameof(ParameterTypes), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -32,7 +32,7 @@ public struct RpcEndpointTarget
 
     public RpcEndpoint GetEndpoint()
     {
-        return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, SignatureHash);
+        return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash);
     }
 
     /// <summary>
@@ -51,7 +51,7 @@ public struct RpcEndpointTarget
         target.SignatureHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
         if (sendAttribute.TryResolveMethod(method, out MethodInfo? resolvedMethod, out ResolveMethodResult result))
         {
-            target.IsDeclaringSendMethod = result == ResolveMethodResult.IsSelfTarget;
+            target.IsBroadcast = result == ResolveMethodResult.IsSelfTarget;
             FromMethod(ref target, resolvedMethod, forceSignatureCheck, sendAttribute.ParametersAreBindedParametersOnly);
             return target;
         }
@@ -72,7 +72,7 @@ public struct RpcEndpointTarget
 
         if (receiveAttribute.TryResolveMethod(method, out MethodInfo? resolvedMethod, out ResolveMethodResult result))
         {
-            target.IsDeclaringSendMethod = result == ResolveMethodResult.IsSelfTarget;
+            target.IsBroadcast = result == ResolveMethodResult.IsSelfTarget;
             FromMethod(ref target, resolvedMethod, forceSignatureCheck, receiveAttribute.ParametersAreBindedParametersOnly);
             return target;
         }
@@ -176,7 +176,7 @@ public struct RpcEndpointTarget
         il.Emit(OpCodes.Initobj, typeof(RpcEndpointTarget));
 
         il.Emit(OpCodes.Dup);
-        il.Emit(IsDeclaringSendMethod ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+        il.Emit(IsBroadcast ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
         il.Emit(OpCodes.Stfld, IsDeclaringSendMethodField);
 
         il.Emit(OpCodes.Dup);

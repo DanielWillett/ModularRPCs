@@ -4,6 +4,7 @@ using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ReflectionTools;
 using DanielWillett.SpeedBytes.Formatting;
 using System;
@@ -22,11 +23,13 @@ using System.Runtime.InteropServices;
 namespace DanielWillett.ModularRpcs.Routing;
 public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 {
+    private int _isListeningToEvtAsmLoad;
     private readonly IRpcSerializer _defaultSerializer;
     private readonly IRpcConnectionLifetime _connectionLifetime;
     private readonly CancellationTokenSource _cancelTokenSource = new CancellationTokenSource();
     private long _lastMsgId;
     private readonly ConcurrentDictionary<ulong, RpcTask> _listeningTasks = new ConcurrentDictionary<ulong, RpcTask>();
+    private readonly Dictionary<string, RpcEndpointTarget[]> _broadcastListeners = new Dictionary<string, RpcEndpointTarget[]>(StringComparer.Ordinal);
 
     /// <summary>
     /// A dictionary of unique IDs to invocation points.
@@ -49,10 +52,86 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// The <see cref="IRpcSerializer"/> that's used by default to read and write messages.
     /// </summary>
     public IRpcSerializer Serializer => _defaultSerializer;
+
+    /// <summary>
+    /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in the given <paramref name="scannableAssemblies"/>.
+    /// </summary>
+    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, IEnumerable<Assembly> scannableAssemblies)
+    {
+        _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
+        _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+
+        foreach (Assembly asm in scannableAssemblies ?? throw new ArgumentNullException(nameof(scannableAssemblies)))
+            ScanAssemblyForRpcClasses(asm);
+    }
+
+    /// <summary>
+    /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in all loaded assemblies, including assemblies that may load later.
+    /// </summary>
     public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime)
     {
         _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
         _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+
+        _isListeningToEvtAsmLoad = 1;
+        AppDomain.CurrentDomain.AssemblyLoad += HandleAssemblyLoaded;
+        foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+            ScanAssemblyForRpcClasses(asm);
+    }
+    private void HandleAssemblyLoaded(object sender, AssemblyLoadEventArgs args)
+    {
+        lock (_broadcastListeners)
+        {
+            ScanAssemblyForRpcClasses(args.LoadedAssembly);
+        }
+    }
+    private void ScanAssemblyForRpcClasses(Assembly assembly)
+    {
+        List<RpcEndpointTarget> broadcastInfos = new List<RpcEndpointTarget>();
+        foreach (Type type in Accessor.GetTypesSafe(assembly))
+        {
+            if (type.IsIgnored() || !type.IsDefinedSafe<RpcClassAttribute>())
+                continue;
+
+            MethodInfo[] methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+
+            foreach (MethodInfo method in methods)
+            {
+                RpcReceiveAttribute? receiveAttribute = method.GetAttributeSafe<RpcReceiveAttribute>();
+
+                if (receiveAttribute == null || method.IsIgnored() || receiveAttribute.MethodName == null)
+                    continue;
+
+                broadcastInfos.Add(RpcEndpointTarget.FromReceiveMethod(method));
+            }
+        }
+
+        broadcastInfos.Sort((a, b) => string.Compare(a.DeclaringTypeName, b.DeclaringTypeName, CultureInfo.InvariantCulture, CompareOptions.StringSort | CompareOptions.Ordinal));
+
+        for (int i = 0; i < broadcastInfos.Count; ++i)
+        {
+            RpcEndpointTarget target = broadcastInfos[i];
+
+            int nextInd = i + 1;
+            while (nextInd < broadcastInfos.Count && string.Equals(target.DeclaringTypeName, broadcastInfos[nextInd].DeclaringTypeName))
+                ++nextInd;
+
+            int ct = nextInd - i;
+            if (_broadcastListeners.TryGetValue(target.DeclaringTypeName, out RpcEndpointTarget[] value))
+            {
+                RpcEndpointTarget[] newArr = new RpcEndpointTarget[value.Length + ct];
+                Array.Copy(value, newArr, value.Length);
+                broadcastInfos.CopyTo(i, newArr, value.Length, ct);
+            }
+            else
+            {
+                value = new RpcEndpointTarget[ct];
+                broadcastInfos.CopyTo(i, value, 0, ct);
+            }
+
+            _broadcastListeners[target.DeclaringTypeName] = value;
+            i = nextInd - 1;
+        }
     }
     private ulong GetNewMessageId()
     {
@@ -81,7 +160,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     {
         try
         {
-            ValueTask vt = rpc.Invoke(overhead, serializer, stream, token);
+            ValueTask vt = rpc.Invoke(overhead, this, serializer, stream, token);
             await vt;
 
             if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
@@ -117,7 +196,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     {
         try
         {
-            ValueTask vt = rpc.Invoke(overhead, serializer, bytes, token);
+            ValueTask vt = rpc.Invoke(overhead, this, serializer, bytes, token);
             if (!vt.IsCompleted)
                 return new ValueTask(FinishVtTask(vt, overhead, serializer));
 
@@ -908,17 +987,17 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
     }
-    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, int signatureHash)
+    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
     {
-        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, signatureHash);
+        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash);
     }
-    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier)
-        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, signatureHash, byteSize, identifier);
-    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, int signatureHash, int byteSize, object? identifier)
+    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, int byteSize, object? identifier)
+        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, byteSize, identifier);
+    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, int byteSize, object? identifier)
     {
         IRpcInvocationPoint cachedEndpoint = knownRpcShortcutId == 0u
-            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, signatureHash)
-            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, signatureHash));
+            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash)
+            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash));
 
         return ReferenceEquals(cachedEndpoint.Identifier, identifier)
             ? cachedEndpoint
@@ -1140,8 +1219,21 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 break;
         }
     }
+    public MethodInfo? FindBroadcastListener(RpcEndpoint endpoint)
+    {
+        if (!endpoint.IsBroadcast)
+            throw new ArgumentException(Properties.Exceptions.ArgumentNotBroadcast, nameof(endpoint));
+
+
+
+        endpoint.DeclaringTypeName
+    }
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _isListeningToEvtAsmLoad, 0) != 0)
+        {
+            AppDomain.CurrentDomain.AssemblyLoad -= HandleAssemblyLoaded;
+        }
         try
         {
             _cancelTokenSource.Cancel();

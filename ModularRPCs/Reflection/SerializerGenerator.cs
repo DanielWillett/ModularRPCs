@@ -703,25 +703,6 @@ internal sealed class SerializerGenerator
                 dynamicMethod.DefineParameter(++pInd, attr, name);
         }
     }
-    private static object? InjectFromServiceProvider(object? serviceProvider, Type type)
-    {
-        if (serviceProvider is not IEnumerable<IServiceProvider> multiple)
-        {
-            return serviceProvider is IServiceProvider ? InjectFromServiceProviderIntl(serviceProvider, type) : null;
-        }
-
-        foreach (IServiceProvider provider in multiple)
-        {
-            if (provider != null)
-                return InjectFromServiceProviderIntl(serviceProvider, type);
-        }
-
-        return null;
-    }
-    private static object InjectFromServiceProviderIntl(object serviceProvider, Type type)
-    {
-        return ((IServiceProvider)serviceProvider).GetRequiredService(type);
-    }
 
     /// <summary>
     /// Splits parameters into a segment of injected parameters and a segment of binded parameters.
@@ -966,7 +947,7 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Ldarg_0); // service provider (maybe)
                 il.Emit(OpCodes.Ldtoken, injectionType);
                 il.Emit(OpCodes.Call, Accessor.GetMethod(Type.GetTypeFromHandle)!);
-                il.Emit(OpCodes.Call, Accessor.GetMethod(InjectFromServiceProvider)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(TypeUtility.GetServiceFromUnknownProviderType)!);
                 il.Emit(OpCodes.Dup);
                 il.Emit(OpCodes.Stloc, lcl);
                 Label next = il.DefineLabel();
