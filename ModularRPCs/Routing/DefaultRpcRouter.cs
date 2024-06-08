@@ -1,21 +1,22 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
-using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ReflectionTools;
-using DanielWillett.SpeedBytes.Formatting;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using RpcEndpointTarget = DanielWillett.ModularRpcs.Reflection.RpcEndpointTarget;
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Runtime.InteropServices;
 #endif
@@ -23,13 +24,15 @@ using System.Runtime.InteropServices;
 namespace DanielWillett.ModularRpcs.Routing;
 public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 {
-    private int _isListeningToEvtAsmLoad;
     private readonly IRpcSerializer _defaultSerializer;
     private readonly IRpcConnectionLifetime _connectionLifetime;
     private readonly CancellationTokenSource _cancelTokenSource = new CancellationTokenSource();
     private long _lastMsgId;
     private readonly ConcurrentDictionary<ulong, RpcTask> _listeningTasks = new ConcurrentDictionary<ulong, RpcTask>();
-    private readonly Dictionary<string, RpcEndpointTarget[]> _broadcastListeners = new Dictionary<string, RpcEndpointTarget[]>(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<RpcEndpointTarget>> _broadcastListeners = new Dictionary<string, IReadOnlyList<RpcEndpointTarget>>(StringComparer.Ordinal);
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
 
     /// <summary>
     /// A dictionary of unique IDs to invocation points.
@@ -60,29 +63,33 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     {
         _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
         _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+        BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastListeners);
 
         foreach (Assembly asm in scannableAssemblies ?? throw new ArgumentNullException(nameof(scannableAssemblies)))
             ScanAssemblyForRpcClasses(asm);
     }
 
     /// <summary>
-    /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in all loaded assemblies, including assemblies that may load later.
+    /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in all referenced assemblies to the one calling this method.
     /// </summary>
-    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime) : this(defaultSerializer, lifetime, Assembly.GetCallingAssembly()) { }
+    protected internal DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, Assembly callingAssembly)
     {
         _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
         _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+        BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastListeners);
 
-        _isListeningToEvtAsmLoad = 1;
-        AppDomain.CurrentDomain.AssemblyLoad += HandleAssemblyLoaded;
-        foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
-            ScanAssemblyForRpcClasses(asm);
-    }
-    private void HandleAssemblyLoaded(object sender, AssemblyLoadEventArgs args)
-    {
-        lock (_broadcastListeners)
+        ScanAssemblyForRpcClasses(callingAssembly);
+        foreach (AssemblyName asmName in callingAssembly.GetReferencedAssemblies())
         {
-            ScanAssemblyForRpcClasses(args.LoadedAssembly);
+            try
+            {
+                ScanAssemblyForRpcClasses(Assembly.Load(asmName));
+            }
+            catch (FileNotFoundException) { }
+            catch (FileLoadException) { }
+            catch (BadImageFormatException) { }
         }
     }
     private void ScanAssemblyForRpcClasses(Assembly assembly)
@@ -93,7 +100,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             if (type.IsIgnored() || !type.IsDefinedSafe<RpcClassAttribute>())
                 continue;
 
-            MethodInfo[] methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
+            MethodInfo[] methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
 
             foreach (MethodInfo method in methods)
             {
@@ -102,11 +109,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 if (receiveAttribute == null || method.IsIgnored() || receiveAttribute.MethodName == null)
                     continue;
 
-                broadcastInfos.Add(RpcEndpointTarget.FromReceiveMethod(method));
+                RpcEndpointTarget info = RpcEndpointTarget.FromReceiveMethod(method);
+                info.OwnerMethodInfo = method;
+                broadcastInfos.Add(info);
             }
         }
 
-        broadcastInfos.Sort((a, b) => string.Compare(a.DeclaringTypeName, b.DeclaringTypeName, CultureInfo.InvariantCulture, CompareOptions.StringSort | CompareOptions.Ordinal));
+        broadcastInfos.Sort((a, b) => string.Compare(a.DeclaringTypeName, b.DeclaringTypeName, CultureInfo.InvariantCulture, CompareOptions.StringSort));
 
         for (int i = 0; i < broadcastInfos.Count; ++i)
         {
@@ -117,16 +126,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 ++nextInd;
 
             int ct = nextInd - i;
-            if (_broadcastListeners.TryGetValue(target.DeclaringTypeName, out RpcEndpointTarget[] value))
+            if (_broadcastListeners.TryGetValue(target.DeclaringTypeName, out IReadOnlyList<RpcEndpointTarget>? value))
             {
-                RpcEndpointTarget[] newArr = new RpcEndpointTarget[value.Length + ct];
-                Array.Copy(value, newArr, value.Length);
-                broadcastInfos.CopyTo(i, newArr, value.Length, ct);
+                RpcEndpointTarget[] oldArr = (RpcEndpointTarget[])value;
+                RpcEndpointTarget[] newArr = new RpcEndpointTarget[oldArr.Length + ct];
+                Array.Copy(oldArr, newArr, oldArr.Length);
+                broadcastInfos.CopyTo(i, newArr, oldArr.Length, ct);
             }
             else
             {
-                value = new RpcEndpointTarget[ct];
-                broadcastInfos.CopyTo(i, value, 0, ct);
+                RpcEndpointTarget[] newArr = new RpcEndpointTarget[ct];
+                value = newArr;
+                broadcastInfos.CopyTo(i, newArr, 0, ct);
             }
 
             _broadcastListeners[target.DeclaringTypeName] = value;
@@ -137,6 +148,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     {
         return unchecked( (ulong)Interlocked.Increment(ref _lastMsgId) );
     }
+
+    /// <inheritdoc />
     public uint GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo)
     {
         uint size = 20;
@@ -192,11 +205,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             HandleInvokeException(overhead, ex);
         }
     }
-    protected virtual ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlySpan<byte> bytes, CancellationToken token = default)
+    protected virtual ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlyMemory<byte> bytes, bool canTakeOwnership, CancellationToken token = default)
     {
         try
         {
-            ValueTask vt = rpc.Invoke(overhead, this, serializer, bytes, token);
+            ValueTask vt = rpc.Invoke(overhead, this, serializer, bytes, canTakeOwnership, token);
             if (!vt.IsCompleted)
                 return new ValueTask(FinishVtTask(vt, overhead, serializer));
 
@@ -280,17 +293,21 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
     }
-    public virtual unsafe ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
+
+    /// <inheritdoc />
+    public virtual unsafe ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
         PrimitiveRpcOverhead overhead;
-        fixed (byte* ptr = rawData)
+        fixed (byte* ptr = rawData.Span)
         {
             overhead = PrimitiveRpcOverhead.ReadFromBytes(sendingConnection, serializer, ptr, (uint)rawData.Length);
         }
 
         return ReceiveData(in overhead, sendingConnection, serializer, rawData, canTakeOwnership, token);
     }
-    public virtual unsafe ValueTask ReceiveData(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
+
+    /// <inheritdoc />
+    public virtual unsafe ValueTask ReceiveData(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
         if (rawData.Length <= 1)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
@@ -303,19 +320,20 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 if (overhead == null)
                     throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-                return InvokeInvocationPoint(overhead.Rpc, overhead, serializer, rawData.Length == overhead.OverheadSize ? default : rawData.Slice((int)overhead.OverheadSize), token);
+                bool isEmpty = rawData.Length == overhead.OverheadSize;
+                return InvokeInvocationPoint(overhead.Rpc, overhead, serializer, isEmpty ? default : rawData.Slice((int)overhead.OverheadSize), canTakeOwnership || isEmpty, token);
 
             case OvhCodeIdException:
                 uint index;
                 RpcTask? task;
                 Exception? ex;
                 int len = rawData.Length - (int)primitiveOverhead.OverheadSize;
-                fixed (byte* ptr = &rawData[(int)primitiveOverhead.OverheadSize])
+                fixed (byte* ptr = rawData.Span)
                 {
                     _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     IRpcInvocationPoint? invPt = task?.Endpoint;
                     index = 0;
-                    ex = ReadException(invPt, ptr, (uint)len, ref index, serializer);
+                    ex = ReadException(invPt, ptr + primitiveOverhead.OverheadSize, (uint)len, ref index, serializer);
                 }
 
                 task?.TriggerComplete(ex);
@@ -325,11 +343,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             case OvhCodeIdValueRtnSuccess:
                 object? rtn;
                 len = rawData.Length - (int)primitiveOverhead.OverheadSize;
-                fixed (byte* ptr = &rawData[(int)primitiveOverhead.OverheadSize])
+                fixed (byte* ptr = rawData.Span)
                 {
                     _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     index = 0;
-                    rtn = ReadReturnValue(serializer, task, ptr, len, ref index);
+                    rtn = ReadReturnValue(serializer, task, ptr + primitiveOverhead.OverheadSize, len, ref index);
                 }
 
                 if (rtn == null || task == null)
@@ -359,12 +377,16 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         return default;
     }
+
+    /// <inheritdoc />
     public virtual ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
     {
         PrimitiveRpcOverhead overhead = PrimitiveRpcOverhead.ReadFromStream(sendingConnection, serializer, stream);
 
         return ReceiveData(in overhead, sendingConnection, serializer, stream, token);
     }
+
+    /// <inheritdoc />
     public virtual ValueTask ReceiveData(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
     {
         switch (primitiveOverhead.CodeId)
@@ -426,16 +448,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 overhead.MessageId + "." + overhead.SubMessageId)
         );
     }
+
+    /// <inheritdoc />
     public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, byte* bytes, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
     {
         ulong messageId = GetNewMessageId();
         int ovhSize = (int)((uint)byteCt - dataCt);
         int ovhEnd = WriteOverhead(sourceMethodHandle, serializer, ref callMethodInfo, bytes, ovhSize, dataCt, messageId, 0);
         WriteEndpoint(sourceMethodHandle, serializer, ref callMethodInfo, callMethodInfo.Endpoint.GetEndpoint(), bytes + ovhEnd, ovhSize - ovhEnd);
-
-#if DEBUG
-        Console.WriteLine(ByteFormatter.FormatBinary(new ReadOnlySpan<byte>(bytes, byteCt), ByteStringFormat.ColumnLabels));
-#endif
 
         RpcTask? rpcTask = null;
         if (connections == null)
@@ -450,6 +470,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
             {
+                Interlocked.CompareExchange(ref rpcTask.ConnectionIntl, connection, null);
+
                 Interlocked.Increment(ref rpcTask.CompleteCount);
                 if (rpcTask is RpcBroadcastTask bt)
                     Interlocked.Increment(ref bt.ConnectionCountIntl);
@@ -486,6 +508,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             rpcTask = !callMethodInfo.IsFireAndForget
                 ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
                 : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
+
+            rpcTask.ConnectionIntl = remote1;
 
             try
             {
@@ -584,7 +608,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         if (method.ReturnType == typeof(void) || method.ReturnType == typeof(RpcTask))
             rpcTask = new RpcTask(false);
         else
-            rpcTask = (RpcTask)Activator.CreateInstance(method.ReturnType, nonPublic: true);
+            rpcTask = (RpcTask?)Activator.CreateInstance(method.ReturnType, nonPublic: true) ?? new RpcTask(false);
         
         rpcTask.MessageId = messageId;
         rpcTask.SubMessageId = 1;
@@ -619,7 +643,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         
         rpcTask.Timer = new Timer(RpcTaskTimerCompleted, rpcTask, timeout, Timeout.InfiniteTimeSpan);
     }
-    private void RpcTaskTimerCompleted(object state)
+    private void RpcTaskTimerCompleted(object? state)
     {
         if (state is not RpcTask rpcTask)
             return;
@@ -634,14 +658,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         this.LogError(ex,
             string.Format(Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
                 Accessor.Formatter.Format(ex.GetType()),
-                Accessor.Formatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)),
+                Accessor.Formatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!),
                 ex.Message)
         );
     }
     private static unsafe ValueTask ReplyRpcException(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, Exception ex, IRpcSerializer serializer)
     {
         uint size = GetExceptionSize(ex, serializer);
-        size += GetPrefixSize(serializer);
+        uint pfxSize = GetPrefixSize(serializer);
+        size += pfxSize;
 
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
         Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
@@ -649,7 +674,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, size, OvhCodeIdException, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdException, messageId, subMessageId, serializer);
             WriteException(ex, ptr, size, ref index, serializer);
         }
 
@@ -657,22 +682,23 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
     private static unsafe ValueTask ReplyRpcVoidSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)
     {
-        uint size = GetPrefixSize(serializer);
+        uint pfxSize = GetPrefixSize(serializer);
 
-        bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        bool didStackAlloc = pfxSize <= serializer.Configuration.MaximumStackAllocationSize;
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)pfxSize] : new byte[pfxSize];
 
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, size, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, 0, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
         }
 
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
     }
     private static unsafe ValueTask ReplyRpcValueSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, object? value, IRpcSerializer serializer)
     {
-        uint size = GetPrefixSize(serializer);
+        uint pfxSize = GetPrefixSize(serializer);
+        uint size = pfxSize;
         uint knownTypeId = 0;
         bool hasKnownTypeId = false;
         string? typeName = null;
@@ -736,7 +762,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, size, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)tc;
             ++index;
@@ -964,11 +990,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// The next Id to be used, actually a <see cref="uint"/> but stored as <see cref="int"/> to be used with <see cref="Interlocked.Increment(ref int)"/>.
     /// </summary>
     protected int NextId;
+
+    /// <inheritdoc />
     public virtual IRpcInvocationPoint? FindSavedRpcEndpoint(uint endpointSharedId)
     {
         // ReSharper disable once CanSimplifyDictionaryTryGetValueWithGetValueOrDefault
         return CachedDescriptors.TryGetValue(endpointSharedId, out IRpcInvocationPoint? endpoint) ? endpoint : null;
     }
+
+    /// <inheritdoc />
     public uint AddRpcEndpoint(IRpcInvocationPoint endPoint)
     {
         // keep trying to add if the id is taken, could've been added by a third party
@@ -987,22 +1017,28 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
     }
-    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
     {
-        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash);
+        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash);
     }
-    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, int byteSize, object? identifier)
-        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, byteSize, identifier);
-    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, int byteSize, object? identifier)
+
+    /// <inheritdoc />
+    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, int byteSize, object? identifier)
+        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, byteSize, identifier);
+
+    /// <inheritdoc />
+    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, int byteSize, object? identifier)
     {
         IRpcInvocationPoint cachedEndpoint = knownRpcShortcutId == 0u
-            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash)
-            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash));
+            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
+            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash));
 
         return ReferenceEquals(cachedEndpoint.Identifier, identifier)
             ? cachedEndpoint
             : cachedEndpoint.CloneWithIdentifier(serializer, identifier);
     }
+
+    /// <inheritdoc />
     public void GetDefaultProxyContext(Type proxyType, out ProxyContext context)
     {
         context = default;
@@ -1033,14 +1069,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         {
             if (BitConverter.IsLittleEndian)
             {
-                Unsafe.WriteUnaligned(ptr + index, messageId);
+                Unsafe.WriteUnaligned(ptr + index, size);
             }
             else
             {
-                ptr[4] = unchecked((byte)(messageId >>> 32));
-                ptr[3] = unchecked((byte)(messageId >>> 40));
-                ptr[2] = unchecked((byte)(messageId >>> 48));
-                ptr[1] = unchecked((byte)(messageId >>> 56));
+                ptr[4] = unchecked( (byte) size );
+                ptr[3] = unchecked( (byte)(size >>> 8)  );
+                ptr[2] = unchecked( (byte)(size >>> 16) );
+                ptr[1] = unchecked( (byte)(size >>> 24) );
             }
 
             index += 4;
@@ -1052,14 +1088,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
         else
         {
-            ptr[index + 7] = unchecked((byte)messageId);
-            ptr[index + 6] = unchecked((byte)(messageId >>> 8));
-            ptr[index + 5] = unchecked((byte)(messageId >>> 16));
-            ptr[index + 4] = unchecked((byte)(messageId >>> 24));
-            ptr[index + 3] = unchecked((byte)(messageId >>> 32));
-            ptr[index + 2] = unchecked((byte)(messageId >>> 40));
-            ptr[index + 1] = unchecked((byte)(messageId >>> 48));
-            ptr[index    ] = unchecked((byte)(messageId >>> 56));
+            ptr[index + 7] = unchecked( (byte) messageId );
+            ptr[index + 6] = unchecked( (byte)(messageId >>> 8)  );
+            ptr[index + 5] = unchecked( (byte)(messageId >>> 16) );
+            ptr[index + 4] = unchecked( (byte)(messageId >>> 24) );
+            ptr[index + 3] = unchecked( (byte)(messageId >>> 32) );
+            ptr[index + 2] = unchecked( (byte)(messageId >>> 40) );
+            ptr[index + 1] = unchecked( (byte)(messageId >>> 48) );
+            ptr[index    ] = unchecked( (byte)(messageId >>> 56) );
         }
 
         index += 8;
@@ -1083,8 +1119,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 exSz = agg.InnerExceptions.Count;
                 break;
             case ReflectionTypeLoadException rtl:
-                foreach (Exception ex2 in rtl.LoaderExceptions)
-                    size += GetExceptionSize(ex2, serializer);
+                foreach (Exception? ex2 in rtl.LoaderExceptions)
+                    size += GetExceptionSize(ex2!, serializer);
                 exSz = rtl.LoaderExceptions.Length;
                 break;
             default:
@@ -1180,6 +1216,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         if (serializer.CanFastReadPrimitives)
         {
+            if (size - index < sizeof(int))
+                throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
+
             if (BitConverter.IsLittleEndian)
             {
                 Unsafe.WriteUnaligned(ptr + index, exSz);
@@ -1210,8 +1249,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     WriteException(ex2, ptr, size, ref index, serializer);
                 break;
             case ReflectionTypeLoadException rtl:
-                foreach (Exception ex2 in rtl.LoaderExceptions)
-                    WriteException(ex2, ptr, size, ref index, serializer);
+                foreach (Exception? ex2 in rtl.LoaderExceptions)
+                    WriteException(ex2!, ptr, size, ref index, serializer);
                 break;
             default:
                 if (ex.InnerException != null)
@@ -1219,21 +1258,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 break;
         }
     }
-    public MethodInfo? FindBroadcastListener(RpcEndpoint endpoint)
-    {
-        if (!endpoint.IsBroadcast)
-            throw new ArgumentException(Properties.Exceptions.ArgumentNotBroadcast, nameof(endpoint));
-
-
-
-        endpoint.DeclaringTypeName
-    }
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _isListeningToEvtAsmLoad, 0) != 0)
-        {
-            AppDomain.CurrentDomain.AssemblyLoad -= HandleAssemblyLoaded;
-        }
         try
         {
             _cancelTokenSource.Cancel();

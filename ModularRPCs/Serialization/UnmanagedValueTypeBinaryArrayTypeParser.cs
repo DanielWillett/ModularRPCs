@@ -10,6 +10,15 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+/// <summary>
+/// Subclass of <see cref="ArrayBinaryTypeParser{T}"/> to take some boilerplate away from writing array parsers for primitive unmanaged types that should be flipped on big-endian machines.
+/// Supports arrays, <see cref="IList{T}"/>,
+/// <see cref="IReadOnlyList{T}"/>, <see cref="IEnumerable{T}"/>, <see cref="ICollection{T}"/>, <see cref="IReadOnlyCollection{T}"/>,
+/// <see cref="ArraySegment{T}"/>, <see cref="Span{T}"/> and <see cref="ReadOnlySpan{T}"/> pointers (with <see cref="TypedReference"/>'s), 
+/// and <see cref="Span{T}"/> and <see cref="ReadOnlySpan{T}"/>
+/// </summary>
+/// <typeparam name="TValueType">The element type to parse.</typeparam>
 public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayBinaryTypeParser<TValueType> where TValueType : unmanaged
 {
     protected readonly SerializationConfiguration Configuration;
@@ -1717,7 +1726,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             length = ReadArrayLength(stream, out bytesRead);
             if (length > output.Count || length > 0 && output.Array == null)
             {
-                SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length * sizeof(TValueType));
+                SerializationHelper.TryAdvanceStream(stream, Configuration, ref bytesRead, length * sizeof(TValueType));
                 throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
         }
@@ -1810,7 +1819,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
             length = ReadArrayLength(stream, out bytesRead);
             if (length > output.Length)
             {
-                SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length * sizeof(TValueType));
+                SerializationHelper.TryAdvanceStream(stream, Configuration, ref bytesRead, length * sizeof(TValueType));
                 throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
         }

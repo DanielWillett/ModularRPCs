@@ -378,4 +378,22 @@
   <data name="ArgumentNotBroadcast" xml:space="preserve">
     <value>This endpoint is not a broadcast endpoint.</value>
   </data>
+  <data name="RpcInjectionExceptionMultipleCanTakeOwnership" xml:space="preserve">
+    <value>There can not be more than one boolean parameter (canTakeOwnership) in a raw RPC method.</value>
+  </data>
+  <data name="RpcInjectionExceptionMultipleByteCount" xml:space="preserve">
+    <value>There can not be more than one integer parameter (byteCount) in a raw RPC method.</value>
+  </data>
+  <data name="RpcInjectionExceptionMultipleByteData" xml:space="preserve">
+    <value>There can not be more than one binary data parameter in a raw RPC method.</value>
+  </data>
+  <data name="PassthroughStreamSeekOverflow" xml:space="preserve">
+    <value>Passthrough stream overflowed trying to seek.</value>
+  </data>
+  <data name="PassthroughStreamWriteNotSupported" xml:space="preserve">
+    <value>Writing to a passthrough Stream is not supported.</value>
+  </data>
+  <data name="PassthroughStreamIAsyncResultNotSupported" xml:space="preserve">
+    <value>Passthrough streams do not support Begin/EndRead methods.</value>
+  </data>
 </root>

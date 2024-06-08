@@ -13,6 +13,7 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
 {
     private int _disp;
     private readonly bool _leaveOpen;
+    public override bool IsClosed => Local.IsClosed;
     public WebSocketServersideRemoteRpcConnection(
         WebSocket webSocket,
         WebSocketServersideLocalRpcConnection connection,
@@ -22,9 +23,9 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         : base(webSocket, connection.Endpoint, lifetime, bufferSize)
     {
         _leaveOpen = leaveOpen;
-        IsClosed = webSocket.State != WebSocketState.Open;
         connection.Remote = this;
         Local = connection;
+        Local.IsClosedIntl = webSocket.State != WebSocketState.Open;
     }
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
@@ -36,7 +37,6 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
                 return;
             alreadyDisposed = false;
             Local.DisposeIntl();
-            IsClosed = true;
             
             if (_leaveOpen)
                 return;

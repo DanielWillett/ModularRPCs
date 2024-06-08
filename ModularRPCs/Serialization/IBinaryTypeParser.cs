@@ -5,6 +5,10 @@ using System.Collections.Generic;
 using System.IO;
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+/// <summary>
+/// Handles converting objects to and from bytes or a <see cref="Stream"/>. Consider inheriting <see cref="BinaryTypeParser{T}"/> or <see cref="ArrayBinaryTypeParser{T}"/> instead.
+/// </summary>
 public interface IBinaryTypeParser
 {
     bool IsVariableSize { get; }

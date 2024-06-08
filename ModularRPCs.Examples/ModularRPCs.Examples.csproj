@@ -12,6 +12,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ModularRPCs\ModularRPCs.csproj" />
+    <ProjectReference Include="..\ModularRPCs.WebSockets\ModularRPCs.WebSockets.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0"/>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Net.Http">
+      <HintPath>C:\Program Files\Microsoft Visual Studio\2022\Preview\MSBuild\Microsoft\Microsoft.NET.Build.Extensions\net461\lib\System.Net.Http.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>

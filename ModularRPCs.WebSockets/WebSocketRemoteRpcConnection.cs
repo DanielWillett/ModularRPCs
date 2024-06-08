@@ -13,14 +13,14 @@ namespace DanielWillett.ModularRpcs.WebSockets;
 /// <summary>
 /// Base class for the sending portion of a <see cref="WebSocket"/> connection.
 /// </summary>
-public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularRpcRemoteConnection where TLocalConnection : class, IModularRpcLocalConnection
+public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularRpcRemoteConnection where TLocalConnection : WebSocketLocalRpcConnection, IModularRpcLocalConnection
 {
     internal WebSocket WebSocketIntl;
     internal SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
     private readonly int _bufferSize;
     private byte[]? _buffer;
     public WebSocketEndpoint Endpoint { get; }
-    public bool IsClosed { get; internal set; }
+    public abstract bool IsClosed { get; }
     public TLocalConnection Local { get; internal set; } = null!;
     public IRpcConnectionLifetime Lifetime { get; }
     protected internal WebSocketRemoteRpcConnection(WebSocket webSocket, WebSocketEndpoint endpoint, IRpcConnectionLifetime lifetime, int bufferSize)

@@ -32,8 +32,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly ConcurrentDictionary<Type, ProxyTypeInfo> _proxies = new ConcurrentDictionary<Type, ProxyTypeInfo>();
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
-    private readonly ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerStream> _invokeMethodsStream = new ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerStream>();
-    private readonly ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerBytes> _invokeMethodsBytes = new ConcurrentDictionary<RuntimeMethodHandle, RpcInvokeHandlerBytes>();
+    private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsStream = new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
+    private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsBytes = new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
 #if DEBUG
@@ -1273,7 +1273,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         List<string> takenMethodNames = new List<string>();
         foreach (MethodInfo method in methods)
         {
-            if (!method.IsDefinedSafe<RpcSendAttribute>() || method.DeclaringType == typeof(object))
+            if (!method.TryGetAttributeSafe(out RpcSendAttribute targetAttribute) || method.DeclaringType == typeof(object))
             {
                 if (method.IsAbstract && method.DeclaringType == type)
                     throw new ArgumentException(Properties.Exceptions.TypeNotInheritable, nameof(type));
@@ -1636,6 +1636,14 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 if (didPrimWrite.HasValue)
                     il.MarkLabel(didPrimWrite.Value);
             }
+            else
+            {
+                il.CommentIfDebug("int lclOverheadSize = 1;");
+                il.Emit(OpCodes.Ldloc, lclOverheadSize);
+                il.Emit(OpCodes.Ldc_I4_1);
+                il.Emit(OpCodes.Add);
+                il.Emit(OpCodes.Stloc, lclOverheadSize);
+            }
 
             il.CommentIfDebug("lclSize += lclOverheadSize;");
             il.Emit(OpCodes.Ldloc, lclSize);
@@ -1862,7 +1870,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 il.Emit(OpCodes.Conv_U1);
                 il.Emit(OpCodes.Unaligned, (byte)1);
                 il.Emit(OpCodes.Stind_I1);
-
             }
 
             il.CommentIfDebug("lclSize = lclOverheadSize + writeBytesMethod.Invoke(lclSerializer, lclByteBuffer + lclOverheadSize, (uint)(lclSize - lclOverheadSize), ...);");
@@ -1966,12 +1973,22 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
     internal RpcInvokeHandlerStream GetInvokeStreamMethod(MethodInfo method)
     {
-        RpcInvokeHandlerStream entry = _invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodStream);
+        RpcInvokeHandlerStream entry = (RpcInvokeHandlerStream)_invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodStream);
         return entry;
     }
     internal RpcInvokeHandlerBytes GetInvokeBytesMethod(MethodInfo method)
     {
-        RpcInvokeHandlerBytes entry = _invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodBytes);
+        RpcInvokeHandlerBytes entry = (RpcInvokeHandlerBytes)_invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodBytes);
+        return entry;
+    }
+    internal RpcInvokeHandlerStream GetInvokeRawStreamMethod(MethodInfo method)
+    {
+        RpcInvokeHandlerStream entry = (RpcInvokeHandlerStream)_invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodRawStream);
+        return entry;
+    }
+    internal RpcInvokeHandlerRawBytes GetInvokeRawBytesMethod(MethodInfo method)
+    {
+        RpcInvokeHandlerRawBytes entry = (RpcInvokeHandlerRawBytes)_invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodRawBytes);
         return entry;
     }
     private RpcInvokeHandlerStream GetOrAddInvokeMethodStream(RuntimeMethodHandle handle)
@@ -2013,6 +2030,44 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         SerializerGenerator.GenerateInvokeBytes(method, bytesDynMethod, bytesDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
         return (RpcInvokeHandlerBytes)bytesDynMethod.CreateDelegate(typeof(RpcInvokeHandlerBytes));
     }
+    private RpcInvokeHandlerStream GetOrAddInvokeMethodRawStream(RuntimeMethodHandle handle)
+    {
+        MethodInfo method = (MethodInfo?)MethodBase.GetMethodFromHandle(handle)!;
+
+        Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
+
+        DynamicMethod rawStreamDynMethod = new DynamicMethod("Invoke<" + method.Name + ">_Raw", attr, conv, typeof(object), RpcInvokeHandlerStreamParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+
+        rawStreamDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
+        rawStreamDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
+        rawStreamDynMethod.DefineParameter(3, ParameterAttributes.None, "overhead");
+        rawStreamDynMethod.DefineParameter(4, ParameterAttributes.None, "router");
+        rawStreamDynMethod.DefineParameter(5, ParameterAttributes.None, "serializer");
+        rawStreamDynMethod.DefineParameter(6, ParameterAttributes.None, "stream");
+        rawStreamDynMethod.DefineParameter(7, ParameterAttributes.None, "token");
+
+        //SerializerGenerator.GenerateRawInvokeStream(method, rawStreamDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
+        return (RpcInvokeHandlerStream)rawStreamDynMethod.CreateDelegate(typeof(RpcInvokeHandlerStream));
+    }
+    private RpcInvokeHandlerRawBytes GetOrAddInvokeMethodRawBytes(RuntimeMethodHandle handle)
+    {
+        MethodInfo method = (MethodInfo?)MethodBase.GetMethodFromHandle(handle)!;
+
+        Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
+
+        DynamicMethod rawBytesDynMethod = new DynamicMethod("Invoke<" + method.Name + ">_Raw", attr, conv, typeof(object), RpcInvokeHandlerRawBytesParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+
+        rawBytesDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
+        rawBytesDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
+        rawBytesDynMethod.DefineParameter(3, ParameterAttributes.None, "overhead");
+        rawBytesDynMethod.DefineParameter(4, ParameterAttributes.None, "router");
+        rawBytesDynMethod.DefineParameter(5, ParameterAttributes.None, "serializer");
+        rawBytesDynMethod.DefineParameter(6, ParameterAttributes.None, "rawDat");
+        rawBytesDynMethod.DefineParameter(7, ParameterAttributes.None, "token");
+
+        SerializerGenerator.GenerateRawInvokeBytes(method, rawBytesDynMethod, rawBytesDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
+        return (RpcInvokeHandlerRawBytes)rawBytesDynMethod.CreateDelegate(typeof(RpcInvokeHandlerRawBytes));
+    }
 
     internal static readonly Type[] RpcInvokeHandlerBytesParams =
     [
@@ -2023,7 +2078,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     [
         typeof(object), typeof(object), typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), typeof(Stream), typeof(CancellationToken)
     ];
-    
+
+    internal static readonly Type[] RpcInvokeHandlerRawBytesParams =
+    [
+        typeof(object), typeof(object), typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), typeof(ReadOnlyMemory<byte>), typeof(bool), typeof(CancellationToken)
+    ];
+
     internal unsafe delegate object? RpcInvokeHandlerBytes(
         object? serviceProvider,
         object? targetObject,
@@ -2042,6 +2102,17 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         IRpcRouter router,
         IRpcSerializer serializer,
         Stream stream,
+        CancellationToken token
+    );
+    
+    internal delegate object? RpcInvokeHandlerRawBytes(
+        object? serviceProvider,
+        object? targetObject,
+        RpcOverhead overhead,
+        IRpcRouter router,
+        IRpcSerializer serializer,
+        ReadOnlyMemory<byte> rawData,
+        bool canTakeOwnership,
         CancellationToken token
     );
 

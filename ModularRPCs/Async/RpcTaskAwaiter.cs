@@ -1,7 +1,7 @@
-﻿using System;
+﻿using DanielWillett.ModularRpcs.Exceptions;
+using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using DanielWillett.ModularRpcs.Exceptions;
 
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTaskAwaiter : ICriticalNotifyCompletion
@@ -42,12 +42,9 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
         if (!Task.IsFireAndForget && !IsCompleted)
             throw new RpcGetResultUsageException();
 
-        if (Task.Exception == null && Task.Exceptions == null)
-            return;
+        Exception? ex = Task.GetException();
 
-        if (Task.Exceptions != null)
-            throw new AggregateException(Task.Exceptions.ToArray());
-            
-        throw Task.Exception!;
+        if (ex != null)
+            throw ex;
     }
 }

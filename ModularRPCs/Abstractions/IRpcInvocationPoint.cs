@@ -16,9 +16,9 @@ public interface IRpcInvocationPoint
     object? Identifier { get; }
 
     /// <summary>
-    /// Invoke the RPC from a byte buffer. If context switching is needed, the data MUST BE COPIED.
+    /// Invoke the RPC from a byte buffer. If context switching is needed, the data MUST BE COPIED if <paramref name="canTakeOwnership"/> is <see langword="false"/>.
     /// </summary>
-    ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlySpan<byte> byteData, CancellationToken token = default);
+    ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> byteData, bool canTakeOwnership, CancellationToken token = default);
 
     /// <summary>
     /// Invoke the RPC from a stream.

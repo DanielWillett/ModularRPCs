@@ -21,16 +21,19 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     protected readonly ContiguousBuffer Buffer;
     protected readonly IRpcSerializer Serializer;
     private PlateauingDelay _delayCalc;
+    private Timer? _reconnectTimer;
     private readonly bool _autoReconnect;
     private int _taskRunning;
     private object? _logger;
+    internal bool IsClosedIntl;
     /// <inheritdoc />
     public event ContiguousBufferProgressUpdate BufferProgressUpdated
     {
         add => Buffer.BufferProgressUpdated += value;
         remove => Buffer.BufferProgressUpdated -= value;
     }
-    public abstract bool IsClosed { get; }
+
+    public bool IsClosed => WebSocket.State != WebSocketState.Open || IsClosedIntl;
     public IRpcRouter Router { get; }
     public WebSocketEndpoint Endpoint { get; }
     protected internal abstract WebSocket WebSocket { get; }
@@ -48,7 +51,7 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         CancellationTokenSource = new CancellationTokenSource();
         // ReSharper disable once VirtualMemberCallInConstructor
         if (autoReconnect && CanReconnect)
-            _delayCalc = new PlateauingDelay(delaySettings.Plateau, delaySettings.Amplifier, delaySettings.StartingTrials);
+            _delayCalc = new PlateauingDelay(ref delaySettings, true);
     }
     internal bool TryStartListening()
     {
@@ -73,7 +76,14 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                         try
                         {
                             if (WebSocket is not { State: WebSocketState.Open })
-                                await Reconnect(CancellationTokenSource.Token);
+                            {
+                                CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d));
+                                CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token);
+                                await Reconnect(cmbSrc.Token);
+                                newSrc.Dispose();
+                                cmbSrc.Dispose();
+                                _delayCalc.Reset();
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -86,9 +96,11 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
 
                         if (WebSocket is not { State: WebSocketState.Open })
                         {
-                            await Task.Delay(10000);
-                            continue;
+                            await StartReconnectIntl();
+                            break;
                         }
+
+                        this.LogInformation("Reconnected.");
                     }
                     else
                     {
@@ -108,6 +120,18 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
 
                 Buffer.ProcessBuffer((uint)result.Count, Serializer, RpcBufferParseCallback);
             }
+            catch (WebSocketException ex)
+            {
+                this.LogWarning(ex, "WebSocket error listening for message.");
+                if (!CanReconnect)
+                {
+                    await CloseAsync();
+                    break;
+                }
+
+                await StartReconnectIntl();
+                break;
+            }
             catch (Exception ex)
             {
                 this.LogWarning(ex, "Error listening for message.");
@@ -116,7 +140,80 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
 
         Interlocked.CompareExchange(ref _taskRunning, 0, 1);
     }
-    private void RpcBufferParseCallback(ReadOnlySpan<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead)
+    private async Task StartReconnectIntl()
+    {
+        await Semaphore.WaitAsync();
+        try
+        {
+            IsClosedIntl = true;
+            double secLeft = _delayCalc.CalculateNext();
+            TimeSpan timeUntilReconnect = TimeSpan.FromSeconds(secLeft);
+            this.LogInformation($"Reconnecting in {timeUntilReconnect:g}...");
+            Timer? timer = Interlocked.Exchange(ref _reconnectTimer, new Timer(ReconnectCallback, null, timeUntilReconnect, Timeout.InfiniteTimeSpan));
+            if (timer == null)
+                return;
+
+            timer.Change(Timeout.Infinite, Timeout.Infinite);
+            timer.Dispose();
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+    private void ReconnectCallback(object? state)
+    {
+        Timer? timer = _reconnectTimer;
+        if (timer != null)
+        {
+            timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            timer.Dispose();
+        }
+
+        Task.Run(async () =>
+        {
+            double secLeft;
+            await Semaphore.WaitAsync();
+            try
+            {
+                CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d));
+                CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token);
+
+                await Reconnect(cmbSrc.Token);
+
+                newSrc.Dispose();
+                cmbSrc.Dispose();
+
+                if (WebSocket.State == WebSocketState.Open)
+                {
+                    this.LogInformation($"Reconnected after {_delayCalc.Trials} tries.");
+                    _delayCalc.Reset();
+                    TryStartListening();
+                    return;
+                }
+                secLeft = _delayCalc.CalculateNext();
+            }
+            catch (Exception ex)
+            {
+                this.LogDebug(ex, "Failed to reconnect");
+                secLeft = _delayCalc.CalculateNext();
+            }
+            finally
+            {
+                Semaphore.Release();
+            }
+
+            TimeSpan timeUntilReconnect = TimeSpan.FromSeconds(secLeft);
+            this.LogInformation($"Reconnecting in {timeUntilReconnect:g}...");
+            Timer? timer = Interlocked.Exchange(ref _reconnectTimer, new Timer(ReconnectCallback, null, timeUntilReconnect, Timeout.InfiniteTimeSpan));
+            if (timer == null)
+                return;
+            
+            timer.Change(Timeout.Infinite, Timeout.Infinite);
+            timer.Dispose();
+        });
+    }
+    private void RpcBufferParseCallback(ReadOnlyMemory<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead)
     {
         ValueTask vt = Router.ReceiveData(in overhead, ((IModularRpcLocalConnection)this).Remote, Serializer, data, canTakeOwnership, CancellationTokenSource.Token);
         
@@ -140,9 +237,13 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     /// Force the underlying connection to reconnect.
     /// </summary>
     /// <exception cref="NotSupportedException">Not supported server-side.</exception>
-    public abstract Task Reconnect(CancellationToken token = default);
+    public virtual Task Reconnect(CancellationToken token = default)
+    {
+        throw new NotSupportedException();
+    }
     internal void DisposeIntl()
     {
+        IsClosedIntl = true;
         try
         {
             CancellationTokenSource.Cancel();

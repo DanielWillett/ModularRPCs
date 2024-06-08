@@ -7,10 +7,13 @@ using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +28,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 {
     private static MethodInfo? _fromResultMethod;
     private uint _sizeWithoutIdentifier;
+    protected bool IgnoreSignatureHash;
     protected int SignatureHash;
 
     /// <summary>
@@ -115,18 +119,19 @@ public class RpcEndpoint : IRpcInvocationPoint
             Size += CalculateIdentifierSize(serializer, identifier);
         }
     }
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
-        : this(declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+        : this(declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
     {
         EndpointId = knownId;
     }
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
     {
         IsStatic = false;
         DeclaringTypeName = declaringTypeName;
         DeclaringType = Type.GetType(DeclaringTypeName, false, false);
         MethodName = methodName;
         SignatureHash = signatureHash;
+        IgnoreSignatureHash = ignoreSignatureHash;
         ParametersAreBindedParametersOnly = argsAreBindOnly;
         ParameterTypeNames = parameterTypeNames;
         IsBroadcast = isBroadcast;
@@ -173,76 +178,217 @@ public class RpcEndpoint : IRpcInvocationPoint
     {
         return handlerStream(null, targetObject, overhead, router, serializer, stream, token);
     }
-
-    public virtual unsafe ValueTask Invoke(RpcOverhead overhead, IRpcRouter rotuer, IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token = default)
+    private protected virtual object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerRawBytes handlerRawBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
-        MethodInfo? toInvoke;
-        if (IsBroadcast)
-        {
-            toInvoke = router.FindBroadcastListener(this);
-        }
-        else
-        {
-            toInvoke = Method;
-        }
-
-        if (toInvoke == null || !toInvoke.IsDefinedSafe<RpcReceiveAttribute>())
-            throw new RpcEndpointNotFoundException(this);
-
-        int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(toInvoke);
-
-        if (SignatureHash != paramHash)
-        {
-            throw new RpcEndpointNotFoundException(this, Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash);
-        }
-
-        object? targetObject = null;
-        if (!IsStatic)
-        {
-            targetObject = GetTargetObject();
-        }
-
-        ProxyGenerator.RpcInvokeHandlerBytes invokeMethod = ProxyGenerator.Instance.GetInvokeBytesMethod(MetoInvokethod);
-
-        object? returnedValue;
-        fixed (byte* ptr = rawData)
-        {
-            returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
-        }
-        return ConvertReturnedValueToValueTask(returnedValue);
+        return handlerRawBytes(null, targetObject, overhead, router, serializer, rawData, canTakeOwnership, token);
     }
-    public virtual ValueTask Invoke(RpcOverhead overhead, IRpcRouter rotuer, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+    private protected virtual object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerRawStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
     {
-        MethodInfo? toInvoke;
-        if (IsBroadcast)
+        return handlerRawStream(null, targetObject, overhead, router, serializer, stream, token);
+    }
+    public virtual unsafe ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
+    {
+        if (!IsBroadcast)
         {
-            toInvoke = router.FindBroadcastListener(this);
-        }
-        else
-        {
-            toInvoke = Method;
+            MethodInfo? toInvoke = Method;
+
+            if (toInvoke == null || !toInvoke.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
+                throw new RpcEndpointNotFoundException(this);
+            
+            if (!IgnoreSignatureHash && !targetAttribute.Raw)
+            {
+                int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(toInvoke);
+
+                if (SignatureHash != paramHash)
+                {
+                    throw new RpcEndpointNotFoundException(this, Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash);
+                }
+            }
+
+            object? targetObject = null;
+            if (!IsStatic)
+            {
+                targetObject = GetTargetObject(toInvoke);
+            }
+
+            object? returnedValue;
+            if (targetAttribute.Raw)
+            {
+                ProxyGenerator.RpcInvokeHandlerRawBytes invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawBytesMethod(toInvoke);
+                returnedValue = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
+            }
+            else
+            {
+                ProxyGenerator.RpcInvokeHandlerBytes invokeMethod = ProxyGenerator.Instance.GetInvokeBytesMethod(toInvoke);
+
+                fixed (byte* ptr = rawData.Span)
+                {
+                    returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
+                }
+            }
+
+            return ConvertReturnedValueToValueTask(returnedValue);
         }
 
-        if (toInvoke == null || !toInvoke.IsDefinedSafe<RpcReceiveAttribute>())
+        bool any = false;
+        List<Exception>? exceptions = null;
+        object? firstRtnValue = null;
+        fixed (byte* ptr = rawData.Span)
+        {
+            foreach (MethodInfo method in FindBroadcastListeners(router))
+            {
+                if (!method.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
+                {
+                    continue;
+                }
+
+                if (!IgnoreSignatureHash && !targetAttribute.Raw)
+                {
+                    int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
+
+                    if (SignatureHash != paramHash)
+                    {
+                        continue;
+                    }
+                }
+
+                any = true;
+
+                try
+                {
+                    object? targetObject = null;
+                    if (!method.IsStatic)
+                    {
+                        targetObject = GetTargetObject(method);
+                    }
+
+                    if (targetAttribute.Raw)
+                    {
+                        ProxyGenerator.RpcInvokeHandlerRawBytes invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawBytesMethod(method);
+                        firstRtnValue ??= InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
+                    }
+                    else
+                    {
+                        ProxyGenerator.RpcInvokeHandlerBytes invokeMethod = ProxyGenerator.Instance.GetInvokeBytesMethod(method);
+                        firstRtnValue ??= InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    (exceptions ??= [ ]).Add(ex);
+                }
+            }
+        }
+
+        if (!any)
             throw new RpcEndpointNotFoundException(this);
 
-        int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(toInvoke);
-
-        if (SignatureHash != paramHash)
+        if (exceptions != null)
         {
-            throw new RpcEndpointNotFoundException(this, Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash);
+            if (exceptions.Count == 1)
+                throw exceptions[0];
+
+            throw new AggregateException(exceptions);
         }
 
-        object? targetObject = null;
-        if (!IsStatic)
+        return firstRtnValue == null ? default : ConvertReturnedValueToValueTask(firstRtnValue);
+    }
+    public virtual ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+    {
+        if (!IsBroadcast)
         {
-            targetObject = GetTargetObject();
+            MethodInfo? toInvoke = Method;
+            if (toInvoke == null || !toInvoke.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
+                throw new RpcEndpointNotFoundException(this);
+
+            if (!IgnoreSignatureHash && !targetAttribute.Raw)
+            {
+                int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(toInvoke);
+
+                if (SignatureHash != paramHash)
+                {
+                    throw new RpcEndpointNotFoundException(this, Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash);
+                }
+            }
+
+            object? targetObject = null;
+            if (!IsStatic)
+            {
+                targetObject = GetTargetObject(toInvoke);
+            }
+
+            object? returnedValue;
+            if (targetAttribute.Raw)
+            {
+                ProxyGenerator.RpcInvokeHandlerStream invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawStreamMethod(toInvoke);
+                returnedValue = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+            }
+            else
+            {
+                ProxyGenerator.RpcInvokeHandlerStream invokeMethod = ProxyGenerator.Instance.GetInvokeStreamMethod(toInvoke);
+                returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+            }
+
+            return ConvertReturnedValueToValueTask(returnedValue);
         }
 
-        ProxyGenerator.RpcInvokeHandlerStream invokeMethod = ProxyGenerator.Instance.GetInvokeStreamMethod(toInvoke);
 
-        object? returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
-        return ConvertReturnedValueToValueTask(returnedValue);
+        bool any = false;
+        List<Exception>? exceptions = null;
+        object? firstRtnValue = null;
+        foreach (MethodInfo method in FindBroadcastListeners(router))
+        {
+            if (!method.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
+            {
+                continue;
+            }
+
+            if (!IgnoreSignatureHash && !targetAttribute.Raw)
+            {
+                int paramHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
+
+                if (SignatureHash != paramHash)
+                {
+                    continue;
+                }
+            }
+
+            any = true;
+
+            try
+            {
+                object? targetObject = null;
+                if (!method.IsStatic)
+                {
+                    targetObject = GetTargetObject(method);
+                }
+
+                if (targetAttribute.Raw)
+                {
+                    ProxyGenerator.RpcInvokeHandlerStream invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawStreamMethod(method);
+                    firstRtnValue ??= InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                }
+                else
+                {
+                    ProxyGenerator.RpcInvokeHandlerStream invokeMethod = ProxyGenerator.Instance.GetInvokeStreamMethod(method);
+                    firstRtnValue ??= InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                (exceptions ??= []).Add(ex);
+            }
+        }
+
+        if (!any)
+            throw new RpcEndpointNotFoundException(this);
+
+        if (exceptions != null)
+            throw new AggregateException(exceptions);
+
+        return firstRtnValue == null ? default : ConvertReturnedValueToValueTask(firstRtnValue);
     }
     protected virtual ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
     {
@@ -267,7 +413,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             return new ValueTask(task);
         }
 
-        _fromResultMethod ??= typeof(Task).GetMethod("FromResult", BindingFlags.Static | BindingFlags.Instance);
+        _fromResultMethod ??= typeof(Task).GetMethod("FromResult", BindingFlags.Static | BindingFlags.Public);
         if (_fromResultMethod == null
             || !_fromResultMethod.IsGenericMethodDefinition
             || _fromResultMethod.MakeGenericMethod(returnedType).Invoke(null, [returnedValue]) is not Task newTask)
@@ -277,15 +423,18 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         return new ValueTask(newTask);
     }
-    protected virtual object? GetTargetObject()
+    protected virtual object? GetTargetObject(MethodInfo? knownMethod)
     {
-        if (Identifier == null || IsStatic)
+        Type? declType = knownMethod?.DeclaringType ?? DeclaringType;
+        bool isStatic = knownMethod == null ? IsStatic : knownMethod.IsStatic;
+
+        if (Identifier == null || isStatic)
             return null;
 
-        if (DeclaringType == null)
+        if (declType == null)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound) { ErrorCode = 4 };
 
-        WeakReference? weakRef = ProxyGenerator.Instance.GetObjectByIdentifier(DeclaringType, Identifier);
+        WeakReference? weakRef = ProxyGenerator.Instance.GetObjectByIdentifier(declType, Identifier);
         object? target;
 
         try
@@ -328,7 +477,8 @@ public class RpcEndpoint : IRpcInvocationPoint
         bool isLittleEndian = BitConverter.IsLittleEndian;
 
         EndpointFlags flags = ParametersAreBindedParametersOnly ? EndpointFlags.ArgsAreBindOnly : 0;
-        flags |= ParameterTypeNames != null ? EndpointFlags.DefinesParameters : 0;
+        flags |= (EndpointFlags)((ParameterTypeNames != null ? 1 : 0) * (int)EndpointFlags.DefinesParameters);
+        flags |= (EndpointFlags)((IsBroadcast ? 1 : 0) * (int)EndpointFlags.Broadcast);
 
         *bytes = (byte)flags;
         ++bytes;
@@ -563,7 +713,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         bytes += bytesReadIdentifier;
 
         bytesRead = checked( (int)(bytes - originalPtr) );
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != null, signatureHash, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, bytesRead, identifier);
     }
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcSerializer serializer, IRpcRouter router, Stream stream, out int bytesRead)
     {
@@ -730,7 +880,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         index += bytesReadIdentifier;
 
         bytesRead = index;
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != null, signatureHash, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, bytesRead, identifier);
     }
     public virtual IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)
     {
@@ -1009,6 +1159,65 @@ public class RpcEndpoint : IRpcInvocationPoint
             return identifier;
         }
     }
+    private IEnumerable<MethodInfo> FindBroadcastListeners(IRpcRouter router)
+    {
+        if (!IsBroadcast)
+            throw new InvalidOperationException();
+
+        if (!router.BroadcastTargets.TryGetValue(DeclaringTypeName, out IReadOnlyList<RpcEndpointTarget> targets))
+            return Array.Empty<MethodInfo>();
+
+        MethodInfo? match = null;
+        List<MethodInfo>? matches = null;
+
+        if (targets is RpcEndpointTarget[] targetArr)
+        {
+            for (int i = 0; i < targetArr.Length; ++i)
+            {
+                ref RpcEndpointTarget target = ref targetArr[i];
+                TestTarget(in target, this, ref match, ref matches);
+            }
+        }
+        else
+        {
+            foreach (RpcEndpointTarget target in targets)
+            {
+                TestTarget(in target, this, ref match, ref matches);
+            }
+        }
+
+        if (matches is not null)
+            return matches;
+
+        return match is not null
+            ? Enumerable.Repeat(match, 1)
+            : Array.Empty<MethodInfo>();
+
+        static void TestTarget(in RpcEndpointTarget target, RpcEndpoint endpoint, ref MethodInfo? match, ref List<MethodInfo>? matches)
+        {
+            MethodInfo mtd = target.OwnerMethodInfo!;
+
+            if (!target.MethodName.Equals(endpoint.MethodName, StringComparison.Ordinal))
+                return;
+
+            if (target.ParameterTypes != null && (endpoint.ParameterTypeNames != null || endpoint.ParameterTypes != null))
+            {
+                if (!TypeUtility.ParametersMatchParameters(endpoint.ParameterTypes, endpoint.ParameterTypeNames,
+                        endpoint.ParametersAreBindedParametersOnly, target.ParameterTypes,
+                        target.ParameterTypesAreBindOnly))
+                {
+                    return;
+                }
+            }
+
+            if (match == null)
+                match = mtd;
+            else if (matches == null)
+                matches = new List<MethodInfo>(2) { match, mtd };
+            else
+                matches.Add(mtd);
+        }
+    }
     private static Type DetermineIdentifierType(IRpcSerializer serializer, string? typeName, uint? knownTypeId)
     {
         Type? type = null;
@@ -1040,10 +1249,11 @@ public class RpcEndpoint : IRpcInvocationPoint
     }
 
     [Flags]
-    protected internal enum EndpointFlags
+    protected internal enum EndpointFlags : byte
     {
         DefinesParameters = 1,
         ArgsAreBindOnly = 1 << 1,
-        Broadcast = 1 << 2
+        Broadcast = 1 << 2,
+        IgnoreSignatureHash = 1 << 3
     }
 }

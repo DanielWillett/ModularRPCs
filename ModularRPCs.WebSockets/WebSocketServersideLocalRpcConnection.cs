@@ -18,10 +18,8 @@ namespace DanielWillett.ModularRpcs.WebSockets;
 /// <remarks>Can be awaited to wait on the connection to close (useful for ASP.NET).</remarks>
 public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection, IModularRpcAuthoritativeParentConnection
 {
-    private bool _isClosed;
     private readonly WebSocketServersideLocalRpcConnectionAwaiter _awaiter;
     public WebSocketServersideRemoteRpcConnection Remote { get; internal set; } = null!;
-    public override bool IsClosed => _isClosed;
     protected internal override bool CanReconnect => false;
     protected internal override WebSocket WebSocket => Remote.WebSocketIntl;
     protected internal override SemaphoreSlim Semaphore => Remote.Semaphore;
@@ -29,12 +27,11 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
         : base(router, serializer, endpoint, bufferSize, false, default)
     {
         _awaiter = new WebSocketServersideLocalRpcConnectionAwaiter(this);
-        _isClosed = true;
+        IsClosedIntl = true;
     }
     public Task InitializeConnectionAsync(CancellationToken token = default)
     {
-        Remote.IsClosed = false;
-        _isClosed = false;
+        IsClosedIntl = false;
         TryStartListening();
         return Task.CompletedTask;
     }
@@ -43,15 +40,6 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
     /// Get an awaiter that completes when the connection closes.
     /// </summary>
     public WebSocketServersideLocalRpcConnectionAwaiter GetAwaiter() => _awaiter;
-
-    /// <summary>
-    /// Force the underlying connection to reconnect. Not supported.
-    /// </summary>
-    /// <exception cref="NotSupportedException">Always thrown.</exception>
-    public override Task Reconnect(CancellationToken token = default)
-    {
-        throw new NotSupportedException();
-    }
 
     public override ValueTask DisposeAsync()
     {

@@ -1,18 +1,32 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
-using DanielWillett.ModularRpcs.Abstractions;
 
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask
 {
     private protected RpcTaskAwaiter Awaiter = null!;
+    internal IModularRpcRemoteConnection? ConnectionIntl;
     internal Exception? Exception;
     internal ConcurrentBag<Exception>? Exceptions;
     internal Timer? Timer;
     internal TimeSpan Timeout;
     internal int CompleteCount = 1;
+    internal bool IgnoreNoConnectionsIntl;
+
+    /// <summary>
+    /// If the RPC has completed or errored.
+    /// </summary>
+    public bool IsCompleted => Awaiter.IsCompleted;
+
+    /// <summary>
+    /// If the RPC has errored.
+    /// </summary>
+    public bool IsErrored => Exception != null || Exceptions != null;
 
     /// <summary>
     /// An instance of <see cref="RpcTask"/> that instantly completes, skipping any context switching.
@@ -45,6 +59,11 @@ public class RpcTask
     /// The endpoint this rpc was meant to invoke.
     /// </summary>
     public IRpcInvocationPoint? Endpoint { get; internal set; }
+
+    /// <summary>
+    /// The connection this task was sent to. May not be available in cases where the task was already completed, such as <see cref="CompletedTask"/>.
+    /// </summary>
+    public IModularRpcRemoteConnection? Connection => ConnectionIntl;
     internal RpcTask(bool isFireAndForget)
     {
         if (GetType() == typeof(RpcTask))
@@ -56,6 +75,25 @@ public class RpcTask
         Awaiter = new RpcTaskAwaiter(this, true);
     }
     public RpcTaskAwaiter GetAwaiter() => Awaiter;
+    public Exception? GetException()
+    {
+        if (Exceptions == null)
+        {
+            Exception? x = Exception;
+            if (x is not RpcNoConnectionsException && (ConnectionIntl is not { IsClosed: true } || x is not RpcTimeoutException))
+                return x;
+
+            return null;
+        }
+
+        Exception[] newExceptions = IgnoreNoConnectionsIntl
+            ? Exceptions.Where(x => x is not RpcNoConnectionsException && (ConnectionIntl is not { IsClosed: true } || x is not RpcTimeoutException)).ToArray()
+            : Exceptions.ToArray();
+
+        return newExceptions.Length == 0
+            ? null
+            : new AggregateException(newExceptions);
+    }
     protected internal virtual bool TrySetResult(object? value)
     {
         return false;
@@ -88,6 +126,5 @@ public class RpcTask
         bag?.Add(exception);
         Awaiter.TriggerComplete();
     }
-
     public static RpcTask<T> FromResult<T>(T value) => new RpcTask<T>(value);
 }

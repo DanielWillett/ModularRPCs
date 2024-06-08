@@ -28,12 +28,12 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
     }
 
     /// <inheritdoc />
-    public int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false)
+    public int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false, bool openOnly = true)
     {
         lock (_sync)
         {
             IModularRpcRemoteConnection? c = _remoteConnection;
-            if (c == null)
+            if (c == null || c.IsClosed)
                 return 0;
 
             callback(c);
@@ -120,5 +120,78 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         }
 
         return true;
+    }
+#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+    public async ValueTask DisposeAsync()
+    {
+        IModularRpcRemoteConnection? existing;
+        lock (_sync)
+        {
+            existing = Interlocked.Exchange(ref _remoteConnection, null);
+        }
+
+        if (existing == null)
+            return;
+
+        try
+        {
+            await existing.CloseAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            this.LogWarning(ex, "Failed to close connection.");
+        }
+        finally
+        {
+            try
+            {
+#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+                if (existing is IAsyncDisposable aDisp)
+                    await aDisp.DisposeAsync().ConfigureAwait(false);
+                else
+#endif
+                if (existing is IDisposable disp)
+                    disp.Dispose();
+            }
+            catch (Exception ex)
+            {
+                this.LogWarning(ex, "Failed to dispose removed connection.");
+            }
+        }
+    }
+#endif
+    public void Dispose()
+    {
+        IModularRpcRemoteConnection? existing;
+        lock (_sync)
+        {
+            existing = Interlocked.Exchange(ref _remoteConnection, null);
+        }
+
+        if (existing == null)
+            return;
+
+        try
+        {
+            existing.CloseAsync().AsTask().Wait();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            this.LogWarning(ex, "Failed to close connection.");
+        }
+        finally
+        {
+            try
+            {
+                if (existing is IDisposable disp)
+                    disp.Dispose();
+            }
+            catch (Exception ex)
+            {
+                this.LogWarning(ex, "Failed to dispose removed connection.");
+            }
+        }
     }
 }

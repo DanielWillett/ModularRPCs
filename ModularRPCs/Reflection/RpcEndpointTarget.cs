@@ -21,7 +21,9 @@ public struct RpcEndpointTarget
     public string DeclaringTypeName;
     public string[]? ParameterTypes;
     public bool ParameterTypesAreBindOnly;
+    public bool IgnoreSignatureHash;
     public int SignatureHash;
+    internal MethodInfo? OwnerMethodInfo;
 
     private static readonly FieldInfo IsDeclaringSendMethodField = typeof(RpcEndpointTarget).GetField(nameof(IsBroadcast), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo MethodNameField = typeof(RpcEndpointTarget).GetField(nameof(MethodName), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -29,10 +31,11 @@ public struct RpcEndpointTarget
     private static readonly FieldInfo ParameterTypesField = typeof(RpcEndpointTarget).GetField(nameof(ParameterTypes), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo ParameterTypesAreBindOnlyField = typeof(RpcEndpointTarget).GetField(nameof(ParameterTypesAreBindOnly), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo SignatureHashField = typeof(RpcEndpointTarget).GetField(nameof(SignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo IgnoreSignatureHashField = typeof(RpcEndpointTarget).GetField(nameof(IgnoreSignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
 
     public RpcEndpoint GetEndpoint()
     {
-        return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash);
+        return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash, IgnoreSignatureHash);
     }
 
     /// <summary>
@@ -124,13 +127,24 @@ public struct RpcEndpointTarget
         }
         else if (!string.IsNullOrEmpty(targetAttribute.TypeName))
         {
-            declaringType = Type.GetType(targetAttribute.TypeName, false, false);
-            target.DeclaringTypeName = targetAttribute.TypeName;
+            declaringType = Type.GetType(targetAttribute.TypeName!, false, false);
+            target.DeclaringTypeName = targetAttribute.TypeName!;
+        }
+        else if (decoratingMethod.DeclaringType is { } methodDeclaringType
+                 && methodDeclaringType.TryGetAttributeSafe(out RpcClassAttribute classAttribute)
+                 && (classAttribute.DefaultType != null || !string.IsNullOrEmpty(classAttribute.DefaultTypeName)))
+        {
+            target.DeclaringTypeName = classAttribute.DefaultType != null
+                ? TypeUtility.GetAssemblyQualifiedNameNoVersion(classAttribute.DefaultType)
+                : classAttribute.DefaultTypeName!;
+            declaringType = Type.GetType(target.DeclaringTypeName, false, false);
         }
         else
         {
             declaringType = decoratingMethod.DeclaringType;
-            target.DeclaringTypeName = declaringType != null ? TypeUtility.GetAssemblyQualifiedNameNoVersion(declaringType) : decoratingMethod.Module.FullyQualifiedName;
+            target.DeclaringTypeName = declaringType != null
+                ? TypeUtility.GetAssemblyQualifiedNameNoVersion(declaringType)
+                : decoratingMethod.Module.FullyQualifiedName;
         }
 
         bool needsSigCheck = forceSignatureCheck;
@@ -182,6 +196,10 @@ public struct RpcEndpointTarget
         il.Emit(OpCodes.Dup);
         il.Emit(ParameterTypesAreBindOnly ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
         il.Emit(OpCodes.Stfld, ParameterTypesAreBindOnlyField);
+
+        il.Emit(OpCodes.Dup);
+        il.Emit(IgnoreSignatureHash ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Stfld, IgnoreSignatureHashField);
 
         il.Emit(OpCodes.Dup);
         il.Emit(OpCodes.Ldc_I4, SignatureHash);

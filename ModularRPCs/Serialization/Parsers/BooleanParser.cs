@@ -659,7 +659,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 length = ReadArrayLength(stream, out bytesRead);
                 if (length > output.Count || length > 0 && output.Array == null)
                 {
-                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, (length - 1) / 8 + 1);
+                    SerializationHelper.TryAdvanceStream(stream, _config, ref bytesRead, (length - 1) / 8 + 1);
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
                 }
             }
@@ -701,7 +701,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                 length = ReadArrayLength(stream, out bytesRead);
                 if (length > output.Length)
                 {
-                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, (length - 1) / 8 + 1);
+                    SerializationHelper.TryAdvanceStream(stream, _config, ref bytesRead, (length - 1) / 8 + 1);
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
                 }
             }

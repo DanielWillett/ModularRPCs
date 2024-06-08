@@ -9,26 +9,37 @@ namespace DanielWillett.ModularRpcs.Protocol;
 /// Use the following 4 formulas in <see href="https://www.desmos.com/calculator">Desmos</see> to see the effects of each value.
 ///
 /// <code>
-/// * \min\left(\sqrt[3]{\left(m^{a}x-m\right)}+m^{\frac{1}{3}},m\right)\left\{x\ >\ 0\right\}
-/// * m='Plateau'
+/// * \min\left(a^{d}x^{\frac{1}{d}}+s,m\right)\left\{x>0\right\}
+/// * s='Start'
 /// * a='Amplifier'
-/// * y=m
+/// * m='Maximum'
+/// * d='Climb'
 /// </code>
 ///
 /// </remarks>
 public struct PlateauingDelay
 {
-    private readonly double _cubeRootOfPlateau;
+    private readonly double _ampPwrToClimb;
 
     /// <summary>
-    /// This is the maximum amount of time between any two events.
+    /// Offset of the delay, meaning the minimum/start value in <c>seconds</c>.
     /// </summary>
-    public readonly double Plateau;
+    public readonly double Start;
 
     /// <summary>
-    /// This number affects how quickly the delay ramps up. Negative values ramp up slower than positive values. This value will usually stay within <c>[-5, 5]</c>.
+    /// How quickly the delay follows the curve in <c>seconds^(-<see cref="Climb"/>)</c>.
     /// </summary>
     public readonly double Amplifier;
+
+    /// <summary>
+    /// Hard maximum value in <c>seconds</c>. Ignored if less than zero.
+    /// </summary>
+    public readonly double Maximum;
+
+    /// <summary>
+    /// How sharp the curve is.
+    /// </summary>
+    public readonly double Climb;
 
     /// <summary>
     /// The origin value of <see cref="Trials"/>.
@@ -45,19 +56,43 @@ public struct PlateauingDelay
     /// </summary>
     public int Trials { get; private set; }
 
-    public PlateauingDelay(double plateau, double amplifier, int startingTrials = 0)
+    public PlateauingDelay(ref PlateauingDelay other, bool reset)
+    {
+        ref PlateauingDelay r = ref this;
+        r = other;
+        if (reset)
+        {
+            Reset();
+        }
+    }
+
+    /// <summary>
+    /// Create a new <see cref="PlateauingDelay"/> with the given parameters. Defaults are parameters for a good climb for a 5 minute maximum.
+    /// </summary>
+    /// <param name="amplifier">How quickly the delay follows the curve in <c>seconds^(-<paramref name="climb"/>)</c>.</param>
+    /// <param name="climb">How sharp the curve is.</param>
+    /// <param name="maximum">Hard maximum value in <c>seconds</c>. Ignored if less than zero.</param>
+    /// <param name="start">Offset of the delay, meaning the minimum/start value in <c>seconds</c>.</param>
+    /// <param name="startingTrials">The origin value of <see cref="Trials"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="startingTrials"/> is less than 0 or <paramref name="amplifier"/> or <paramref name="climb"/> is less than or equal to 0.</exception>
+    public PlateauingDelay(double amplifier = 6, double climb = 2.5, double maximum = 300, double start = 10, int startingTrials = 0)
     {
         if (startingTrials < 0)
             throw new ArgumentOutOfRangeException(nameof(startingTrials));
 
-        if (plateau <= 0)
-            throw new ArgumentOutOfRangeException(nameof(plateau));
-
-        Plateau = plateau;
-        _cubeRootOfPlateau = Math.Pow(plateau, 1d / 3d);
+        if (amplifier <= 0)
+            throw new ArgumentOutOfRangeException(nameof(amplifier));
+        
+        if (climb <= 0)
+            throw new ArgumentOutOfRangeException(nameof(climb));
+        
         Amplifier = amplifier;
+        Climb = climb;
+        Maximum = maximum;
+        Start = start;
         StartingTrials = startingTrials;
         Trials = startingTrials;
+        _ampPwrToClimb = Math.Pow(Amplifier, Climb);
         Calculate(startingTrials);
     }
 
@@ -72,7 +107,7 @@ public struct PlateauingDelay
     }
 
     /// <summary>
-    /// Calculate the next delay and increment <see cref="Trials"/>.
+    /// Calculate the next delay and increment <see cref="Trials"/> in <c>seconds</c>.
     /// </summary>
     public double CalculateNext()
     {
@@ -80,19 +115,17 @@ public struct PlateauingDelay
         Value = val;
         return val;
     }
-    private double Calculate(int trials)
+
+    /// <summary>
+    /// Calculate the delay for a given number of trials in <c>seconds</c>.
+    /// </summary>
+    public readonly double Calculate(int trials)
     {
         if (trials <= 0)
             return 0;
 
-        // min( 3rt(p^a * t - p) + 3rt(p) , p )
-        return Math.Min(
-            Math.Pow(
-                Math.Pow(Plateau, Amplifier) * Trials - Trials,
-                1d / 3d
-            )
-            + _cubeRootOfPlateau,
-            Plateau
-        );
+        // (a^c) * (x^(1/c)) + s
+        double val = _ampPwrToClimb * Math.Pow(trials, 1d / Climb) + Start;
+        return Maximum < 0 ? val : Math.Min(val, Maximum);
     }
 }

@@ -37,7 +37,9 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
         if (rawData.Length <= 0)
             throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
 
-        return Local.Router.ReceiveData(Server, serializer, rawData, canTakeOwnership, token);
+        byte[] rtnBuffer = new byte[rawData.Length];
+        rawData.CopyTo(rtnBuffer);
+        return Local.Router.ReceiveData(Server, serializer, rtnBuffer, true, token);
     }
     ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {

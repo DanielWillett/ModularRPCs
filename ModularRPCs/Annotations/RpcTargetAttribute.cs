@@ -1,10 +1,16 @@
 ﻿using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.SpeedBytes;
 using JetBrains.Annotations;
 using System;
-using System.Diagnostics.CodeAnalysis;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Threading;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+using System.Diagnostics.CodeAnalysis;
+#endif
 
 namespace DanielWillett.ModularRpcs.Annotations;
 
@@ -15,6 +21,74 @@ public abstract class RpcTargetAttribute : Attribute
     /// Declaring type of the target method.
     /// </summary>
     public Type? Type { get; }
+
+    /// <summary>
+    /// Set this to <see langword="true"/> when passing in or receiving raw data, such as a
+    /// <see cref="Stream"/>, <see cref="IEnumerable{T}"/> of <see cref="byte"/>,
+    /// <see cref="ReadOnlySpan{T}"/> or <see cref="Span{T}"/> of <see cref="byte"/>,
+    /// <see cref="byte"/> pointer and <see cref="uint"/> or <see cref="int"/> maxSize, or a <see cref="ByteReader"/> or <see cref="ByteWriter"/>.
+    ///
+    /// <para>
+    /// Send and receive methods can also attach a <see cref="bool"/> parameter (canTakeOwnership) that defines if it's safe to use whatever input after a context switch (like awaiting in an <see langword="async"/> method).
+    /// </para>
+    ///
+    /// <para>
+    /// Parameter mapping (send):<br/>
+    /// * <see cref="byte"/>[] -> input data<br/>
+    /// * <see cref="IEnumerable{T}"/> of <see cref="byte"/> -> input data<br/>
+    /// * <see cref="byte"/>* -> input data<br/>
+    /// * <see cref="Span{T}"/> of <see cref="byte"/> -> input data<br/>
+    /// * <see cref="ReadOnlySpan{T}"/> of <see cref="byte"/> -> input data<br/>
+    /// * <see cref="Memory{T}"/> of <see cref="byte"/> -> input data<br/>
+    /// * <see cref="ReadOnlyMemory{T}"/> of <see cref="byte"/> -> input data<br/>
+    /// * <see cref="Stream"/> -> input data<br/>
+    /// * <see cref="ByteWriter"/> -> input data (from beginning)<br/>
+    /// * <see cref="ByteReader"/> -> input data (from current position, using number of bytes if available)<br/>
+    /// * Any integer type -> Number of bytes in input data<br/>
+    /// * <see cref="bool"/> -> Can take ownership (see above)<br/>
+    /// </para><br/>
+    /// <para>
+    /// Parameter mapping (receive):<br/>
+    /// * <see cref="ReadOnlyMemory{T}"/> of <see cref="byte"/> -> recommended when using binary provider (most common). raw data from packet (data usually wont copy)<br/>
+    /// * <see cref="byte"/>[] -> raw data from packet (data usually wont copy)<br/>
+    /// * <see cref="List{T}"/> of <see cref="byte"/> -> raw data from packet (data may copy)<br/>
+    /// * <see cref="ArrayList"/> of <see cref="byte"/> -> raw data from packet (data will copy)<br/>
+    /// * <see cref="IEnumerable{T}"/>, <see cref="ICollection{T}"/>, <see cref="IList{T}"/>, <see cref="IReadOnlyCollection{T}"/>, <see cref="IReadOnlyList{T}"/> of <see cref="byte"/> -> raw data from packet (data usually wont copy)<br/>
+    /// * <see cref="byte"/>* -> raw data from packet (data usually wont copy)<br/>
+    /// * <see cref="ArraySegment{T}"/> of <see cref="byte"/> -> raw data from packet (data usually wont copy)<br/>
+    /// * <see cref="Span{T}"/> of <see cref="byte"/> -> raw data from packet (data may copy)<br/>
+    /// * <see cref="ReadOnlySpan{T}"/> of <see cref="byte"/> -> raw data from packet (data usually wont copy)<br/>
+    /// * <see cref="Memory{T}"/> of <see cref="byte"/> -> raw data from packet (data may copy)<br/>
+    /// * <see cref="Stream"/> -> recommended when using stream provider (less common). raw stream or <see cref="MemoryStream"/> with raw data from packet (data usually will copy)<br/>
+    /// * <see cref="ByteReader"/> -> raw data from packet (data usually will copy)<br/>
+    /// * Any integer type -> Number of bytes in input data<br/>
+    /// * <see cref="bool"/> -> Can take ownership (see above)<br/>
+    /// </para><br/>
+    /// Example:
+    /// <code>
+    /// [RpcSend(Raw = true)]
+    /// // send maxSize bytes directly from a byte pointer. If canTakeOwnership is not included, it's assumed to be false.
+    /// virtual RpcTask CallRawMethod(byte* data, int maxSize, bool canTakeOwnership) => RpcTask.NotImplemented;
+    ///
+    /// // receive data directly as a byte array. If canTakeOwnership is not included, it should be assumed to be true.
+    /// [RpcReceive(Raw = true)]
+    /// async Task RawMethod(byte[] data, bool canTakeOwnership)
+    /// {
+    ///     if (!canTakeOwnership)
+    ///     {
+    ///         // canTakeOwnership tells the method if it needs to copy the data before switching contexts (such as in an async method)
+    ///         byte[] newArray = new byte[data.Length];
+    ///         Buffer.BlockCopy(data, 0, newArray, 0, data.Length);
+    ///         data = newArray;
+    ///     }
+    /// 
+    ///     await Task.Delay(5000);
+    ///     Console.WriteLine(data[0]);
+    /// }
+    /// </code>
+    /// </summary>
+    /// <remarks>Note: parameter names do not matter, they're just matched using their types.</remarks>
+    public bool Raw { get; set; }
 
     /// <summary>
     /// Case-sensitive assembly qualified name of the declaring type of the target method.

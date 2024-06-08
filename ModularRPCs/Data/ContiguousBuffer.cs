@@ -130,7 +130,7 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             if (expectedSize == amtReceived) // new single packet, process all
                             {
                                 BufferProgressUpdated?.Invoke(in _pendingOverhead, amtReceived, amtReceived);
-                                callback(Buffer.AsSpan(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
+                                callback(Buffer.AsMemory(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
                                 goto reset;
                             }
 
@@ -146,7 +146,7 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
 
                             BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
                             // multiple messages in one.
-                            callback(Buffer.AsSpan(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
+                            callback(Buffer.AsMemory(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
                             _pendingData = null;
                             _pendingOverhead = null;
                             _pendingLength = 0;
@@ -162,7 +162,7 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             fixed (byte* ptr = &_pendingData![_pendingLength])
                                 System.Buffer.MemoryCopy(bytes, ptr, amtReceived, amtReceived);
                             BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
-                            callback(_pendingData.AsSpan(0, checked( (int)expectedSize )), true, in ovh);
+                            callback(_pendingData.AsMemory(0, checked( (int)expectedSize )), true, in ovh);
                             goto reset;
                         }
                         // continue the data for another packet
@@ -180,7 +180,7 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                         fixed (byte* ptr = &_pendingData![_pendingLength])
                             System.Buffer.MemoryCopy(bytes, ptr, remaining, remaining);
                         BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
-                        callback(_pendingData.AsSpan(0, checked( (int)expectedSize )), true, in ovh);
+                        callback(_pendingData.AsMemory(0, checked( (int)expectedSize )), true, in ovh);
                         hadMuchData = _pendingData.Length > GCTriggerSizeThreshold;
                         _pendingData = null;
                         _pendingOverhead = default;
@@ -262,4 +262,4 @@ public delegate void ContiguousBufferProgressUpdate(in PrimitiveRpcOverhead? ove
 /// <param name="overhead">Information about the RPC call.</param>
 /// <param name="canTakeOwnership">If the backing storage for <paramref name="data"/> is safe to use outside the current stack frame. If this is <see langword="false"/>, data should be copied before context switching.</param>
 /// <param name="data">Span of bytes, not including the overhead.</param>
-public delegate void ContiguousBufferCallback(ReadOnlySpan<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead);
+public delegate void ContiguousBufferCallback(ReadOnlyMemory<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead);

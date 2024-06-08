@@ -8,13 +8,18 @@ using System.Collections.Generic;
 using System.IO;
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+/// <summary>
+/// Subclass of <see cref="ArrayBinaryTypeParser{T}"/> to take some boilerplate away from writing array parsers for quickly convertible unmanaged, fixed-size types.
+/// Supports arrays, <see cref="IList{T}"/>,
+/// <see cref="IReadOnlyList{T}"/>, <see cref="IEnumerable{T}"/>, <see cref="ICollection{T}"/>, <see cref="IReadOnlyCollection{T}"/>,
+/// <see cref="ArraySegment{T}"/>, <see cref="Span{T}"/> and <see cref="ReadOnlySpan{T}"/> pointers (with <see cref="TypedReference"/>'s), 
+/// and <see cref="Span{T}"/> and <see cref="ReadOnlySpan{T}"/>
+/// </summary>
+/// <remarks>Uses function pointers instead of virtual functions for performance.</remarks>
+/// <typeparam name="TElementType">The element type to parse.</typeparam>
 public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : ArrayBinaryTypeParser<TElementType> where TElementType : unmanaged
 {
-    protected delegate void WriteToBuffer();
-    protected delegate void WriteToBufferSpan(Span<byte> span, TElementType value);
-    protected delegate TElementType ReadFromBuffer(byte* ptr);
-    protected delegate TElementType ReadFromBufferSpan(Span<byte> span);
-
     // not virtual for performance
     private readonly delegate*<byte*, TElementType, void> _writeToBuffer;
     private readonly delegate*<byte*, TElementType, void> _writeToBufferUnaligned;
@@ -29,6 +34,20 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
     private readonly int _elementSize;
     private readonly int _alignSize;
     public override int ElementSize => _elementSize;
+
+    /// <summary>
+    /// Create a new <see cref="UnmanagedConvValueTypeBinaryArrayTypeParser{TElementType}"/> with the given read/write functions.
+    /// </summary>
+    /// <param name="config">The configuration to use when parsing.</param>
+    /// <param name="elementSize">Size in bytes of each element. This will affect the rounding of <see cref="SerializationConfiguration.MaximumBufferSize"/> as well.</param>
+    /// <param name="alignSize">What size in bytes should be considered 'aligned'. This is usually the element size but may sometimes be the smallest primitive type in a union-like structure.</param>
+    /// <param name="flipBits">If the bits should be flipped. Usually this will equal <c>!<see cref="BitConverter.IsLittleEndian"/></c>.</param>
+    /// <param name="writeToBuffer">Pointer to a static function to write to the buffer when the pointer is aligned to <paramref name="alignSize"/>.</param>
+    /// <param name="writeToBufferUnaligned">Pointer to a static function to write to the buffer when the pointer is not aligned to <paramref name="alignSize"/>.</param>
+    /// <param name="writeToBufferSpan">Pointer to a static function to write to a span of bytes.</param>
+    /// <param name="readFromBuffer">Pointer to a static function to read from the buffer when the pointer is aligned to <paramref name="alignSize"/>.</param>
+    /// <param name="readFromBufferUnaligned">Pointer to a static function to read from the buffer when the pointer is not aligned to <paramref name="alignSize"/>.</param>
+    /// <param name="readFromBufferSpan">Pointer to a static function to read from a span of bytes.</param>
     protected UnmanagedConvValueTypeBinaryArrayTypeParser(SerializationConfiguration config, int elementSize, int alignSize, bool flipBits,
         delegate*<byte*, TElementType, void> writeToBuffer,
         delegate*<byte*, TElementType, void> writeToBufferUnaligned,
@@ -1417,7 +1436,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             length = ReadArrayLength(stream, out bytesRead);
             if (length > output.Count || length > 0 && output.Array == null)
             {
-                SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length * elementSize);
+                SerializationHelper.TryAdvanceStream(stream, Configuration, ref bytesRead, length * elementSize);
                 throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
         }
@@ -1537,7 +1556,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             length = ReadArrayLength(stream, out bytesRead);
             if (length > output.Length)
             {
-                SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length * elementSize);
+                SerializationHelper.TryAdvanceStream(stream, Configuration, ref bytesRead, length * elementSize);
                 throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
             }
         }

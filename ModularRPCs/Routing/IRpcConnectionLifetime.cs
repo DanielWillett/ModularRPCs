@@ -1,9 +1,13 @@
-﻿using System.Threading;
+﻿using DanielWillett.ModularRpcs.Abstractions;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Abstractions;
 
 namespace DanielWillett.ModularRpcs.Routing;
-public interface IRpcConnectionLifetime
+public interface IRpcConnectionLifetime : IDisposable
+#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+    , IAsyncDisposable
+#endif
 {
     /// <summary>
     /// Does this lifetime only support one connection (like a client)?
@@ -15,7 +19,7 @@ public interface IRpcConnectionLifetime
     /// </summary>
     /// <param name="workOnCopy">Works on a copy of the list where applicable so connections can be terminated from within the callback.</param>
     /// <returns>The number of total connections (including connections after breaking).</returns>
-    int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false);
+    int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false, bool openOnly = true);
 
     /// <summary>
     /// Attempts to add a new connection.

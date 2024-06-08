@@ -1106,6 +1106,16 @@ internal static class TypeUtility
             return decoratingMethod != null;
         }
 
+        if (declaringType == null
+            && declaringTypeName == null
+            && decoratingMethod?.DeclaringType is { } methodDeclaringType
+            && methodDeclaringType.TryGetAttributeSafe(out RpcClassAttribute classAttribute)
+            && (classAttribute.DefaultType != null || !string.IsNullOrEmpty(classAttribute.DefaultTypeName)))
+        {
+            declaringType = classAttribute.DefaultType;
+            declaringTypeName = classAttribute.DefaultTypeName;
+        }
+
         if (
             decoratingMethod != null
             // is this attribute referencing itself (decoratingMethod).
@@ -1299,6 +1309,121 @@ internal static class TypeUtility
         }
 
         return null;
+    }
+
+    public static bool ParametersMatchParameters(Type?[]? testParamTypes, string[]? testParamTypeNames, bool testParametersAreBindedParametersOnly, string[] actualParamTypeNames, bool actualParametersAreBindedParametersOnly)
+    {
+        bool matchExact = false;
+        bool anyNull = testParamTypes == null;
+        if (!anyNull)
+        {
+            for (int i = 0; i < testParamTypes!.Length; ++i)
+            {
+                if (testParamTypes[i] != null)
+                    continue;
+
+                anyNull = true;
+                break;
+            }
+        }
+
+        int len = anyNull ? testParamTypeNames!.Length : testParamTypes!.Length;
+        if (testParametersAreBindedParametersOnly == actualParametersAreBindedParametersOnly)
+        {
+            if (len != actualParamTypeNames.Length)
+                return false;
+
+            matchExact = true;
+        }
+
+        if (matchExact)
+        {
+            if (anyNull)
+            {
+                for (int i = 0; i < len; ++i)
+                {
+                    if (!string.Equals(testParamTypeNames![i], actualParamTypeNames[i], StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < len; ++i)
+                {
+                    Type testParamType = testParamTypes![i];
+                    if (!CompareAssemblyQualifiedNameNoVersion(testParamType.IsByRef ? testParamType.GetElementType()! : testParamType, actualParamTypeNames[i]))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        else if (actualParametersAreBindedParametersOnly)
+        {
+            len = actualParamTypeNames.Length;
+            int ind = -1;
+            if (anyNull)
+            {
+                for (int i = 0; i < len; ++i)
+                {
+                    do
+                    {
+                        ++ind;
+                        if (ind >= testParamTypeNames!.Length)
+                            return false;
+                    }
+                    while (!string.Equals(testParamTypeNames[ind], actualParamTypeNames[i], StringComparison.Ordinal));
+                }
+            }
+            else
+            {
+                for (int i = 0; i < len; ++i)
+                {
+                    do
+                    {
+                        ++ind;
+                        if (ind >= testParamTypes!.Length)
+                            return false;
+                    }
+                    while (!CompareAssemblyQualifiedNameNoVersion(testParamTypes[i].IsByRef ? testParamTypes[i].GetElementType()! : testParamTypes[i], actualParamTypeNames[i]));
+                }
+            }
+        }
+        else // if (actualParametersAreBindedParametersOnly)
+        {
+            int ind = -1;
+            if (anyNull)
+            {
+                for (int i = 0; i < len; ++i)
+                {
+                    do
+                    {
+                        ++ind;
+                        if (ind >= actualParamTypeNames.Length)
+                            return false;
+                    }
+                    while (!string.Equals(testParamTypeNames![i], actualParamTypeNames[ind], StringComparison.Ordinal));
+                }
+            }
+            else
+            {
+                for (int i = 0; i < len; ++i)
+                {
+                    Type testParamType = testParamTypes![i];
+                    do
+                    {
+                        ++ind;
+                        if (ind >= testParamTypes!.Length)
+                            return false;
+                    }
+                    while (!CompareAssemblyQualifiedNameNoVersion(testParamType.IsByRef ? testParamType.GetElementType()! : testParamType, actualParamTypeNames[ind]));
+                }
+            }
+        }
+
+        return true;
     }
 }
 

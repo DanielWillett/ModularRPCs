@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,24 +13,48 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
     private object? _logger;
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }
-    public int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false)
+    public int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false, bool openOnly = true)
     {
         IModularRpcRemoteConnection[]? copy;
         int i = 0;
         lock (_connections)
         {
             if (workOnCopy)
-                copy = _connections.ToArray();
+            {
+                if (openOnly)
+                {
+                    int ct = _connections.Count(x => !x.IsClosed);
+                    copy = new IModularRpcRemoteConnection[ct];
+                    int index = -1;
+                    for (; i < _connections.Count; ++i)
+                    {
+                        IModularRpcRemoteConnection conn = _connections[i];
+                        if (conn.IsClosed)
+                            continue;
+
+                        copy[++index] = conn;
+                    }
+                }
+                else
+                    copy = _connections.ToArray();
+            }
             else
             {
+                int ct = 0;
                 for (; i < _connections.Count; ++i)
                 {
-                    bool result = callback(_connections[i]);
+                    IModularRpcRemoteConnection conn = _connections[i];
+                    if (conn.IsClosed)
+                        continue;
+                    if (openOnly && conn.IsClosed)
+                        continue;
+                    ++ct;
+                    bool result = callback(conn);
                     if (!result)
-                        return _connections.Count;
+                        return _connections.Count(x => !openOnly || !x.IsClosed);
                 }
 
-                return i;
+                return ct;
             }
         }
 
@@ -107,5 +132,41 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         }
 
         return true;
+    }
+
+#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+    public async ValueTask DisposeAsync()
+    {
+        IModularRpcRemoteConnection[] connections;
+        lock (_connections)
+        {
+            connections = _connections.ToArray();
+        }
+
+        Task[] tasks = new Task[connections.Length];
+        for (int i = connections.Length - 1; i >= 0; --i)
+        {
+            IModularRpcRemoteConnection conn = connections[i];
+            tasks[i] = conn.CloseAsync().AsTask();
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+#endif
+    public void Dispose()
+    {
+        lock (_connections)
+        {
+            Task[] allTasks = new Task[_connections.Count];
+            for (int i = _connections.Count - 1; i >= 0; --i)
+            {
+                IModularRpcRemoteConnection conn = _connections[i];
+                _connections.RemoveAt(i);
+
+                allTasks[i] = conn.CloseAsync().AsTask();
+            }
+
+            Task.WaitAll(allTasks);
+        }
     }
 }

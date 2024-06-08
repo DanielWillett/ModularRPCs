@@ -8,6 +8,14 @@ using JetBrains.Annotations;
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+/// <summary>
+/// Implementation of <see cref="IArrayBinaryTypeParser{T}"/> to take some boilerplate away from writing array parsers. Supports arrays, <see cref="IList{T}"/>,
+/// <see cref="IReadOnlyList{T}"/>, <see cref="IEnumerable{T}"/>, <see cref="ICollection{T}"/>, <see cref="IReadOnlyCollection{T}"/>,
+/// <see cref="ArraySegment{T}"/>, <see cref="Span{T}"/> and <see cref="ReadOnlySpan{T}"/> pointers (with <see cref="TypedReference"/>'s), 
+/// and <see cref="Span{T}"/> and <see cref="ReadOnlySpan{T}"/>
+/// </summary>
+/// <typeparam name="T">The element type to parse.</typeparam>
 public abstract unsafe class ArrayBinaryTypeParser<T> : IArrayBinaryTypeParser<T> where T : unmanaged
 {
     private static readonly Type ArrType = typeof(T[]);

@@ -1,5 +1,6 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
+using System;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,14 +12,19 @@ namespace DanielWillett.ModularRpcs.WebSockets;
 /// </summary>
 public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnection<WebSocketClientsideLocalRpcConnection>, IModularRpcClientsideConnection, IModularRpcRemoteConnection
 {
-    internal readonly ClientWebSocket WebSocket;
+    internal ClientWebSocket WebSocket;
     private int _disp;
+    public override bool IsClosed => Local.IsClosed;
+
+    /// <summary>
+    /// Used to customize the <see cref="Uri"/> used to reconnect with. Not compatible with multiple handlers.
+    /// </summary>
+    public event ReconnectHandler? OnReconnect;
     internal WebSocketClientsideRemoteRpcConnection(WebSocketEndpoint endpoint, IRpcConnectionLifetime lifetime, ClientWebSocket webSocket, int bufferSize = 4096)
         : base(webSocket, endpoint, lifetime, bufferSize)
     {
         WebSocket = webSocket;
         // ReSharper disable once VirtualMemberCallInConstructor
-        IsClosed = webSocket.State != WebSocketState.Open;
     }
 
     internal async Task Reconnect(CancellationToken token = default)
@@ -35,7 +41,19 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
             // ignored
         }
 
-        await WebSocket.ConnectAsync(Endpoint.Uri, token).ConfigureAwait(false);
+        WebSocket = new ClientWebSocket();
+
+        Task<Uri?>? rec = OnReconnect?.Invoke(this);
+
+        Uri uri = Endpoint.Uri;
+        if (rec != null)
+        {
+            uri = await rec ?? uri;
+        }
+
+        await WebSocket.ConnectAsync(uri, token).ConfigureAwait(false);
+        WebSocketIntl = WebSocket;
+        Local.IsClosedIntl = WebSocket.State != WebSocketState.Open;
     }
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
@@ -47,7 +65,7 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
                 return;
             alreadyDisposed = false;
             Local.DisposeIntl();
-            IsClosed = true;
+
             if (WebSocket.State == WebSocketState.Open)
             {
                 try
@@ -72,3 +90,5 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
     }
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
 }
+
+public delegate Task<Uri?> ReconnectHandler(WebSocketClientsideRemoteRpcConnection connection);

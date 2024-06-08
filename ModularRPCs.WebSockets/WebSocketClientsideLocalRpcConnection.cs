@@ -1,10 +1,10 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Protocol;
-using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.WebSockets;
 
@@ -16,13 +16,13 @@ public class WebSocketClientsideLocalRpcConnection : WebSocketLocalRpcConnection
     protected internal override WebSocket WebSocket => Remote.WebSocket;
     protected internal override SemaphoreSlim Semaphore => Remote.Semaphore;
     protected internal override bool CanReconnect => true;
-    public override bool IsClosed => Remote.IsClosed;
     internal WebSocketClientsideRemoteRpcConnection Remote { get; }
     internal WebSocketClientsideLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketClientsideRemoteRpcConnection remote, bool autoReconnect, PlateauingDelay delaySettings, int bufferSize = 4096)
         : base(router, serializer, remote.Endpoint, bufferSize, autoReconnect, delaySettings)
     {
         Remote = remote;
         Remote.Local = this;
+        IsClosedIntl = remote.WebSocket.State != WebSocketState.Open;
     }
 
     public override Task Reconnect(CancellationToken token = default) => Remote.Reconnect(token);

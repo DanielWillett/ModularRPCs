@@ -13,15 +13,19 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using DanielWillett.ModularRpcs.Data;
+using DanielWillett.SpeedBytes;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 internal sealed class SerializerGenerator
@@ -37,6 +41,9 @@ internal sealed class SerializerGenerator
         typeof(IEnumerable<IModularRpcConnection>),
         typeof(RpcFlags)
     ];
+
+    private static readonly Type? SpeedBytesWriterType = Type.GetType("DanielWillett.SpeedBytes.ByteWriter, DanielWillett.SpeedBytes");
+    private static readonly Type? SpeedBytesReaderType = Type.GetType("DanielWillett.SpeedBytes.ByteReader, DanielWillett.SpeedBytes");
 
     // ReSharper disable once UseArrayEmptyMethod (no reason to make new instance of static class for GenericTypeParameterBuilder)
     private static readonly GenericTypeParameterBuilder[] EmptyTypeParams = new GenericTypeParameterBuilder[0];
@@ -1111,7 +1118,6 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Ldnull);
         else if (method.ReturnType.IsValueType)
             il.Emit(OpCodes.Box, method.ReturnType);
-
     }
     internal void GenerateInvokeBytes(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
     {
@@ -1275,7 +1281,619 @@ internal sealed class SerializerGenerator
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
         il.Emit(OpCodes.Ret);
     }
-    
+    internal void GenerateRawInvokeBytes(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
+    {
+        dynMethod.InitLocals = false;
+        ParameterInfo[] parameters = method.GetParameters();
+        BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
+
+        LocalBuilder[] injectionLcls = new LocalBuilder[toInject.Count];
+        LocalBuilder[] bindLcls = new LocalBuilder[toBind.Count];
+
+        int? canTakeOwnershipIndex = null,
+             dataIndex = null,
+             byteCountIndex = null;
+
+        Type? dataType = null, countType = null;
+
+        for (int i = 0; i < toBind.Count; ++i)
+        {
+            ParameterInfo parameter = toBind.Array![i + toBind.Offset];
+            Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+            Type actualType = Nullable.GetUnderlyingType(type) ?? type;
+            bindLcls[i] = il.DeclareLocal(type);
+            FindLocalType(parameter, actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
+        }
+
+        HandleInjections(method, il, toInject, injectionLcls, true);
+
+        int memArgInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerRawBytesParams, typeof(ReadOnlyMemory<byte>));
+
+        if (byteCountIndex.HasValue)
+        {
+            il.Emit(OpCodes.Ldarga_S, (ushort)memArgInd);
+            il.Emit(OpCodes.Call, CommonReflectionCache.GetReadOnlyMemoryLength);
+            if (countType != typeof(int))
+            {
+                if (countType == typeof(byte))
+                    il.Emit(OpCodes.Conv_Ovf_U1);
+                else if (countType == typeof(sbyte))
+                    il.Emit(OpCodes.Conv_Ovf_I1);
+                else if (countType == typeof(uint))
+                    il.Emit(OpCodes.Conv_U4);
+                else if (countType == typeof(ushort))
+                    il.Emit(OpCodes.Conv_Ovf_U2);
+                else if (countType == typeof(short))
+                    il.Emit(OpCodes.Conv_Ovf_I2);
+                else if (countType == typeof(long))
+                    il.Emit(OpCodes.Conv_I8);
+                else if (countType == typeof(ulong))
+                    il.Emit(OpCodes.Conv_U8);
+                else if (countType == typeof(nint))
+                    il.Emit(OpCodes.Conv_I);
+                else if (countType == typeof(nuint))
+                    il.Emit(OpCodes.Conv_U);
+            }
+            il.Emit(OpCodes.Stloc, bindLcls[byteCountIndex.Value]);
+        }
+
+        bool canTakeOwnership = true;
+        bool skipCanTakeOwnership = !canTakeOwnershipIndex.HasValue;
+        int canTakeOwnrshpInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerRawBytesParams, typeof(bool));
+
+        if (dataIndex.HasValue)
+        {
+            if (dataType == typeof(ReadOnlyMemory<byte>))
+            {
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+            }
+            else if (dataType == typeof(Memory<byte>))
+            {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new Func<ArraySegment<byte>, Memory<byte>>(MemoryExtensions.AsMemory))!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                skipCanTakeOwnership = true;
+            }
+            else if (dataType == typeof(ReadOnlySpan<byte>))
+            {
+                il.Emit(OpCodes.Ldarga_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Call, CommonReflectionCache.GetReadOnlyMemorySpan);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType == typeof(Span<byte>))
+            {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new AsSpanHandle(MemoryExtensions.AsSpan))!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType == typeof(ArraySegment<byte>))
+            {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArraySeg)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                skipCanTakeOwnership = true;
+            }
+            else if (dataType!.IsAssignableFrom(typeof(byte[])) || dataType == typeof(Array))
+            {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArray)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                skipCanTakeOwnership = true;
+            }
+            else if (dataType == typeof(List<byte>))
+            {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvList)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                skipCanTakeOwnership = true;
+            }
+            else if (dataType == typeof(ArrayList))
+            {
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArrayList)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                if (canTakeOwnershipIndex.HasValue)
+                {
+                    il.Emit(OpCodes.Ldc_I4_1);
+                    il.Emit(OpCodes.Stloc, bindLcls[canTakeOwnershipIndex.Value]);
+                    skipCanTakeOwnership = true;
+                }
+            }
+            else if (dataType == typeof(byte*))
+            {
+                LocalBuilder pin = il.DeclareLocal(typeof(byte).MakeByRefType(), true);
+                LocalBuilder span = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
+                il.Emit(OpCodes.Ldarga_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Call, CommonReflectionCache.GetReadOnlyMemorySpan);
+                il.Emit(OpCodes.Stloc, span);
+                il.Emit(OpCodes.Ldloca, span);
+                il.Emit(OpCodes.Call, CommonReflectionCache.PinReadOnlySpan);
+                il.Emit(OpCodes.Stloc, pin);
+                il.Emit(OpCodes.Ldloc, pin);
+                il.Emit(OpCodes.Conv_U);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType.IsAssignableFrom(typeof(MemoryStream)))
+            {
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArraySeg)!);
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Call, CommonReflectionCache.ByteArraySegmentArray);
+                il.Emit(OpCodes.Call, CommonReflectionCache.ByteArraySegmentOffset);
+                il.Emit(OpCodes.Call, CommonReflectionCache.ByteArraySegmentCount);
+                il.Emit(OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Ldc_I4_1);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.CtorFullMemoryStream);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+            }
+            else if (dataType.AssemblyQualifiedName != null && dataType.AssemblyQualifiedName.StartsWith("DanielWillett.SpeedBytes.ByteReader, DanielWillett.SpeedBytes", StringComparison.Ordinal))
+            {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+
+                il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(GetByteReader)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                skipCanTakeOwnership = true;
+            }
+            else
+            {
+                canTakeOwnership = false;
+            }
+        }
+
+        if (!skipCanTakeOwnership)
+        {
+            if (canTakeOwnership)
+            {
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+            }
+            else
+            {
+                il.Emit(OpCodes.Ldc_I4_0);
+            }
+            il.Emit(OpCodes.Stloc, bindLcls[canTakeOwnershipIndex!.Value]);
+        }
+
+        HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
+        il.Emit(OpCodes.Ret);
+    }
+    internal void GenerateRawInvokeStream(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
+    {
+        dynMethod.InitLocals = false;
+        ParameterInfo[] parameters = method.GetParameters();
+        BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
+
+        LocalBuilder[] injectionLcls = new LocalBuilder[toInject.Count];
+        LocalBuilder[] bindLcls = new LocalBuilder[toBind.Count];
+
+        int? canTakeOwnershipIndex = null,
+             dataIndex = null,
+             byteCountIndex = null;
+
+        Type? dataType = null, countType = null;
+
+        for (int i = 0; i < toBind.Count; ++i)
+        {
+            ParameterInfo parameter = toBind.Array![i + toBind.Offset];
+            Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+            Type actualType = Nullable.GetUnderlyingType(type) ?? type;
+            bindLcls[i] = il.DeclareLocal(type);
+            FindLocalType(parameter, actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
+        }
+
+        HandleInjections(method, il, toInject, injectionLcls, false);
+
+        int streamInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream));
+        int ovhInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(RpcOverhead));
+
+        if (byteCountIndex.HasValue)
+        {
+            LoadSize(il, ovhInd, false);
+            if (countType != typeof(uint))
+            {
+                if (countType == typeof(byte))
+                    il.Emit(OpCodes.Conv_Ovf_U1);
+                else if (countType == typeof(sbyte))
+                    il.Emit(OpCodes.Conv_Ovf_I1);
+                else if (countType == typeof(int))
+                    il.Emit(OpCodes.Conv_Ovf_I4);
+                else if (countType == typeof(ushort))
+                    il.Emit(OpCodes.Conv_Ovf_U2);
+                else if (countType == typeof(short))
+                    il.Emit(OpCodes.Conv_Ovf_I2);
+                else if (countType == typeof(long))
+                    il.Emit(OpCodes.Conv_I8);
+                else if (countType == typeof(ulong))
+                    il.Emit(OpCodes.Conv_U8);
+                else if (countType == typeof(nint))
+                    il.Emit(OpCodes.Conv_Ovf_I);
+                else if (countType == typeof(nuint))
+                    il.Emit(OpCodes.Conv_U);
+            }
+
+            il.Emit(OpCodes.Stloc, bindLcls[byteCountIndex.Value]);
+        }
+
+        bool canTakeOwnership = true;
+
+        if (dataIndex.HasValue)
+        {
+            if (dataType == typeof(ReadOnlyMemory<byte>))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new Func<ArraySegment<byte>, Memory<byte>>(MemoryExtensions.AsMemory))!);
+                il.Emit(OpCodes.Call, CommonReflectionCache.MemoryToReadOnlyMemory);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = true;
+            }
+            else if (dataType == typeof(Memory<byte>))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new Func<ArraySegment<byte>, Memory<byte>>(MemoryExtensions.AsMemory))!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = true;
+            }
+            else if (dataType == typeof(ReadOnlySpan<byte>))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new AsSpanHandle(MemoryExtensions.AsSpan))!);
+                il.Emit(OpCodes.Call, CommonReflectionCache.SpanToReadOnlySpan);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType == typeof(Span<byte>))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new AsSpanHandle(MemoryExtensions.AsSpan))!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType == typeof(ArraySegment<byte>))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArraySeg)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = true;
+            }
+            else if (dataType!.IsAssignableFrom(typeof(byte[])) || dataType == typeof(Array))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArray)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = true;
+            }
+            else if (dataType == typeof(List<byte>))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamList)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = true;
+            }
+            else if (dataType == typeof(ArrayList))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArrayList)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = true;
+            }
+            else if (dataType == typeof(byte*))
+            {
+                LocalBuilder pin = il.DeclareLocal(typeof(byte).MakeByRefType(), true);
+                LocalBuilder span = il.DeclareLocal(typeof(ReadOnlySpan<byte>));
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamArraySeg)!);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(new AsSpanHandle(MemoryExtensions.AsSpan))!);
+                il.Emit(OpCodes.Call, CommonReflectionCache.SpanToReadOnlySpan);
+                il.Emit(OpCodes.Stloc, span);
+                il.Emit(OpCodes.Ldloca, span);
+                il.Emit(OpCodes.Call, CommonReflectionCache.PinReadOnlySpan);
+                il.Emit(OpCodes.Stloc, pin);
+                il.Emit(OpCodes.Ldloc, pin);
+                il.Emit(OpCodes.Conv_U);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType == typeof(Stream))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(ConvStreamStream)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else if (dataType.AssemblyQualifiedName != null && dataType.AssemblyQualifiedName.StartsWith("DanielWillett.SpeedBytes.ByteReader, DanielWillett.SpeedBytes", StringComparison.Ordinal))
+            {
+                LoadSize(il, ovhInd, false);
+                il.Emit(OpCodes.Ldarg_S, (ushort)streamInd);
+                il.Emit(OpCodes.Call, Accessor.GetMethod(GetStreamByteReader)!);
+                il.Emit(OpCodes.Stloc, bindLcls[dataIndex.Value]);
+                canTakeOwnership = false;
+            }
+            else
+            {
+                canTakeOwnership = false;
+            }
+        }
+
+        if (canTakeOwnershipIndex.HasValue)
+        {
+            il.Emit(canTakeOwnership ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Stloc, bindLcls[canTakeOwnershipIndex.Value]);
+        }
+
+        HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
+        il.Emit(OpCodes.Ret);
+    }
+    private static byte[] ConvStreamArray(uint size, Stream stream)
+    {
+        ArraySegment<byte> seg = ConvStreamArraySeg(size, stream);
+        if (seg.Offset == 0 && seg.Count == seg.Array!.Length)
+            return seg.Array;
+
+        return seg.ToArray();
+    }
+    private static ArrayList ConvStreamArrayList(uint size, Stream stream)
+    {
+        ArrayList arrayList = new ArrayList(checked ( (int)size ));
+        byte[] fullArray = ConvStreamArray(size, stream);
+        arrayList.AddRange(fullArray);
+        return arrayList;
+    }
+    private static List<byte> ConvStreamList(uint size, Stream stream)
+    {
+        List<byte> list = new List<byte>(0);
+        if (size == 0u)
+            return list;
+
+        ArraySegment<byte> seg = ConvStreamArraySeg(size, stream);
+        if (seg.Offset == 0 && seg.Count == seg.Array!.Length && list.TrySetUnderlyingArray(seg.Array, seg.Count))
+            return list;
+
+        list.AddRange(seg);
+        return list;
+    }
+    private static Stream ConvStreamStream(uint size, Stream stream)
+    {
+        return new PassthroughReadStream(stream, size);
+    }
+    private static object GetStreamByteReader(uint size, Stream stream)
+    {
+        ByteReader reader = new ByteReader();
+        
+        reader.LoadNew(new PassthroughReadStream(stream, size));
+        return reader;
+    }
+    private static ArraySegment<byte> ConvStreamArraySeg(uint size, Stream stream)
+    {
+        if (size == 0)
+            return new ArraySegment<byte>(Array.Empty<byte>());
+
+        byte[] newArray = new byte[size];
+        int sizeActuallyRead = stream.Read(newArray, 0, newArray.Length);
+
+        if ((uint)sizeActuallyRead < size)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+        
+        return new ArraySegment<byte>(newArray, 0, sizeActuallyRead);
+    }
+    private static void LoadSize(IOpCodeEmitter il, int ovhInd, bool asInt)
+    {
+        il.Emit(OpCodes.Ldarg_S, (ushort)ovhInd);
+        il.Emit(OpCodes.Call, CommonReflectionCache.RpcOverheadGetMessageSize);
+        if (asInt)
+        {
+            il.Emit(OpCodes.Conv_Ovf_I4);
+        }
+    }
+
+    private delegate Span<byte> AsSpanHandle(ArraySegment<byte> arrSeg);
+    private static object GetByteReader(ReadOnlyMemory<byte> mem, bool couldTakeOwnership, out bool canTakeOwnership)
+    {
+        ArraySegment<byte> arr = ConvArraySeg(mem, couldTakeOwnership, out canTakeOwnership);
+        ByteReader reader = new ByteReader();
+
+        reader.LoadNew(arr);
+        return reader;
+    }
+    private static ArraySegment<byte> ConvArraySeg(ReadOnlyMemory<byte> mem, bool couldTakeOwnership, out bool canTakeOwnership)
+    {
+        if (MemoryMarshal.TryGetArray(mem, out ArraySegment<byte> arr))
+        {
+            canTakeOwnership = couldTakeOwnership;
+        }
+        else
+        {
+            arr = new ArraySegment<byte>(mem.ToArray());
+            canTakeOwnership = true;
+        }
+
+        return arr.Array == null ? new ArraySegment<byte>(Array.Empty<byte>()) : arr;
+    }
+    private static byte[] ConvArray(ReadOnlyMemory<byte> mem, bool couldTakeOwnership, out bool canTakeOwnership)
+    {
+        if (mem.Length == 0)
+        {
+            canTakeOwnership = true;
+            return Array.Empty<byte>();
+        }
+
+        if (!MemoryMarshal.TryGetArray(mem, out ArraySegment<byte> arr))
+        {
+            canTakeOwnership = true;
+            return mem.ToArray();
+        }
+
+        if (arr.Count == 0 || arr.Array == null)
+        {
+            canTakeOwnership = true;
+            return Array.Empty<byte>();
+        }
+
+        if (arr.Offset == 0 && arr.Count == arr.Array.Length)
+        {
+            canTakeOwnership = couldTakeOwnership;
+            return arr.Array;
+        }
+
+        byte[] newArray = new byte[arr.Count];
+        Buffer.BlockCopy(arr.Array, arr.Offset, newArray, 0, newArray.Length);
+        canTakeOwnership = true;
+        return newArray;
+    }
+    private static List<byte> ConvList(ReadOnlyMemory<byte> mem, bool couldTakeOwnership, out bool canTakeOwnership)
+    {
+        ArraySegment<byte> arr = ConvArraySeg(mem, couldTakeOwnership, out canTakeOwnership);
+        List<byte> list = new List<byte>(0);
+        if (arr.Count == 0 || arr.Array == null)
+        {
+            canTakeOwnership = true;
+            return list;
+        }
+
+        if (arr.Offset == 0 && arr.Count == arr.Array.Length)
+        {
+            if (list.TrySetUnderlyingArray(arr.Array, arr.Array.Length))
+                return list;
+
+            list.AddRange(arr.Array);
+            canTakeOwnership = true;
+
+            return list;
+        }
+
+        byte[] newArray = new byte[arr.Count];
+        Buffer.BlockCopy(arr.Array, arr.Offset, newArray, 0, newArray.Length);
+
+        if (!list.TrySetUnderlyingArray(newArray, newArray.Length))
+        {
+            list.AddRange(newArray);
+        }
+        canTakeOwnership = true;
+        return list;
+    }
+    private static ArrayList ConvArrayList(ReadOnlyMemory<byte> mem)
+    {
+        ArrayList arrayList = new ArrayList(mem.Length);
+        byte[] fullArray = ConvArray(mem, false, out _);
+        arrayList.AddRange(fullArray);
+        return arrayList;
+    }
+    private static void FindLocalType(ParameterInfo parameter, Type actualType, IOpCodeEmitter il, int index, ref int? canTakeOwnershipIndex, ref int? dataIndex, ref int? byteCountIndex, ref Type? dataType, ref Type? countType)
+    {
+        if (actualType == typeof(bool))
+        {
+            if (canTakeOwnershipIndex.HasValue)
+            {
+                il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionMultipleCanTakeOwnership);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
+                il.Emit(OpCodes.Throw);
+            }
+            else
+            {
+                canTakeOwnershipIndex = index;
+            }
+        }
+        else if (actualType == typeof(int)
+                 || actualType == typeof(uint)
+                 || actualType == typeof(long)
+                 || actualType == typeof(ulong)
+                 || actualType == typeof(ushort)
+                 || actualType == typeof(short)
+                 || actualType == typeof(byte)
+                 || actualType == typeof(sbyte)
+                 || actualType == typeof(nint)
+                 || actualType == typeof(nuint)
+                )
+        {
+            if (byteCountIndex.HasValue)
+            {
+                il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionMultipleByteCount);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
+                il.Emit(OpCodes.Throw);
+            }
+            else
+            {
+                byteCountIndex = index;
+                countType = actualType;
+            }
+            
+        }
+        else if (actualType == typeof(byte*)
+                 || actualType == typeof(byte[])
+                 || actualType == typeof(Stream)
+                 || actualType == typeof(Memory<byte>)
+                 || actualType == typeof(ReadOnlyMemory<byte>)
+                 || actualType == typeof(Span<byte>)
+                 || actualType == typeof(ReadOnlySpan<byte>)
+                 || actualType == typeof(ArraySegment<byte>)
+                 || actualType == typeof(IList<byte>)
+                 || actualType == typeof(IReadOnlyList<byte>)
+                 || actualType == typeof(ICollection<byte>)
+                 || actualType == typeof(IEnumerable<byte>)
+                 || actualType == typeof(IReadOnlyCollection<byte>)
+                 || actualType == typeof(List<byte>)
+                 || actualType == typeof(ArrayList)
+                 || actualType == typeof(ReadOnlyCollection<byte>)
+                 || actualType == typeof(byte).MakeByRefType()
+                 || actualType == SpeedBytesWriterType
+                 || actualType == SpeedBytesReaderType
+                 )
+        {
+            if (dataIndex.HasValue)
+            {
+                il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionMultipleByteData);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
+                il.Emit(OpCodes.Throw);
+            }
+            else
+            {
+                dataIndex = index;
+                dataType = actualType;
+            }
+        }
+    }
     internal void GenerateInvokeStream(MethodInfo method, IOpCodeEmitter il)
     {
         ParameterInfo[] parameters = method.GetParameters();

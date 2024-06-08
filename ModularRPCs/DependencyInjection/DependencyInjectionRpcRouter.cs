@@ -1,13 +1,14 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
-using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ReflectionTools;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 public class DependencyInjectionRpcRouter : DefaultRpcRouter
@@ -25,11 +26,14 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     public IEnumerable<IServiceProvider>? ServiceProviders { get; }
 
     /// <summary>
-    /// Create an <see cref="IRpcRouter"/> with one service provider that looks for <see cref="RpcClassAttribute"/>'s in all loaded assemblies, including assemblies that may load later.
+    /// Create an <see cref="IRpcRouter"/> with one service provider that looks for <see cref="RpcClassAttribute"/>'s in all assemblies referenced by the calling one.
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
     /// <exception cref="InvalidOperationException"><see cref="IRpcSerializer"/> and/or <see cref="IRpcConnectionLifetime"/> are not available from the service provider.</exception>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public DependencyInjectionRpcRouter(IServiceProvider serviceProvider)
+        : this(serviceProvider, Assembly.GetCallingAssembly()) { }
+    protected internal DependencyInjectionRpcRouter(IServiceProvider serviceProvider, Assembly callingAssembly)
         : base(
             (IRpcSerializer?)serviceProvider.GetService(typeof(IRpcSerializer))
                ?? throw new InvalidOperationException(string.Format(
@@ -40,7 +44,8 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
             ?? throw new InvalidOperationException(string.Format(
                 Properties.Exceptions.ServiceNotFound,
                 Accessor.ExceptionFormatter.Format(typeof(IRpcConnectionLifetime))
-            ))
+            )),
+            callingAssembly
         )
     {
         ServiceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
@@ -70,11 +75,14 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     }
 
     /// <summary>
-    /// Create an <see cref="IRpcRouter"/> with one service provider that looks for <see cref="RpcClassAttribute"/>'s in all loaded assemblies, including assemblies that may load later.
+    /// Create an <see cref="IRpcRouter"/> with one service provider that looks for <see cref="RpcClassAttribute"/>'s in all assemblies referenced by the calling one.
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime)
-        : base(serializer, lifetime)
+        : this(serviceProvider, serializer, lifetime, Assembly.GetCallingAssembly()) { }
+    protected internal DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, Assembly callingAssembly)
+        : base(serializer, lifetime, callingAssembly)
     {
         ServiceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     }
@@ -90,14 +98,15 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     }
 
     /// <summary>
-    /// Create an RPC router with multiple service providers that looks for <see cref="RpcClassAttribute"/>'s in all loaded assemblies, including assemblies that may load later. The sooner a provider is in the enumerable, the higher priority it is.
-    /// </summary>
-    /// <summary>
-    /// Create an <see cref="IRpcRouter"/> 
+    /// Create an RPC router with multiple service providers that looks for <see cref="RpcClassAttribute"/>'s in all assemblies referenced by the calling one. The sooner a provider is in the enumerable, the higher priority it is.
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime)
-        : base(serializer, lifetime)
+        : this(serviceProviders, serializer, lifetime, Assembly.GetCallingAssembly()) { }
+
+    protected internal DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, Assembly callingAssembly)
+        : base(serializer, lifetime, callingAssembly)
     {
         ServiceProviders = serviceProviders?.ToArray() ?? throw new ArgumentNullException(nameof(serviceProviders));
     }
@@ -111,10 +120,10 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     {
         ServiceProviders = serviceProviders?.ToArray() ?? throw new ArgumentNullException(nameof(serviceProviders));
     }
-    protected override IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
+    protected override IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
     {
         return ServiceProviders != null
-            ? new DependencyInjectionRpcEndpoint(ServiceProviders, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash)
-            : new DependencyInjectionRpcEndpoint(ServiceProvider!, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash);
+            ? new DependencyInjectionRpcEndpoint(ServiceProviders, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
+            : new DependencyInjectionRpcEndpoint(ServiceProvider!, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash);
     }
 }

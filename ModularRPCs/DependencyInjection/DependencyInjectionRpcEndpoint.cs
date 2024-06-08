@@ -7,6 +7,7 @@ using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
@@ -35,26 +36,26 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         ServiceProviders = other.ServiceProviders;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
-        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
     {
         ServiceProvider = serviceProvider;
     }
 
-    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
-        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
     {
         ServiceProvider = serviceProvider;
     }
     
-    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
-        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+        : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
     {
         ServiceProviders = serviceProviders;
     }
 
-    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash)
-        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash)
+    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+        : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
     {
         ServiceProviders = serviceProviders;
     }
@@ -68,24 +69,37 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
     {
         return handlerStream((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, stream, token);
     }
-
-    protected override object? GetTargetObject()
+    
+    private protected override object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerRawBytes handlerRawBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
-        if (IsStatic)
+        return handlerRawBytes((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, rawData, canTakeOwnership, token);
+    }
+
+    private protected override object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerRawStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    {
+        return handlerRawStream((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, stream, token);
+    }
+
+    protected override object? GetTargetObject(MethodInfo? knownMethod)
+    {
+        Type? declType = knownMethod?.DeclaringType ?? DeclaringType;
+        bool isStatic = knownMethod == null ? IsStatic : knownMethod.IsStatic;
+
+        if (isStatic)
             return null;
 
         if (Identifier != null)
-            return base.GetTargetObject();
+            return base.GetTargetObject(knownMethod);
 
-        if (DeclaringType == null)
+        if (declType == null)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound) { ErrorCode = 4 };
 
         if (ServiceProviders == null)
-            return TypeUtility.GetService(ServiceProvider!, DeclaringType);
+            return TypeUtility.GetService(ServiceProvider!, declType);
 
         object? provider = (object?)ServiceProviders ?? ServiceProvider;
 
-        return provider == null ? null : TypeUtility.GetServiceFromUnknownProviderType(provider, DeclaringType);
+        return provider == null ? null : TypeUtility.GetServiceFromUnknownProviderType(provider, declType);
     }
 
     public override IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)

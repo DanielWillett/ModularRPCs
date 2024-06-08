@@ -322,6 +322,33 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Passthrough streams do not support Begin/EndRead methods..
+        /// </summary>
+        internal static string PassthroughStreamIAsyncResultNotSupported {
+            get {
+                return ResourceManager.GetString("PassthroughStreamIAsyncResultNotSupported", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Passthrough stream overflowed trying to seek..
+        /// </summary>
+        internal static string PassthroughStreamSeekOverflow {
+            get {
+                return ResourceManager.GetString("PassthroughStreamSeekOverflow", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Writing to a passthrough Stream is not supported..
+        /// </summary>
+        internal static string PassthroughStreamWriteNotSupported {
+            get {
+                return ResourceManager.GetString("PassthroughStreamWriteNotSupported", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The constructor you&apos;re trying to use was not found. Private constructors are not supported with RPC proxies..
         /// </summary>
         internal static string PrivatesNotVisibleMissingMethodException {
@@ -417,6 +444,33 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcInjectionExceptionInstanceNull {
             get {
                 return ResourceManager.GetString("RpcInjectionExceptionInstanceNull", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There can not be more than one integer parameter (byteCount) in a raw RPC method..
+        /// </summary>
+        internal static string RpcInjectionExceptionMultipleByteCount {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionMultipleByteCount", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There can not be more than one binary data parameter in a raw RPC method..
+        /// </summary>
+        internal static string RpcInjectionExceptionMultipleByteData {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionMultipleByteData", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There can not be more than one boolean parameter (canTakeOwnership) in a raw RPC method..
+        /// </summary>
+        internal static string RpcInjectionExceptionMultipleCanTakeOwnership {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionMultipleCanTakeOwnership", resourceCulture);
             }
         }
         

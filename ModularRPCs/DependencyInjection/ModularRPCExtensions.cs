@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
 
@@ -33,13 +34,17 @@ public static class ModularRpcExtensions
             ServiceLifetime.Singleton)
         );
     }
+
     /// <summary>
-    /// Adds the singleton instance at <see cref="ProxyGenerator.Instance"/> to the <paramref name="serviceCollection"/>.
+    /// Adds the singleton instance at <see cref="ProxyGenerator.Instance"/> to the <paramref name="serviceCollection"/>, along with <see cref="IRpcRouter"/>, <see cref="IRpcSerializer"/>, and <see cref="IRpcConnectionLifetime"/>.
     /// </summary>
     /// <param name="isServer">Will this side be acting as the server or client? Affects which type of <see cref="IRpcConnectionLifetime"/> is added.</param>
+    /// <param name="searchedAssemblies">Assemblies to be searched for <see cref="RpcReceiveAttribute"/>'s that are set up as broadcast listeners (have a specific send method specified). If this is left null, it will be defaulted to the calling assembly along with any direct references it has.</param>
+    /// <param name="configureSerialization">Configure how <see cref="IRpcSerializer"/> behaves, including adding custom parsers and parser factories.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddModularRpcs(this IServiceCollection serviceCollection, bool isServer,
         Action<IServiceProvider, SerializationConfiguration, IDictionary<Type, IBinaryTypeParser>, IList<IBinaryParserFactory>>? configureSerialization = null,
-        IEnumerable<Assembly>? searchedAssemblies = null)
+        IEnumerable<Assembly>? searchedAssemblies = null, bool scoped = false)
     {
         // proxy generator
         AddProxyGenerator(serviceCollection);
@@ -50,6 +55,9 @@ public static class ModularRpcExtensions
         {
             serviceCollection.Add(new ServiceDescriptor(typeof(IRpcSerializer), serviceProvider =>
             {
+                if (((IRefSafeLoggable)ProxyGenerator.Instance).LoggerType == LoggerType.None)
+                    serviceProvider.ApplyLoggerTo(ProxyGenerator.Instance);
+
                 if (configureSerialization != null)
                 {
                     return new DefaultSerializer(
@@ -58,7 +66,7 @@ public static class ModularRpcExtensions
                 }
 
                 return new DefaultSerializer();
-            }, ServiceLifetime.Singleton));
+            }, scoped ? ServiceLifetime.Scoped : ServiceLifetime.Singleton));
         }
 
         // connection lifetime
@@ -70,20 +78,28 @@ public static class ModularRpcExtensions
                     isServer
                     ? serviceProvider =>
                     {
+                        if (((IRefSafeLoggable)ProxyGenerator.Instance).LoggerType == LoggerType.None)
+                            serviceProvider.ApplyLoggerTo(ProxyGenerator.Instance);
+
                         ServerRpcConnectionLifetime lifetime = new ServerRpcConnectionLifetime();
                         serviceProvider.ApplyLoggerTo(lifetime);
                         return lifetime;
                     }
                     : serviceProvider =>
                     {
+                        if (((IRefSafeLoggable)ProxyGenerator.Instance).LoggerType == LoggerType.None)
+                            serviceProvider.ApplyLoggerTo(ProxyGenerator.Instance);
+
                         ClientRpcConnectionLifetime lifetime = new ClientRpcConnectionLifetime();
                         serviceProvider.ApplyLoggerTo(lifetime);
                         return lifetime;
                     }
-                    , ServiceLifetime.Singleton
+                    , scoped ? ServiceLifetime.Scoped : ServiceLifetime.Singleton
                 )
             );
         }
+
+        Assembly? asm = searchedAssemblies != null ? null : Assembly.GetCallingAssembly();
 
         if (serviceCollection.All(d => d.ServiceType != typeof(DefaultRpcRouter)
                                        && d.ServiceType != typeof(DependencyInjectionRpcRouter)
@@ -94,11 +110,14 @@ public static class ModularRpcExtensions
                 DependencyInjectionRpcRouter router =
                     searchedAssemblies != null
                     ? new DependencyInjectionRpcRouter(serviceProvider, searchedAssemblies)
-                    : new DependencyInjectionRpcRouter(serviceProvider);
+                    : new DependencyInjectionRpcRouter(serviceProvider, asm!);
+
+                if (((IRefSafeLoggable)ProxyGenerator.Instance).LoggerType == LoggerType.None)
+                    serviceProvider.ApplyLoggerTo(ProxyGenerator.Instance);
 
                 serviceProvider.ApplyLoggerTo(router);
                 return router;
-            }, ServiceLifetime.Singleton));
+            }, scoped ? ServiceLifetime.Scoped : ServiceLifetime.Singleton));
         }
 
         return serviceCollection;

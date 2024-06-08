@@ -1,5 +1,6 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,14 +9,13 @@ using System;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Protocol;
 
 namespace DanielWillett.ModularRpcs.WebSockets;
 public class WebSocketEndpoint : IModularRpcRemoteEndpoint
 {
     internal Action<ClientWebSocketOptions>? ConfigureOptions;
     private WebSocket? _webSocket;
-    private PlateauingDelay _delaySettings;
+    private PlateauingDelay _delaySettings = new PlateauingDelay(amplifier: 6, climb: 2.5, maximum: 300, start: 10);
     private bool _leaveOpen;
 
     /// <summary>

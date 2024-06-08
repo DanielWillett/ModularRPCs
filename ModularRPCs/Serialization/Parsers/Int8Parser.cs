@@ -1188,7 +1188,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 length = ReadArrayLength(stream, out bytesRead);
                 if (length > output.Count || length > 0 && output.Array == null)
                 {
-                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length);
+                    SerializationHelper.TryAdvanceStream(stream, _config, ref bytesRead, length);
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
                 }
             }
@@ -1269,7 +1269,7 @@ public class Int8Parser : BinaryTypeParser<sbyte>
                 length = ReadArrayLength(stream, out bytesRead);
                 if (length > output.Length)
                 {
-                    SerializationHelper.TryAdvanceStream(stream, ref bytesRead, length);
+                    SerializationHelper.TryAdvanceStream(stream, _config, ref bytesRead, length);
                     throw new ArgumentOutOfRangeException(nameof(output), string.Format(Properties.Exceptions.OutputListOutOfRangeIBinaryParser, Accessor.ExceptionFormatter.Format(GetType())));
                 }
             }

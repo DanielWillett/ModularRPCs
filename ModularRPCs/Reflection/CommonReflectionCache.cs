@@ -198,6 +198,16 @@ internal static class CommonReflectionCache
                                                               );
 
     /// <summary>
+    /// <see cref="RpcOverhead.MessageSize"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcOverheadGetMessageSize = typeof(RpcOverhead).GetProperty(nameof(RpcOverhead.MessageSize), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
+                                                                    ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(RpcOverhead.MessageSize))
+                                                                        .DeclaredIn<RpcOverhead>(isStatic: false)
+                                                                        .WithPropertyType<uint>()
+                                                                        .WithNoSetter()
+                                                                    );
+
+    /// <summary>
     /// <see cref="RpcOverhead.ReceivingConnection"/>.
     /// </summary>
     internal static readonly MethodInfo RpcOverheadGetReceivingConnection = typeof(RpcOverhead).GetProperty(nameof(RpcOverhead.ReceivingConnection), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
@@ -280,6 +290,102 @@ internal static class CommonReflectionCache
     internal static readonly ConstructorInfo CallerInfoFieldNameAttributeCtor = typeof(ProxyGenerator.CallerInfoFieldNameAttribute).GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(string) ], null)
                                                                  ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(ProxyGenerator.CallerInfoFieldNameAttribute))
                                                                      .WithParameter<string>("fieldName")
+                                                                 );
+
+    /// <summary>
+    /// <see cref="ReadOnlyMemory{T}.Length"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo GetReadOnlyMemoryLength = typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Length), BindingFlags.Public | BindingFlags.Instance)
+                                                                      ?.GetGetMethod(true)
+                                                                 ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ReadOnlyMemory<byte>.Length))
+                                                                     .DeclaredIn<ReadOnlyMemory<byte>>(isStatic: false)
+                                                                     .WithPropertyType<int>()
+                                                                     .WithNoSetter()
+                                                                 );
+
+    /// <summary>
+    /// <see cref="ReadOnlyMemory{T}.Span"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo GetReadOnlyMemorySpan = typeof(ReadOnlyMemory<byte>).GetProperty(nameof(ReadOnlyMemory<byte>.Span), BindingFlags.Public | BindingFlags.Instance)
+                                                                    ?.GetGetMethod(true)
+                                                                ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ReadOnlyMemory<byte>.Span))
+                                                                    .DeclaredIn<ReadOnlyMemory<byte>>(isStatic: false)
+                                                                    .WithPropertyType(typeof(ReadOnlySpan<byte>))
+                                                                    .WithNoSetter()
+                                                                );
+
+    /// <summary>
+    /// <see cref="Memory{T}.op_Implicit(Memory{T})"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo MemoryToReadOnlyMemory = typeof(Memory<byte>).GetMethod("op_Implicit", BindingFlags.Public | BindingFlags.Static, null, CallingConventions.Any, [ typeof(Memory<byte>) ], null)
+                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition("op_Implicit")
+                                                                     .DeclaredIn<Memory<byte>>(isStatic: true)
+                                                                     .WithParameter<Memory<byte>>("memory")
+                                                                     .Returning<ReadOnlyMemory<byte>>()
+                                                                 );
+
+    /// <summary>
+    /// <see cref="Span{T}.op_Implicit(Span{T})"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo SpanToReadOnlySpan = typeof(Span<byte>).GetMethod("op_Implicit", BindingFlags.Public | BindingFlags.Static, null, CallingConventions.Any, [ typeof(Span<byte>) ], null)
+                                                             ?? throw new UnexpectedMemberAccessException(new MethodDefinition("op_Implicit")
+                                                                 .DeclaredIn(typeof(Span<byte>), isStatic: true)
+                                                                 .WithParameter(typeof(Span<byte>), "span")
+                                                                 .Returning(typeof(ReadOnlySpan<byte>))
+                                                             );
+    /// <summary>
+    /// <see cref="ReadOnlySpan{T}.GetPinnableReference"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo PinReadOnlySpan = typeof(ReadOnlySpan<byte>).GetMethod(nameof(ReadOnlySpan<byte>.GetPinnableReference), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, Type.EmptyTypes, null)
+                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadOnlySpan<byte>.GetPinnableReference))
+                                                              .DeclaredIn(typeof(ReadOnlySpan<byte>), isStatic: false)
+                                                              .WithNoParameters()
+                                                              .Returning<byte>(ByRefTypeMode.RefReadOnly)
+                                                          );
+
+    /// <summary>
+    /// <see cref="MemoryStream(byte[], int, int, bool, bool)"/>
+    /// </summary>
+    internal static readonly ConstructorInfo CtorFullMemoryStream = typeof(MemoryStream).GetConstructor(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, [ typeof(byte[]), typeof(int), typeof(int), typeof(bool), typeof(bool) ], null)
+                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(MemoryStream))
+                                                                        .WithParameter<byte[]>("buffer")
+                                                                        .WithParameter<int>("index")
+                                                                        .WithParameter<int>("count")
+                                                                        .WithParameter<bool>("writable")
+                                                                        .WithParameter<bool>("publiclyVisible")
+                                                                    );
+
+    /// <summary>
+    /// <see cref="ArraySegment{T}.Array"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo ByteArraySegmentArray = typeof(ArraySegment<byte>).GetProperty(nameof(ArraySegment<byte>.Array), BindingFlags.Public | BindingFlags.Instance)
+                                                                    ?.GetGetMethod(true)
+                                                                ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ArraySegment<byte>.Array))
+                                                                    .DeclaredIn<ArraySegment<byte>>(isStatic: false)
+                                                                    .WithPropertyType<byte[]>()
+                                                                    .WithNoSetter()
+                                                                );
+
+    /// <summary>
+    /// <see cref="ArraySegment{T}.Count"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo ByteArraySegmentCount = typeof(ArraySegment<byte>).GetProperty(nameof(ArraySegment<byte>.Count), BindingFlags.Public | BindingFlags.Instance)
+                                                                    ?.GetGetMethod(true)
+                                                                ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ArraySegment<byte>.Count))
+                                                                    .DeclaredIn<ArraySegment<byte>>(isStatic: false)
+                                                                    .WithPropertyType<int>()
+                                                                    .WithNoSetter()
+                                                                );
+
+    /// <summary>
+    /// <see cref="ArraySegment{T}.Offset"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo ByteArraySegmentOffset = typeof(ArraySegment<byte>).GetProperty(nameof(ArraySegment<byte>.Offset), BindingFlags.Public | BindingFlags.Instance)
+                                                                     ?.GetGetMethod(true)
+                                                                 ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ArraySegment<byte>.Offset))
+                                                                     .DeclaredIn<ArraySegment<byte>>(isStatic: false)
+                                                                     .WithPropertyType<int>()
+                                                                     .WithNoSetter()
                                                                  );
 
     /// <summary>
