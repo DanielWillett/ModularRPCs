@@ -722,13 +722,13 @@ public class RpcEndpoint : IRpcInvocationPoint
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = new byte[64];
 
-        int byteCt = stream.Read(bytes, 0, 17);
+        int byteCt = stream.Read(bytes, 0, 13);
 #else
         Span<byte> bytes = stackalloc byte[64];
 
-        int byteCt = stream.Read(bytes[..17]);
+        int byteCt = stream.Read(bytes[..13]);
 #endif
-        if (byteCt < 17)
+        if (byteCt < 13)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
         EndpointFlags flags1 = (EndpointFlags)bytes[0];

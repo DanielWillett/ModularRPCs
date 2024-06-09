@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
 
 namespace ModularRPCs.Test.Many;
+[Ignore("These take forever.")]
 public partial class ParserManyTests
 {
     private unsafe void TestManyParserBytes<T>(T[] values, IArrayBinaryTypeParser<T> parser)

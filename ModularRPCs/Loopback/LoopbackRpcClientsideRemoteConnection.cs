@@ -14,8 +14,9 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
     public LoopbackRpcClientsideLocalConnection Local { get; internal set; }
     public LoopbackEndpoint Endpoint { get; }
     public bool IsClosed { get; internal set; }
+    public bool UseStreams { get; }
     public IRpcConnectionLifetime? Lifetime { get; }
-    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcConnectionLifetime? lifetime, LoopbackRpcServersideRemoteConnection server)
+    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcConnectionLifetime? lifetime, LoopbackRpcServersideRemoteConnection server, bool useStreams)
     {
         if (endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedClientsideEndpoint, nameof(endPoint));
@@ -25,6 +26,7 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
         Local = new LoopbackRpcClientsideLocalConnection(this, router);
         server.Client = this;
         Server = server;
+        UseStreams = useStreams;
     }
 
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
@@ -39,14 +41,21 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
 
         byte[] rtnBuffer = new byte[rawData.Length];
         rawData.CopyTo(rtnBuffer);
-        return Local.Router.ReceiveData(Server, serializer, rtnBuffer, true, token);
+
+        if (!UseStreams)
+        {
+            return Server.Local.Router.ReceiveData(Server, serializer, rtnBuffer, true, token);
+        }
+
+        using MemoryStream mem = new MemoryStream(rtnBuffer, false);
+        return Server.Local.Router.ReceiveData(Server, serializer, mem, token);
     }
     ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
 
-        return Local.Router.ReceiveData(Server, serializer, streamData, token);
+        return Server.Local.Router.ReceiveData(Server, serializer, streamData, token);
     }
 
     public ValueTask DisposeAsync() => CloseAsync();

@@ -655,6 +655,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
     private void HandleInvokeException(RuntimeMethodHandle sourceMethodHandle, Exception ex)
     {
+        // ReSharper disable once RedundantSuppressNullableWarningExpression
         this.LogError(ex,
             string.Format(Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
                 Accessor.Formatter.Format(ex.GetType()),

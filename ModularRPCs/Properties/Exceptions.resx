@@ -396,4 +396,7 @@
   <data name="PassthroughStreamIAsyncResultNotSupported" xml:space="preserve">
     <value>Passthrough streams do not support Begin/EndRead methods.</value>
   </data>
+  <data name="RpcInjectionExceptionMultipleServiceProviders" xml:space="preserve">
+    <value>A singular IServiceProvider can not be injected into an RPC when multiple IServiceProviders were given to the original IRpcRouter. Try injecting IEnumerable&lt;IServiceProvider&gt; instead.</value>
+  </data>
 </root>

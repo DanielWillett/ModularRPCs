@@ -29,7 +29,7 @@ namespace DanielWillett.ModularRpcs.Reflection;
 /// </summary>
 public sealed class ProxyGenerator : IRefSafeLoggable
 {
-    private readonly ConcurrentDictionary<Type, ProxyTypeInfo> _proxies = new ConcurrentDictionary<Type, ProxyTypeInfo>();
+    private readonly Dictionary<Type, ProxyTypeInfo> _proxies = new Dictionary<Type, ProxyTypeInfo>();
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsStream = new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
@@ -224,7 +224,14 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     {
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
-        ProxyTypeInfo newType = _proxies.GetOrAdd(type, CreateProxyType);
+        ProxyTypeInfo newType;
+        lock (_proxies)
+        {
+            if (!_proxies.TryGetValue(type, out newType))
+            {
+                _proxies.Add(type, newType = CreateProxyType(type));
+            }
+        }
 
         try
         {
@@ -290,7 +297,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         else
             return false;
 
-        return _proxies.ContainsKey(type);
+        lock (_proxies)
+            return _proxies.ContainsKey(type);
     }
 
     /// <summary>
@@ -311,7 +319,16 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
 
-        return _proxies.GetOrAdd(type, CreateProxyType).Type;
+        ProxyTypeInfo proxyType;
+        lock (_proxies)
+        {
+            if (!_proxies.TryGetValue(type, out proxyType))
+            {
+                _proxies.Add(type, proxyType = CreateProxyType(type));
+            }
+        }
+
+        return proxyType.Type;
     }
 
     /// <summary>
@@ -340,10 +357,14 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     {
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
-        if (_proxies.TryGetValue(type, out ProxyTypeInfo info))
+
+        lock (_proxies)
         {
-            proxyType = info.Type;
-            return true;
+            if (_proxies.TryGetValue(type, out ProxyTypeInfo info))
+            {
+                proxyType = info.Type;
+                return true;
+            }
         }
 
         proxyType = null!;
@@ -355,7 +376,16 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
 
-        return _proxies.GetOrAdd(type, CreateProxyType);
+        ProxyTypeInfo proxyType;
+        lock (_proxies)
+        {
+            if (!_proxies.TryGetValue(type, out proxyType))
+            {
+                _proxies.Add(type, proxyType = CreateProxyType(type));
+            }
+        }
+
+        return proxyType;
     }
 
     internal bool TryGetProxyTypeInfo(Type type, out ProxyTypeInfo info)
@@ -363,7 +393,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
 
-        return _proxies.TryGetValue(type, out info);
+        lock (_proxies)
+            return _proxies.TryGetValue(type, out info);
     }
 
     /// <summary>
@@ -455,12 +486,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         )(obj);
     }
 
-    private TypeBuilder StartProxyType(Type type,
+    private TypeBuilder StartProxyType(string typeName, Type type,
         bool typeGivesInternalAccess, bool unity,
         out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField,
         out FieldBuilder? unityRouterField)
     {
-        TypeBuilder typeBuilder = ModuleBuilder.DefineType(type.Name + "<RPC_Proxy>",
+        TypeBuilder typeBuilder = ModuleBuilder.DefineType(typeName,
             TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
         Assembly asm = type.Assembly;
         
@@ -1232,8 +1263,20 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
     private ProxyTypeInfo CreateProxyType(Type type)
     {
-        bool unity = false;
         ProxyTypeInfo info = default;
+
+        string typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
+        string copiedTypeName = typeName;
+        int dupNum = 0;
+        while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+        {
+            ++dupNum;
+            copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
+        }
+
+        typeName = copiedTypeName;
+
+        bool unity = false;
 
         // unity objects can not use constructors, so instead we add a Start() method.
         type.ForEachBaseType((bt, _) =>
@@ -1268,7 +1311,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         IOpCodeEmitter? typeInitIl = null;
         
-        TypeBuilder builder = StartProxyType(type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
+        TypeBuilder builder = StartProxyType(typeName, type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
 
         List<string> takenMethodNames = new List<string>();
         foreach (MethodInfo method in methods)
@@ -1308,6 +1351,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 continue;
             }
 
+            bool raw = targetAttribute.Raw;
+
             ParameterInfo[] parameters = method.GetParameters();
 
             MethodAttributes privacyAttributes = method.Attributes & (
@@ -1319,25 +1364,32 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 | MethodAttributes.FamORAssem);
 
             SerializerGenerator.BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
-            Type[] genericArguments = new Type[toBind.Count];
-            for (int i = 0; i < toBind.Count; ++i)
-            {
-                ParameterInfo param = toBind.Array![i + toBind.Offset];
-                if (param.ParameterType.IsByRef)
-                {
-                    if (param.IsOut)
-                        throw new RpcInvalidParameterException(param.Position, param, method, Properties.Exceptions.RpcInvalidParameterExceptionOutMessage);
 
-                    try
+            Type[]? genericArguments = null;
+            Type? serializerCache = null;
+            if (!raw)
+            {
+                genericArguments = new Type[toBind.Count];
+                for (int i = 0; i < toBind.Count; ++i)
+                {
+                    ParameterInfo param = toBind.Array![i + toBind.Offset];
+                    if (param.ParameterType.IsByRef)
                     {
-                        genericArguments[i] = param.ParameterType.GetElementType() ?? param.ParameterType;
-                        continue;
+                        if (param.IsOut)
+                            throw new RpcInvalidParameterException(param.Position, param, method, Properties.Exceptions.RpcInvalidParameterExceptionOutMessage);
+
+                        try
+                        {
+                            genericArguments[i] = param.ParameterType.GetElementType() ?? param.ParameterType;
+                            continue;
+                        }
+                        catch (NotSupportedException) { }
                     }
-                    catch (NotSupportedException) { }
+                    genericArguments[i] = param.ParameterType;
                 }
-                genericArguments[i] = param.ParameterType;
+
+                serializerCache = SerializerGenerator.GetSerializerType(genericArguments.Length);
             }
-            Type serializerCache = SerializerGenerator.GetSerializerType(genericArguments.Length);
 
             bool injectedConnection = false;
             ushort injectedConnectionArgNum = 0;
@@ -1375,35 +1427,41 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 }
             }
 
-            if (serializerCache.IsGenericTypeDefinition)
-                serializerCache = serializerCache.MakeGenericType(genericArguments);
+            if (!raw && serializerCache!.IsGenericTypeDefinition)
+                serializerCache = serializerCache.MakeGenericType(genericArguments!);
 
-            FieldInfo getSizeMethod = serializerCache.GetField(SerializerGenerator.GetSizeMethodField)
-                                       ?? throw new UnexpectedMemberAccessException(new MethodDefinition(SerializerGenerator.GetSizeMethodField)
-                                           .DeclaredIn(serializerCache, isStatic: true)
-                                           .Returning<int>()
-                                       );
+            FieldInfo? getSizeMethod = null, writeBytesMethod = null;
+            MethodInfo? getSizeInvokeMethod = null, writeBytesInvokeMethod = null;
 
-            FieldInfo writeBytesMethod = serializerCache.GetField(SerializerGenerator.WriteToBytesMethodField)
-                                       ?? throw new UnexpectedMemberAccessException(new MethodDefinition(SerializerGenerator.WriteToBytesMethodField)
-                                           .DeclaredIn(serializerCache, isStatic: true)
-                                           .ReturningVoid()
-                                       );
+            if (!raw)
+            {
+                getSizeMethod = serializerCache!.GetField(SerializerGenerator.GetSizeMethodField)
+                                ?? throw new UnexpectedMemberAccessException(new MethodDefinition(SerializerGenerator.GetSizeMethodField)
+                                    .DeclaredIn(serializerCache, isStatic: true)
+                                    .Returning<int>()
+                                );
 
-            Type getSizeDelegateType = getSizeMethod.FieldType;
-            Type writeBytesDelegateType = writeBytesMethod.FieldType;
+                writeBytesMethod = serializerCache.GetField(SerializerGenerator.WriteToBytesMethodField)
+                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(SerializerGenerator.WriteToBytesMethodField)
+                                       .DeclaredIn(serializerCache, isStatic: true)
+                                       .ReturningVoid()
+                                   );
 
-            MethodInfo getSizeInvokeMethod = getSizeDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
-                                             ?? throw new UnexpectedMemberAccessException(new MethodDefinition("Invoke")
-                                                 .DeclaredIn(getSizeDelegateType, isStatic: false)
-                                                 .Returning<int>()
-                                             );
+                Type getSizeDelegateType = getSizeMethod.FieldType;
+                Type writeBytesDelegateType = writeBytesMethod.FieldType;
 
-            MethodInfo writeBytesInvokeMethod = writeBytesDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
-                                                ?? throw new UnexpectedMemberAccessException(new MethodDefinition("Invoke")
-                                                    .DeclaredIn(writeBytesDelegateType, isStatic: false)
-                                                    .Returning<int>()
-                                                );
+                getSizeInvokeMethod = getSizeDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+                                      ?? throw new UnexpectedMemberAccessException(new MethodDefinition("Invoke")
+                                          .DeclaredIn(getSizeDelegateType, isStatic: false)
+                                          .Returning<int>()
+                                      );
+
+                writeBytesInvokeMethod = writeBytesDelegateType.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance)
+                                         ?? throw new UnexpectedMemberAccessException(new MethodDefinition("Invoke")
+                                             .DeclaredIn(writeBytesDelegateType, isStatic: false)
+                                             .Returning<int>()
+                                         );
+            }
 
             string fieldMethodName = method.Name;
             if (!takenMethodNames.Contains(fieldMethodName))
@@ -1459,32 +1517,18 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                     [ fieldMethodName ]
                 )
             );
-
-#if DEBUG
-            methodBuilder.InitLocals = true;
-#else
+            
             methodBuilder.InitLocals = false;
-#endif
 
             IOpCodeEmitter il = methodBuilder.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 #if DEBUG
             il.EmitWriteLine("Calling " + Accessor.Formatter.Format(method));
 #endif
+
             bool isReturningTask = method.ReturnType != typeof(void);
-            LocalBuilder lclSize = il.DeclareLocal(typeof(int));
-            LocalBuilder lclOverheadSize = il.DeclareLocal(typeof(int));
-            LocalBuilder lclPreOverheadSize = il.DeclareLocal(typeof(int));
-            LocalBuilder lclByteBuffer = il.DeclareLocal(typeof(byte*));
-            LocalBuilder lclByteBufferPin = il.DeclareLocal(typeof(byte[]), true);
             LocalBuilder? lclTaskRtn = isReturningTask ? il.DeclareLocal(typeof(RpcTask)) : null;
             LocalBuilder lclRouter = il.DeclareLocal(typeof(IRpcRouter));
             LocalBuilder lclSerializer = il.DeclareLocal(typeof(IRpcSerializer));
-            LocalBuilder? lclPreCalcId = null;
-            LocalBuilder? lclIdTypeSize = null;
-            LocalBuilder? lclKnownTypeId = null;
-            LocalBuilder? lclHasKnownTypeId = null;
-            bool canQuickSerialize = false;
-            bool passByRef = false;
 
             il.CommentIfDebug("IRpcRouter lclRouter = this.proxyContextField.Router;");
             il.CommentIfDebug("IRpcSerializer lclSerializer = this.proxyContextField.Serializer;");
@@ -1498,16 +1542,43 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             il.Emit(OpCodes.Ldfld, CommonReflectionCache.ProxyContextSerializerField);
             il.Emit(OpCodes.Stloc, lclSerializer);
 
+            if (raw)
+            {
+                // todo
+
+                if (isReturningTask)
+                {
+                    il.CommentIfDebug("return lclTaskRtn;");
+                    il.Emit(OpCodes.Ldloc, lclTaskRtn!);
+                }
+                else
+                    il.CommentIfDebug("return;");
+
+                il.Emit(OpCodes.Ret);
+                continue;
+            }
+
+            LocalBuilder lclSize = il.DeclareLocal(typeof(int));
+            LocalBuilder lclOverheadSize = il.DeclareLocal(typeof(int));
+            LocalBuilder lclPreOverheadSize = il.DeclareLocal(typeof(int));
+            LocalBuilder lclByteBuffer = il.DeclareLocal(typeof(byte*));
+            LocalBuilder lclByteBufferPin = il.DeclareLocal(typeof(byte[]), true);
+            LocalBuilder? lclPreCalcId = null;
+            LocalBuilder? lclIdTypeSize = null;
+            LocalBuilder? lclKnownTypeId = null;
+            LocalBuilder? lclHasKnownTypeId = null;
+            bool canQuickSerialize = false;
+            bool passByRef = false;
             il.CommentIfDebug("int lclSize = getSizeMethod.Invoke(lclSerializer, ...);");
             // invoke the static get-size delegate in the static dynamically generated serializer class
-            il.Emit(OpCodes.Ldsfld, getSizeMethod);
+            il.Emit(OpCodes.Ldsfld, getSizeMethod!);
             il.Emit(OpCodes.Ldloc, lclSerializer);
-            for (int i = 0; i < genericArguments.Length; ++i)
+            for (int i = 0; i < genericArguments!.Length; ++i)
             {
                 il.Emit(!parameters[i].ParameterType.IsByRef ? OpCodes.Ldarga : OpCodes.Ldarg, checked ( (ushort)(toBind.Array![i + toBind.Offset].Position + 1) ));
             }
 
-            il.Emit(OpCodes.Callvirt, getSizeInvokeMethod);
+            il.Emit(OpCodes.Callvirt, getSizeInvokeMethod!);
             il.Emit(OpCodes.Stloc, lclSize);
 
             il.CommentIfDebug("int lclOverheadSize = lclRouter.GetOverheadSize(methodof(method), in methodInfoField);");

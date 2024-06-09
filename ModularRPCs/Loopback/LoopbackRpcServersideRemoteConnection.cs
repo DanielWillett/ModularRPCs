@@ -15,11 +15,13 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
     public LoopbackEndpoint Endpoint { get; }
     public bool IsClosed { get; internal set; }
     public IRpcConnectionLifetime? Lifetime { get; }
-    internal LoopbackRpcServersideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcConnectionLifetime? lifetime)
+    public bool UseStreams { get; }
+    internal LoopbackRpcServersideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcConnectionLifetime? lifetime, bool useStreams)
     {
         if (!endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedServersideEndpoint, nameof(endPoint));
         Lifetime = lifetime;
+        UseStreams = useStreams;
         IsClosed = true;
         Endpoint = endPoint;
         Local = new LoopbackRpcServersideLocalConnection(this, router);
@@ -37,14 +39,21 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
 
         byte[] rtnBuffer = new byte[rawData.Length];
         rawData.CopyTo(rtnBuffer);
-        return Local.Router.ReceiveData(Client, serializer, rtnBuffer, true, token);
+
+        if (!UseStreams)
+        {
+            return Client.Local.Router.ReceiveData(Client, serializer, rtnBuffer, true, token);
+        }
+
+        using MemoryStream mem = new MemoryStream(rtnBuffer, false);
+        return Client.Local.Router.ReceiveData(Client, serializer, mem, token);
     }
     ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
 
-        return Local.Router.ReceiveData(Client, serializer, streamData, token);
+        return Client.Local.Router.ReceiveData(Client, serializer, streamData, token);
     }
 
     public ValueTask DisposeAsync() => CloseAsync();

@@ -1,5 +1,6 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Data;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
@@ -7,8 +8,8 @@ using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
 using DanielWillett.ReflectionTools.Formatting;
+using DanielWillett.SpeedBytes;
 using JetBrains.Annotations;
-using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -24,8 +25,6 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using DanielWillett.ModularRpcs.Data;
-using DanielWillett.SpeedBytes;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 internal sealed class SerializerGenerator
@@ -40,6 +39,8 @@ internal sealed class SerializerGenerator
         typeof(IModularRpcConnection),
         typeof(IEnumerable<IModularRpcConnection>),
         typeof(RpcFlags)
+        // typeof(IServiceProvider),
+        // typeof(IEnumerable<IServiceProvider>)
     ];
 
     private static readonly Type? SpeedBytesWriterType = Type.GetType("DanielWillett.SpeedBytes.ByteWriter, DanielWillett.SpeedBytes");
@@ -733,6 +734,8 @@ internal sealed class SerializerGenerator
             ParameterInfo parameterInfo = parameters[i];
 
             bool isInjected = Array.Exists(AutoInjectedTypes, x => x.IsAssignableFrom(parameterInfo.ParameterType))
+                              || parameterInfo.ParameterType.FullName != null && (parameterInfo.ParameterType.FullName.Equals("System.IServiceProvider", StringComparison.Ordinal)
+                                                                                  || parameterInfo.ParameterType.FullName.StartsWith("System.Collections.Generic.IEnumerable`1[[System.IServiceProvider, ", StringComparison.Ordinal))
                               || parameterInfo.IsDefinedSafe<RpcInjectAttribute>();
 
             injectionMask[i] = isInjected;
@@ -949,6 +952,80 @@ internal sealed class SerializerGenerator
                 }
                 il.Emit(OpCodes.Stloc, lcl);
             }
+            else if (injectionType.FullName != null && injectionType.FullName.Equals("System.IServiceProvider", StringComparison.Ordinal))
+            {
+                Label next = il.DefineLabel();
+                Label notEither = il.DefineLabel();
+                il.Emit(OpCodes.Ldarg_0); // service provider (maybe)
+                il.Emit(OpCodes.Isinst, injectionType);
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Stloc, lcl);
+                il.Emit(OpCodes.Brtrue, next);
+
+                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Brfalse, notEither);
+                il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionMultipleServiceProviders);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
+                il.Emit(OpCodes.Throw);
+
+                il.MarkLabel(notEither);
+                il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionInfo);
+                il.Emit(OpCodes.Ldstr, param.Name ?? string.Empty);
+                il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(injectionType));
+                il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(method));
+                il.Emit(OpCodes.Call, CommonReflectionCache.StringFormat3);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
+                il.Emit(OpCodes.Throw);
+
+                il.MarkLabel(next);
+            }
+            else if (injectionType.FullName != null && injectionType.FullName.StartsWith("System.Collections.Generic.IEnumerable`1[[System.IServiceProvider, ", StringComparison.Ordinal))
+            {
+                Label next = il.DefineLabel();
+                il.Emit(OpCodes.Ldarg_0); // service provider (maybe)
+                il.Emit(OpCodes.Isinst, injectionType);
+                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Stloc, lcl);
+                il.Emit(OpCodes.Brtrue, next);
+
+#if NETFRAMEWORK
+                Type? serviceProviderType = Type.GetType("System.IServiceProvider, mscorlib");
+#else
+                Type? serviceProviderType = Type.GetType("System.IServiceProvider, netstandard");
+#endif
+                if (serviceProviderType != null)
+                {
+                    Label throwError = il.DefineLabel();
+                    il.Emit(OpCodes.Ldarg_0);
+                    il.Emit(OpCodes.Isinst, serviceProviderType);
+                    il.Emit(OpCodes.Brfalse, throwError);
+
+                    il.Emit(OpCodes.Ldc_I4_1);
+                    il.Emit(OpCodes.Newarr, serviceProviderType);
+                    il.Emit(OpCodes.Dup);
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(OpCodes.Ldarg_0);
+                    il.Emit(OpCodes.Stelem_Ref);
+                    il.Emit(OpCodes.Stloc, lcl);
+                    il.Emit(OpCodes.Br, next);
+
+                    il.MarkLabel(throwError);
+                }
+                else
+                {
+                    ProxyGenerator.Instance.LogWarning("Unable to find System.IServiceProvider type.");
+                }
+
+                il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionInfo);
+                il.Emit(OpCodes.Ldstr, param.Name ?? string.Empty);
+                il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(injectionType));
+                il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(method));
+                il.Emit(OpCodes.Call, CommonReflectionCache.StringFormat3);
+                il.Emit(OpCodes.Newobj, CommonReflectionCache.RpcInjectionExceptionCtorMessage);
+                il.Emit(OpCodes.Throw);
+
+                il.MarkLabel(next);
+            }
             else
             {
                 il.Emit(OpCodes.Ldarg_0); // service provider (maybe)
@@ -961,7 +1038,7 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Brtrue, next);
 
                 il.Emit(OpCodes.Ldstr, Properties.Exceptions.RpcInjectionExceptionInfo);
-                il.Emit(OpCodes.Ldstr, param.Name);
+                il.Emit(OpCodes.Ldstr, param.Name ?? string.Empty);
                 il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(injectionType));
                 il.Emit(OpCodes.Ldstr, Accessor.ExceptionFormatter.Format(method));
                 il.Emit(OpCodes.Call, CommonReflectionCache.StringFormat3);
@@ -1275,8 +1352,65 @@ internal sealed class SerializerGenerator
             il.MarkLabel(lblDontPrimitiveRead);
         }
 
+#if DEBUG
         il.EmitWriteLine("Read bytes:");
         il.EmitWriteLine(lclReadInd);
+#endif
+
+        HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
+        il.Emit(OpCodes.Ret);
+    }
+    internal void GenerateInvokeStream(MethodInfo method, IOpCodeEmitter il)
+    {
+        ParameterInfo[] parameters = method.GetParameters();
+        BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
+
+        LocalBuilder[] injectionLcls = new LocalBuilder[toInject.Count];
+        LocalBuilder[] bindLcls = new LocalBuilder[toBind.Count];
+
+        HandleInjections(method, il, toInject, injectionLcls, false);
+
+        LocalBuilder lclTempByteCt = il.DeclareLocal(typeof(int));
+
+        for (int i = 0; i < toBind.Count; ++i)
+        {
+            ParameterInfo parameter = toBind.Array![i + toBind.Offset];
+            Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+            Type? underlyingNullableType = Nullable.GetUnderlyingType(type);
+            bindLcls[i] = il.DeclareLocal(type);
+            bool shouldPassByRef = underlyingNullableType == null && ShouldBePassedByReference(type);
+
+            il.CommentIfDebug($"== Read {Accessor.Formatter.Format(type)} ==");
+            if (shouldPassByRef)
+            {
+                il.CommentIfDebug($"serializer.ReadObject(__makeref(bindLcl{i}), stream, out lclTempByteCt);");
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
+                il.Emit(OpCodes.Ldloca, bindLcls[i]);
+                il.Emit(OpCodes.Mkrefany, type);
+                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
+                il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByTRefStream);
+            }
+            else if (underlyingNullableType == null)
+            {
+                il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
+                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
+                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
+                il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValStream.MakeGenericMethod(type));
+                il.Emit(OpCodes.Stloc, bindLcls[i]);
+            }
+            else
+            {
+                il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullable<{Accessor.Formatter.Format(underlyingNullableType)}>(__makeref(bindLcl{i}), stream, out lclTempByteCt);");
+                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
+                il.Emit(OpCodes.Ldloca, bindLcls[i]);
+                il.Emit(OpCodes.Mkrefany, type);
+                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
+                il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableObjectByTRefStream.MakeGenericMethod(underlyingNullableType));
+            }
+        }
 
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
         il.Emit(OpCodes.Ret);
@@ -1302,7 +1436,7 @@ internal sealed class SerializerGenerator
             Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
             Type actualType = Nullable.GetUnderlyingType(type) ?? type;
             bindLcls[i] = il.DeclareLocal(type);
-            FindLocalType(parameter, actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
+            FindLocalType(actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
         }
 
         HandleInjections(method, il, toInject, injectionLcls, true);
@@ -1507,7 +1641,7 @@ internal sealed class SerializerGenerator
             Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
             Type actualType = Nullable.GetUnderlyingType(type) ?? type;
             bindLcls[i] = il.DeclareLocal(type);
-            FindLocalType(parameter, actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
+            FindLocalType(actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
         }
 
         HandleInjections(method, il, toInject, injectionLcls, false);
@@ -1820,7 +1954,7 @@ internal sealed class SerializerGenerator
         arrayList.AddRange(fullArray);
         return arrayList;
     }
-    private static void FindLocalType(ParameterInfo parameter, Type actualType, IOpCodeEmitter il, int index, ref int? canTakeOwnershipIndex, ref int? dataIndex, ref int? byteCountIndex, ref Type? dataType, ref Type? countType)
+    private static void FindLocalType(Type actualType, IOpCodeEmitter il, int index, ref int? canTakeOwnershipIndex, ref int? dataIndex, ref int? byteCountIndex, ref Type? dataType, ref Type? countType)
     {
         if (actualType == typeof(bool))
         {
@@ -1893,24 +2027,5 @@ internal sealed class SerializerGenerator
                 dataType = actualType;
             }
         }
-    }
-    internal void GenerateInvokeStream(MethodInfo method, IOpCodeEmitter il)
-    {
-        ParameterInfo[] parameters = method.GetParameters();
-        BindParameters(parameters, out ArraySegment<ParameterInfo> toInject, out ArraySegment<ParameterInfo> toBind);
-
-        LocalBuilder[] injectionLcls = new LocalBuilder[toInject.Count];
-        LocalBuilder[] bindLcls = new LocalBuilder[toBind.Count];
-
-        HandleInjections(method, il, toInject, injectionLcls, false);
-
-        for (int i = 0; i < toBind.Count; ++i)
-        {
-            bindLcls[i] = il.DeclareLocal(toBind.Array![i + toBind.Offset].ParameterType);
-            // todo
-        }
-
-        HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind);
-        il.Emit(OpCodes.Ret);
     }
 }

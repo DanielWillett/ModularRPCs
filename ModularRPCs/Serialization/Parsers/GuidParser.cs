@@ -48,52 +48,76 @@ public class GuidParser : BinaryTypeParser<Guid>
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
         Guid guid = new Guid(new ReadOnlySpan<byte>(bytes, 16));
 #else
-        Guid guid;
+        Guid guid = ReadGuidFromBytes(bytes);
+#endif
+        bytesRead = 16;
+        return guid;
+    }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+    private static unsafe Guid ReadGuidFromBytes(byte* bytes)
+    {
+        // rent until we get an array with the exact length
         byte[] span = DefaultSerializer.ArrayPool.Rent(16);
         try
         {
-            Unsafe.CopyBlockUnaligned(ref span[0], ref Unsafe.AsRef<byte>(bytes), 16u);
-            guid = new Guid(span);
+            if (span.Length == 16)
+            {
+                Unsafe.CopyBlockUnaligned(ref span[0], ref Unsafe.AsRef<byte>(bytes), 16u);
+                return new Guid(span);
+            }
+            else
+            {
+                return ReadGuidFromBytes(bytes);
+            }
         }
         finally
         {
             DefaultSerializer.ArrayPool.Return(span);
         }
-#endif
-        bytesRead = 16;
-        return guid;
     }
-
+#endif
     public override Guid ReadObject(Stream stream, out int bytesRead)
     {
-        Guid guid;
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
-        byte[] span = DefaultSerializer.ArrayPool.Rent(16);
-        try
-        {
+        Guid guid = ReadGuidFromStream(stream);
 #else
         Span<byte> span = stackalloc byte[16];
-#endif
-
-#if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
-        int ct = stream.Read(span, 0, 16);
-#else
         int ct = stream.Read(span);
-#endif
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 2 };
 
+        Guid guid = new Guid(span);
+#endif
+
         bytesRead = 16;
-        guid = new Guid(span);
-#if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
+        return guid;
+    }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+    private static Guid ReadGuidFromStream(Stream stream)
+    {
+        // rent until we get an array with the exact length
+        byte[] span = DefaultSerializer.ArrayPool.Rent(16);
+        try
+        {
+            if (span.Length == 16)
+            {
+                int ct = stream.Read(span, 0, 16);
+                if (ct != 16)
+                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 2 };
+
+                return new Guid(span);
+            }
+            else
+            {
+                return ReadGuidFromStream(stream);
+            }
         }
         finally
         {
             DefaultSerializer.ArrayPool.Return(span);
         }
-#endif
-        return guid;
     }
+#endif
 
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Guid>
     {

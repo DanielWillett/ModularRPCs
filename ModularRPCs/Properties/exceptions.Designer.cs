@@ -475,6 +475,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to A singular IServiceProvider can not be injected into an RPC when multiple IServiceProviders were given to the original IRpcRouter. Try injecting IEnumerable&lt;IServiceProvider&gt; instead..
+        /// </summary>
+        internal static string RpcInjectionExceptionMultipleServiceProviders {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionMultipleServiceProviders", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A parameter in an RPC is not serializable..
         /// </summary>
         internal static string RpcInvalidParameterException {
