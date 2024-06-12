@@ -42,10 +42,13 @@ public abstract class RpcTargetAttribute : Attribute
     /// * <see cref="Memory{T}"/> of <see cref="byte"/> -> input data<br/>
     /// * <see cref="ReadOnlyMemory{T}"/> of <see cref="byte"/> -> input data<br/>
     /// * <see cref="Stream"/> -> input data<br/>
-    /// * <see cref="ByteWriter"/> -> input data (from beginning)<br/>
+    /// * <see cref="ByteWriter"/> -> input data (from beginning, not supported in stream mode)<br/>
     /// * <see cref="ByteReader"/> -> input data (from current position, using number of bytes if available)<br/>
     /// * Any integer type -> Number of bytes in input data<br/>
     /// * <see cref="bool"/> -> Can take ownership (see above)<br/>
+    /// Note that, except for when using streams (or <see cref="ByteReader"/> in stream mode),
+    /// enough space must be left at the beginning of the buffer for the overhead. Use <see cref="ProxyGenerator.CalculateOverheadSize(Delegate, out int)"/> to calculate how many bytes to leave.
+    /// The provided byte count should include the overhead.
     /// </para><br/>
     /// <para>
     /// Parameter mapping (receive):<br/>
@@ -65,7 +68,7 @@ public abstract class RpcTargetAttribute : Attribute
     /// * <see cref="bool"/> -> Can take ownership (see above)<br/>
     /// </para><br/>
     /// Example:
-    /// <code>
+    /// <code> 
     /// [RpcSend(Raw = true)]
     /// // send maxSize bytes directly from a byte pointer. If canTakeOwnership is not included, it's assumed to be false.
     /// virtual RpcTask CallRawMethod(byte* data, int maxSize, bool canTakeOwnership) => RpcTask.NotImplemented;
@@ -84,6 +87,21 @@ public abstract class RpcTargetAttribute : Attribute
     /// 
     ///     await Task.Delay(5000);
     ///     Console.WriteLine(data[0]);
+    /// }
+    /// 
+    /// // elsewhere
+    /// {
+    ///     int ovhSize = ProxyGenerator.Instance.CalculateOverheadSize(obj.CallRawMethod, out int idStartIndex);
+    ///     int size = 32 + ovhSize;
+    ///     byte* buffer = stackalloc byte[size];
+    ///
+    ///     // extension method for IRpcObjects.
+    ///     obj.WriteIdentifier(buffer + idStartIndex);
+    ///     
+    ///     for (int i = 0; i &lt; 32; i++)
+    ///         buffer[i + ovhSize] = (byte)i;
+    ///     
+    ///     await CallRawMethod(buffer, size, false);
     /// }
     /// </code>
     /// </summary>

@@ -399,4 +399,25 @@
   <data name="RpcInjectionExceptionMultipleServiceProviders" xml:space="preserve">
     <value>A singular IServiceProvider can not be injected into an RPC when multiple IServiceProviders were given to the original IRpcRouter. Try injecting IEnumerable&lt;IServiceProvider&gt; instead.</value>
   </data>
+  <data name="PassthroughStreamSeekNotSupported" xml:space="preserve">
+    <value>Seeking is not supported on this passthrough stream.</value>
+  </data>
+  <data name="OverheadTargetMethodStatic" xml:space="preserve">
+    <value>The given delegate must have a linked target instance.</value>
+  </data>
+  <data name="RawOverflow" xml:space="preserve">
+    <value>The given buffer is not big enough for the overhead for this RPC.</value>
+  </data>
+  <data name="RpcInjectionExceptionBytePointerMustPassLength" xml:space="preserve">
+    <value>Using a byte pointer in a raw method also requires a length parameter by using any integer type. This length must include the overhead.</value>
+  </data>
+  <data name="WriterStreamModeNotSupported" xml:space="preserve">
+    <value>Stream mode is not supported when sending from a ByteWriter.</value>
+  </data>
+  <data name="ByteCountTooLargeRaw" xml:space="preserve">
+    <value>The given byte count is larger than the buffer.</value>
+  </data>
+  <data name="NoDataLoadedRaw" xml:space="preserve">
+    <value>The given ByteReader or ByteWriter has no data loaded.</value>
+  </data>
 </root>

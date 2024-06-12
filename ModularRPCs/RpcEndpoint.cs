@@ -6,18 +6,18 @@ using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
+using DanielWillett.ReflectionTools.Formatting;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ReflectionTools.Formatting;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -26,7 +26,6 @@ namespace DanielWillett.ModularRpcs;
 /// </summary>
 public class RpcEndpoint : IRpcInvocationPoint
 {
-    private static MethodInfo? _fromResultMethod;
     private uint _sizeWithoutIdentifier;
     protected bool IgnoreSignatureHash;
     protected int SignatureHash;
@@ -145,6 +144,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         CalculateSize();
     }
 
+    [Pure]
     public override string ToString()
     {
         if (Method != null)
@@ -392,36 +392,7 @@ public class RpcEndpoint : IRpcInvocationPoint
     }
     protected virtual ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
     {
-        // todo optimize
-        switch (returnedValue)
-        {
-            case null:
-                return default;
-            case Task task:
-                return new ValueTask(task);
-            case ValueTask vt:
-                return vt;
-        }
-
-        Type returnedType = returnedValue.GetType();
-        if (returnedType.IsGenericType && returnedType.GetGenericTypeDefinition() == typeof(ValueTask<>))
-        {
-            MethodInfo? asTaskMethod = returnedType.GetMethod("AsTask", BindingFlags.Instance | BindingFlags.Public, null, CallingConventions.Any, Type.EmptyTypes, null);
-            if (asTaskMethod == null || asTaskMethod.Invoke(returnedValue, Array.Empty<object>()) is not Task task)
-                return default;
-
-            return new ValueTask(task);
-        }
-
-        _fromResultMethod ??= typeof(Task).GetMethod("FromResult", BindingFlags.Static | BindingFlags.Public);
-        if (_fromResultMethod == null
-            || !_fromResultMethod.IsGenericMethodDefinition
-            || _fromResultMethod.MakeGenericMethod(returnedType).Invoke(null, [returnedValue]) is not Task newTask)
-        {
-            return default;
-        }
-
-        return new ValueTask(newTask);
+        return ProxyGenerator.Instance.ConvertReturnedValueToValueTask(returnedValue);
     }
     protected virtual object? GetTargetObject(MethodInfo? knownMethod)
     {
@@ -623,6 +594,8 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         return size;
     }
+
+    [Pure]
     internal static unsafe IRpcInvocationPoint ReadFromBytes(IRpcSerializer serializer, IRpcRouter router, byte* bytes, uint maxCt, out int bytesRead)
     {
         if (maxCt < 13)
@@ -715,6 +688,8 @@ public class RpcEndpoint : IRpcInvocationPoint
         bytesRead = checked( (int)(bytes - originalPtr) );
         return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, bytesRead, identifier);
     }
+
+    [Pure]
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcSerializer serializer, IRpcRouter router, Stream stream, out int bytesRead)
     {
         bool isLittleEndian = BitConverter.IsLittleEndian;
@@ -882,10 +857,14 @@ public class RpcEndpoint : IRpcInvocationPoint
         bytesRead = index;
         return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, bytesRead, identifier);
     }
+
+    [Pure]
     public virtual IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier)
     {
         return new RpcEndpoint(serializer, this, identifier);
     }
+
+    [Pure]
     internal static uint CalculateIdentifierSize(IRpcSerializer serializer, object identifier)
     {
         Type idType = identifier.GetType();
@@ -907,6 +886,8 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         return 1 + (uint)serializer.GetSize(identifier);
     }
+
+    [Pure]
     internal static unsafe object? ReadIdentifierFromBytes(IRpcSerializer serializer, byte* bytes, uint maxCt, out int bytesRead)
     {
         int size = 1;
@@ -997,6 +978,8 @@ public class RpcEndpoint : IRpcInvocationPoint
             return identifier;
         }
     }
+
+    [Pure]
     internal static unsafe object? ReadIdentifierFromStream(IRpcSerializer serializer, Stream stream, out int bytesRead)
     {
         int size = 1;

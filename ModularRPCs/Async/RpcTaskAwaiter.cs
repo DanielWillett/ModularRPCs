@@ -44,7 +44,13 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
 
         Exception? ex = Task.GetException();
 
-        if (ex != null)
+        if (ex == null)
+            return;
+
+        // not thrown yet
+        if (ex.StackTrace == null)
             throw ex;
+
+        throw new RpcInvocationException(ex);
     }
 }

@@ -65,6 +65,7 @@ internal static class TypeUtility
 
         return TypeCode.Object;
     }
+
     public static Type GetType(TypeCode tc)
     {
         return tc switch
@@ -93,6 +94,7 @@ internal static class TypeUtility
             _ => throw new ArgumentOutOfRangeException(nameof(tc))
         };
     }
+
     public static int GetTypeCodeSize(TypeCode tc)
     {
         return tc switch
@@ -117,6 +119,7 @@ internal static class TypeUtility
             _ => throw new ArgumentOutOfRangeException(nameof(tc), tc, null)
         };
     }
+
     public static bool ParametersMatchMethod(MethodInfo method, Type[] types, bool bindOnly)
     {
         ParameterInfo[] parameters = method.GetParameters();
@@ -140,6 +143,7 @@ internal static class TypeUtility
 
         return true;
     }
+
     public static bool ParametersMatchMethod(MethodInfo method, string[] typeNames, bool bindOnly)
     {
         ParameterInfo[] parameters = method.GetParameters();
@@ -161,6 +165,7 @@ internal static class TypeUtility
 
         return true;
     }
+
     public static string GetAssemblyQualifiedNameNoVersion(Type type)
     {
         if (type.Assembly == Accessor.MSCoreLib)
@@ -179,6 +184,7 @@ internal static class TypeUtility
         
         return GetAssemblyQualifiedNameNoVersion(type).Equals(asmQualifiedName, StringComparison.Ordinal);
     }
+
     public static unsafe void WriteTypeCode(TypeCode tc, IRpcSerializer serializer, object value, byte* ptr, ref uint index, uint size)
     {
         bool canFastRead = serializer.CanFastReadPrimitives;
@@ -1088,7 +1094,7 @@ internal static class TypeUtility
         index += (uint)bytesRead;
         return rtnValue;
     }
-    
+
     /// <summary>
     /// Resolve a method from target info.
     /// </summary>
@@ -1218,6 +1224,7 @@ internal static class TypeUtility
         result = method != null ? ResolveMethodResult.Success : ResolveMethodResult.MethodNotFound;
         return result == ResolveMethodResult.Success;
     }
+
     public static TimeSpan GetTimeoutFromMethod(MethodBase method, TimeSpan defaultTimeout)
     {
         RpcTimeoutAttribute? attribue = method.GetAttributeSafe<RpcTimeoutAttribute>();
@@ -1235,6 +1242,7 @@ internal static class TypeUtility
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromMilliseconds(attribue.Timeout);
     }
+
     internal static object? GetServiceFromUnknownProviderType(object serviceProvider, Type declaringType)
     {
         if (serviceProvider is not IEnumerable<IServiceProvider> multiple)
@@ -1257,6 +1265,7 @@ internal static class TypeUtility
 
         return intxMatch;
     }
+
     internal static object? GetService(IServiceProvider serviceProvider, Type declaringType, bool checkDeclaringType = true, bool checkInterfaces = true)
     {
         if (checkDeclaringType)

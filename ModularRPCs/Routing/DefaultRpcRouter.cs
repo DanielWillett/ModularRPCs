@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
+using DanielWillett.ModularRpcs.Data;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
@@ -563,23 +564,214 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         FinishListening(rpcTask);
         return rpcTask;
     }
+
+    /// <inheritdoc />
+    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, ArraySegment<byte> overheadBuffer, Stream stream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
+    {
+        bool isDisposed = false;
+        try
+        {
+            if (overheadBuffer.Array == null || overheadBuffer.Count == 0)
+            {
+                throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
+            }
+
+            ulong messageId = GetNewMessageId();
+            fixed (byte* ptr = &overheadBuffer.Array![overheadBuffer.Offset])
+            {
+                int ovhEnd = WriteOverhead(sourceMethodHandle, serializer, ref callMethodInfo, ptr, overheadBuffer.Count, dataCt, messageId, 0);
+                WriteEndpoint(sourceMethodHandle, serializer, ref callMethodInfo, callMethodInfo.Endpoint.GetEndpoint(), ptr + ovhEnd, overheadBuffer.Count - ovhEnd);
+            }
+
+            OverheadStreamPrepender ovhStream = new OverheadStreamPrepender(stream, overheadBuffer, dataCt, true);
+            ArraySegment<byte> nonSingle;
+            RpcTask? rpcTask = null;
+            if (connections == null)
+            {
+                // ReSharper disable once RedundantSuppressNullableWarningExpression
+                if (!_connectionLifetime.IsSingleConnection && !callMethodInfo.IsFireAndForget)
+                    throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+
+                rpcTask = !callMethodInfo.IsFireAndForget
+                    ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
+                    : new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
+
+                nonSingle = default;
+                if (!_connectionLifetime.IsSingleConnection)
+                {
+                    nonSingle = new ArraySegment<byte>(new byte[ovhStream.Length]);
+                    int actualLen = ovhStream.Read(nonSingle.Array!, 0, nonSingle.Count);
+                    if (actualLen != nonSingle.Count)
+                        nonSingle = new ArraySegment<byte>(nonSingle.Array!, 0, actualLen);
+
+                    if (!leaveOpen)
+                    {
+                        stream.Dispose();
+                        isDisposed = true;
+                    }
+                }
+
+                int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
+                {
+                    Interlocked.CompareExchange(ref rpcTask.ConnectionIntl, connection, null);
+
+                    Interlocked.Increment(ref rpcTask.CompleteCount);
+                    if (rpcTask is RpcBroadcastTask bt)
+                        Interlocked.Increment(ref bt.ConnectionCountIntl);
+
+                    try
+                    {
+                        if (nonSingle.Array != null)
+                        {
+                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, _cancelTokenSource.Token);
+
+                            if (!vt.IsCompleted)
+                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                        }
+                        else
+                        {
+                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, ovhStream, _cancelTokenSource.Token);
+
+                            if (!vt.IsCompleted)
+                            {
+                                // ReSharper disable once AccessToDisposedClosure
+                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream));
+                                isDisposed = true;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        HandleInvokeException(sourceMethodHandle, ex);
+                        rpcTask.TriggerComplete(ex);
+                        FinishListening(rpcTask);
+                    }
+
+                    return nonSingle.Array != null;
+                });
+
+                // ReSharper disable once RedundantSuppressNullableWarningExpression
+                if (ct == 0)
+                    throw new RpcNoConnectionsException(string.Format(Properties.Exceptions.RpcNoConnectionsExceptionConnectionLifetime, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+
+                // maybe throw exceptions if all threw
+                rpcTask.TriggerComplete(null);
+
+                return rpcTask;
+            }
+
+            if (connections is IModularRpcRemoteConnection remote1)
+            {
+                rpcTask = !callMethodInfo.IsFireAndForget
+                    ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
+                    : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
+
+                rpcTask.ConnectionIntl = remote1;
+
+                try
+                {
+                    ValueTask vt = remote1.SendDataAsync(_defaultSerializer, ovhStream, _cancelTokenSource.Token);
+
+                    if (!vt.IsCompleted)
+                    {
+                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream));
+                        isDisposed = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    HandleInvokeException(sourceMethodHandle, ex);
+                    rpcTask.TriggerComplete(ex);
+                    FinishListening(rpcTask);
+                }
+
+                return rpcTask;
+            }
+
+            if (connections is not IEnumerable<IModularRpcRemoteConnection> remotes)
+                throw new ArgumentException(Properties.Exceptions.InvokeRpcConnectionsInvalidType, nameof(connections));
+
+            // ReSharper disable once RedundantSuppressNullableWarningExpression
+            if (!callMethodInfo.IsFireAndForget)
+                throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+
+            nonSingle = default;
+            if (remotes is not ICollection<IModularRpcRemoteConnection> { Count: 1 })
+            {
+                nonSingle = new ArraySegment<byte>(new byte[ovhStream.Length]);
+                int actualLen = ovhStream.Read(nonSingle.Array!, 0, nonSingle.Count);
+                if (actualLen != nonSingle.Count)
+                    nonSingle = new ArraySegment<byte>(nonSingle.Array!, 0, actualLen);
+
+                if (!leaveOpen)
+                {
+                    stream.Dispose();
+                    isDisposed = true;
+                }
+            }
+
+            int ind = 0;
+            foreach (IModularRpcRemoteConnection connection in remotes)
+            {
+                if (nonSingle.Array == null && ind > 0)
+                    break;
+
+                ++ind;
+                rpcTask ??= new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
+                Interlocked.Increment(ref ((RpcBroadcastTask)rpcTask).ConnectionCountIntl);
+                Interlocked.Increment(ref rpcTask.CompleteCount);
+                try
+                {
+                    if (nonSingle.Array != null)
+                    {
+                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, _cancelTokenSource.Token);
+
+                        if (!vt.IsCompleted)
+                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                    }
+                    else
+                    {
+                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, ovhStream, _cancelTokenSource.Token);
+
+                        if (!vt.IsCompleted)
+                        {
+                            // ReSharper disable once AccessToDisposedClosure
+                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream));
+                            isDisposed = true;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    HandleInvokeException(sourceMethodHandle, ex);
+                    rpcTask.TriggerComplete(ex);
+                    FinishListening(rpcTask);
+                }
+            }
+
+            if (rpcTask == null)
+                return RpcTask.CompletedTask;
+
+            // maybe throw exceptions if all threw
+            rpcTask.TriggerComplete(null);
+            FinishListening(rpcTask);
+            return rpcTask;
+        }
+        finally
+        {
+            if (!isDisposed && !leaveOpen)
+                stream.Dispose();
+        }
+    }
     private ValueTask HandleValueTaskReply(ValueTask valueTask, RpcOverhead overhead)
     {
-        Task task = valueTask.AsTask();
-        
-        if (task == Task.CompletedTask)
-            return ReplyRpcVoidSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, Serializer);
+        object? returnValue = ProxyGenerator.Instance.ConvertValueTaskToValue(valueTask);
 
-        Type taskType = task.GetType();
-        if (!taskType.IsGenericType)
-            return ReplyRpcVoidSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, Serializer);
-        
-        // todo optimize
-        MethodInfo? getResultMethod = taskType.GetProperty(nameof(Task<object>.Result), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true);
-        object? result = getResultMethod?.Invoke(task, Array.Empty<object>());
-        return ReplyRpcValueSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, result, Serializer);
+        return returnValue == null
+            ? ReplyRpcVoidSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, Serializer)
+            : ReplyRpcValueSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, returnValue, Serializer);
     }
-    private Func<Task> WrapInvokeTaskInTryBlock(RuntimeMethodHandle sourceMethodHandle, ValueTask vt, RpcTask? rpcTask)
+    private Func<Task> WrapInvokeTaskInTryBlock(RuntimeMethodHandle sourceMethodHandle, ValueTask vt, RpcTask? rpcTask, IDisposable? toDispose = null)
     {
         return async () =>
         {
@@ -597,6 +789,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 HandleInvokeException(sourceMethodHandle, ex);
                 rpcTask?.TriggerComplete(ex);
                 FinishListening(rpcTask);
+            }
+
+            if (toDispose == null)
+                return;
+
+            try
+            {
+                toDispose.Dispose();
+            }
+            catch (Exception ex)
+            {
+                this.LogWarning(ex, $"Failed to dispose: {Accessor.Formatter.Format(toDispose.GetType())}.");
             }
         };
     }

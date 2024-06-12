@@ -115,21 +115,39 @@ internal static class CommonReflectionCache
                                                                                   );
     
     /// <summary>
-    /// <see cref="IRpcRouter.InvokeRpc"/>.
+    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,byte*,int,uint,ref RpcCallMethodInfo)"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterInvokeRpc = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                                                 [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(byte*), typeof(int), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
-                                                             ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
-                                                                 .DeclaredIn<IRpcRouter>(isStatic: false)
-                                                                 .WithParameter<object>("connections")
-                                                                 .WithParameter<IRpcSerializer>("serializer")
-                                                                 .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
-                                                                 .WithParameter(typeof(byte*), "bytesSt")
-                                                                 .WithParameter<int>("byteCt")
-                                                                 .WithParameter<uint>("dataCt")
-                                                                 .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.Ref)
-                                                                 .Returning<RpcTask>()
-                                                             );
+    internal static readonly MethodInfo RpcRouterInvokeRpcBytes = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+                                                                      [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(byte*), typeof(int), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
+                                                                  ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
+                                                                      .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                      .WithParameter<object>("connections")
+                                                                      .WithParameter<IRpcSerializer>("serializer")
+                                                                      .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
+                                                                      .WithParameter(typeof(byte*), "bytesSt")
+                                                                      .WithParameter<int>("byteCt")
+                                                                      .WithParameter<uint>("dataCt")
+                                                                      .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.Ref)
+                                                                      .Returning<RpcTask>()
+                                                                  );
+    
+    /// <summary>
+    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,ArraySegment{byte},Stream,bool,uint,ref RpcCallMethodInfo)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcRouterInvokeRpcStream = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
+                                                                       [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(ArraySegment<byte>), typeof(Stream), typeof(bool), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
+                                                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
+                                                                       .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                       .WithParameter<object>("connections")
+                                                                       .WithParameter<IRpcSerializer>("serializer")
+                                                                       .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
+                                                                       .WithParameter<ArraySegment<byte>>("overheadBuffer")
+                                                                       .WithParameter<Stream>("dataStream")
+                                                                       .WithParameter<bool>("leaveOpen")
+                                                                       .WithParameter<uint>("dataCt")
+                                                                       .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.Ref)
+                                                                       .Returning<RpcTask>()
+                                                                   );
 
     /// <summary>
     /// <see cref="IRpcRouter.GetOverheadSize"/>.
@@ -277,6 +295,24 @@ internal static class CommonReflectionCache
                                                                         );
 
     /// <summary>
+    /// <see cref="RpcOverflowException.ErrorCode"/>.
+    /// </summary>
+    internal static readonly MethodInfo SetRpcOverflowExceptionErrorCode = typeof(RpcOverflowException).GetProperty(nameof(RpcOverflowException.ErrorCode), BindingFlags.Instance | BindingFlags.Public)?.GetSetMethod(true)
+                                                                           ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(RpcOverflowException.ErrorCode))
+                                                                               .DeclaredIn<RpcOverflowException>(isStatic: false)
+                                                                               .WithPropertyType<int>()
+                                                                               .WithNoGetter()
+                                                                           );
+
+    /// <summary>
+    /// <see cref="RpcOverflowException(string)"/>.
+    /// </summary>
+    internal static readonly ConstructorInfo RpcOverflowExceptionCtorMessage = typeof(RpcOverflowException).GetConstructor([typeof(string)])
+                                                                               ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(RpcOverflowException))
+                                                                                   .WithParameter<string>("message")
+                                                                               );
+
+    /// <summary>
     /// <see cref="TimeSpan(long)"/>
     /// </summary>
     internal static readonly ConstructorInfo TimeSpanTicksCtor = typeof(TimeSpan).GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(long) ], null)
@@ -299,6 +335,39 @@ internal static class CommonReflectionCache
                                                                       ?.GetGetMethod(true)
                                                                  ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ReadOnlyMemory<byte>.Length))
                                                                      .DeclaredIn<ReadOnlyMemory<byte>>(isStatic: false)
+                                                                     .WithPropertyType<int>()
+                                                                     .WithNoSetter()
+                                                                 );
+
+    /// <summary>
+    /// <see cref="Memory{T}.Length"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo GetMemoryLength = typeof(Memory<byte>).GetProperty(nameof(Memory<byte>.Length), BindingFlags.Public | BindingFlags.Instance)
+                                                                      ?.GetGetMethod(true)
+                                                                 ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Memory<byte>.Length))
+                                                                     .DeclaredIn<Memory<byte>>(isStatic: false)
+                                                                     .WithPropertyType<int>()
+                                                                     .WithNoSetter()
+                                                                 );
+
+    /// <summary>
+    /// <see cref="ReadOnlySpan{T}.Length"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo GetReadOnlySpanLength = typeof(ReadOnlySpan<byte>).GetProperty(nameof(ReadOnlySpan<byte>.Length), BindingFlags.Public | BindingFlags.Instance)
+                                                                      ?.GetGetMethod(true)
+                                                                 ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ReadOnlySpan<byte>.Length))
+                                                                     .DeclaredIn(typeof(ReadOnlySpan<byte>), isStatic: false)
+                                                                     .WithPropertyType<int>()
+                                                                     .WithNoSetter()
+                                                                 );
+
+    /// <summary>
+    /// <see cref="Span{T}.Length"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo GetSpanLength = typeof(Span<byte>).GetProperty(nameof(Span<byte>.Length), BindingFlags.Public | BindingFlags.Instance)
+                                                                      ?.GetGetMethod(true)
+                                                                 ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Span<byte>.Length))
+                                                                     .DeclaredIn(typeof(Span<byte>), isStatic: false)
                                                                      .WithPropertyType<int>()
                                                                      .WithNoSetter()
                                                                  );
@@ -387,6 +456,58 @@ internal static class CommonReflectionCache
                                                                      .WithPropertyType<int>()
                                                                      .WithNoSetter()
                                                                  );
+
+    /// <summary>
+    /// <see cref="ArraySegment{T}(T[])"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly ConstructorInfo CtorByteArraySegmentJustArray = typeof(ArraySegment<byte>).GetConstructor(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, [ typeof(byte[]) ], null)
+                                                                             ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(ArraySegment<byte>))
+                                                                                 .WithParameter<byte[]>("array")
+                                                                             );
+
+    /// <summary>
+    /// <see cref="Stream.Length"/>
+    /// </summary>
+    internal static readonly MethodInfo StreamLength = typeof(Stream).GetProperty(nameof(Stream.Length), BindingFlags.Public | BindingFlags.Instance)
+                                                           ?.GetGetMethod(true)
+                                                       ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Stream.Length))
+                                                           .DeclaredIn<Stream>(isStatic: false)
+                                                           .WithPropertyType<long>()
+                                                           .WithNoSetter()
+                                                       );
+
+    /// <summary>
+    /// <see cref="Stream.Position"/>
+    /// </summary>
+    internal static readonly MethodInfo StreamPosition = typeof(Stream).GetProperty(nameof(Stream.Position), BindingFlags.Public | BindingFlags.Instance)
+                                                           ?.GetGetMethod(true)
+                                                       ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Stream.Position))
+                                                           .DeclaredIn<Stream>(isStatic: false)
+                                                           .WithPropertyType<long>()
+                                                           .WithNoSetter()
+                                                       );
+
+    /// <summary>
+    /// <see cref="ICollection{T}.Count"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo ByteCollectionCount = typeof(ICollection<byte>).GetProperty(nameof(ICollection<byte>.Count), BindingFlags.Public | BindingFlags.Instance)
+                                                                  ?.GetGetMethod(true)
+                                                              ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(ICollection<byte>.Count))
+                                                                  .DeclaredIn<ICollection<byte>>(isStatic: false)
+                                                                  .WithPropertyType<int>()
+                                                                  .WithNoSetter()
+                                                              );
+
+    /// <summary>
+    /// <see cref="IReadOnlyCollection{T}.Count"/> of <see cref="byte"/>
+    /// </summary>
+    internal static readonly MethodInfo ByteReadOnlyCollectionCount = typeof(IReadOnlyCollection<byte>).GetProperty(nameof(IReadOnlyCollection<byte>.Count), BindingFlags.Public | BindingFlags.Instance)
+                                                                          ?.GetGetMethod(true)
+                                                                      ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(IReadOnlyCollection<byte>.Count))
+                                                                          .DeclaredIn<IReadOnlyCollection<byte>>(isStatic: false)
+                                                                          .WithPropertyType<int>()
+                                                                          .WithNoSetter()
+                                                                      );
 
     /// <summary>
     /// <see cref="IRpcSerializer.GetSize(TypedReference)"/>.

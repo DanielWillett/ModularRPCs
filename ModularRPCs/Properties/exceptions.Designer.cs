@@ -79,6 +79,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given byte count is larger than the buffer..
+        /// </summary>
+        internal static string ByteCountTooLargeRaw {
+            get {
+                return ResourceManager.GetString("ByteCountTooLargeRaw", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The given component type, {0}, was not a Unity type..
         /// </summary>
         internal static string ComponentTypeNotUnityType {
@@ -286,6 +295,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given ByteReader or ByteWriter has no data loaded..
+        /// </summary>
+        internal static string NoDataLoadedRaw {
+            get {
+                return ResourceManager.GetString("NoDataLoadedRaw", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This object must have been passed an IServiceProvider when it was created..
         /// </summary>
         internal static string NoServiceProvider {
@@ -322,11 +340,29 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The given delegate must have a linked target instance..
+        /// </summary>
+        internal static string OverheadTargetMethodStatic {
+            get {
+                return ResourceManager.GetString("OverheadTargetMethodStatic", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Passthrough streams do not support Begin/EndRead methods..
         /// </summary>
         internal static string PassthroughStreamIAsyncResultNotSupported {
             get {
                 return ResourceManager.GetString("PassthroughStreamIAsyncResultNotSupported", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Seeking is not supported on this passthrough stream..
+        /// </summary>
+        internal static string PassthroughStreamSeekNotSupported {
+            get {
+                return ResourceManager.GetString("PassthroughStreamSeekNotSupported", resourceCulture);
             }
         }
         
@@ -354,6 +390,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string PrivatesNotVisibleMissingMethodException {
             get {
                 return ResourceManager.GetString("PrivatesNotVisibleMissingMethodException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The given buffer is not big enough for the overhead for this RPC..
+        /// </summary>
+        internal static string RawOverflow {
+            get {
+                return ResourceManager.GetString("RawOverflow", resourceCulture);
             }
         }
         
@@ -426,6 +471,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcInjectionException {
             get {
                 return ResourceManager.GetString("RpcInjectionException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Using a byte pointer in a raw method also requires a length parameter by using any integer type. This length must include the overhead..
+        /// </summary>
+        internal static string RpcInjectionExceptionBytePointerMustPassLength {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionBytePointerMustPassLength", resourceCulture);
             }
         }
         
@@ -903,6 +957,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string WebSocketNotServerEndpoint {
             get {
                 return ResourceManager.GetString("WebSocketNotServerEndpoint", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Stream mode is not supported when sending from a ByteWriter..
+        /// </summary>
+        internal static string WriterStreamModeNotSupported {
+            get {
+                return ResourceManager.GetString("WriterStreamModeNotSupported", resourceCulture);
             }
         }
     }

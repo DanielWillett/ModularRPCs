@@ -8,6 +8,7 @@ using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ReflectionTools;
 
 namespace ModularRPCs.Test.CodeGen;
 internal static class TestSetup
@@ -15,6 +16,11 @@ internal static class TestSetup
     public static Task<LoopbackRpcServersideRemoteConnection> SetupTest<T>(out IServiceProvider server, out IServiceProvider client, bool useStreams) where T : class
     {
         ServiceCollection collection = new ServiceCollection();
+
+        Accessor.LogDebugMessages = true;
+        Accessor.LogInfoMessages = true;
+        Accessor.LogWarningMessages = true;
+        Accessor.LogErrorMessages = true;
 
         collection.AddLogging();
         collection.AddReflectionTools();

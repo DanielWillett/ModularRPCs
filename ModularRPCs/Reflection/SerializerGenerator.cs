@@ -1575,12 +1575,19 @@ internal sealed class SerializerGenerator
             }
             else if (dataType.IsAssignableFrom(typeof(MemoryStream)))
             {
+                LocalBuilder lcl = skipCanTakeOwnership ? il.DeclareLocal(typeof(bool)) : bindLcls[canTakeOwnershipIndex!.Value];
+                LocalBuilder seg = il.DeclareLocal(typeof(ArraySegment<byte>));
+
                 il.Emit(OpCodes.Ldarg_S, (ushort)memArgInd);
+                il.Emit(OpCodes.Ldarg_S, (ushort)canTakeOwnrshpInd);
+                il.Emit(OpCodes.Ldloca, lcl);
                 il.Emit(OpCodes.Call, Accessor.GetMethod(ConvArraySeg)!);
-                il.Emit(OpCodes.Dup);
-                il.Emit(OpCodes.Dup);
+                il.Emit(OpCodes.Stloc, seg);
+                il.Emit(OpCodes.Ldloca, seg);
                 il.Emit(OpCodes.Call, CommonReflectionCache.ByteArraySegmentArray);
+                il.Emit(OpCodes.Ldloca, seg);
                 il.Emit(OpCodes.Call, CommonReflectionCache.ByteArraySegmentOffset);
+                il.Emit(OpCodes.Ldloca, seg);
                 il.Emit(OpCodes.Call, CommonReflectionCache.ByteArraySegmentCount);
                 il.Emit(OpCodes.Ldc_I4_0);
                 il.Emit(OpCodes.Ldc_I4_1);

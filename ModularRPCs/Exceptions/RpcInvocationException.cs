@@ -12,6 +12,7 @@ namespace DanielWillett.ModularRpcs.Exceptions;
 [Serializable]
 public class RpcInvocationException : Exception
 {
+    private readonly bool _isRemote;
     /// <summary>
     /// The RPC that was invoked.
     /// </summary>
@@ -37,13 +38,25 @@ public class RpcInvocationException : Exception
     /// </summary>
     public string? RemoteMessage { get; }
 
+    /// <inheritdoc />
+    public override string StackTrace => _isRemote || RemoteStackTrace == null ? base.StackTrace : RemoteStackTrace;
+
     /// <summary>
     /// Optional list of inner exceptions. This will only have a value if there's more than one, otherwise the inner exception will be in <see cref="Exception.InnerException"/>.
     /// </summary>
     public RpcInvocationException[]? InnerExceptions { get; }
 
     /// <inheritdoc />
-    public RpcInvocationException() : base(Properties.Exceptions.RpcInvocationException) { }
+    public RpcInvocationException() : base(Properties.Exceptions.RpcInvocationException)
+    {
+        _isRemote = false;
+    }
+
+    /// <inheritdoc />
+    public RpcInvocationException(Exception inner) : base(Properties.Exceptions.RpcInvocationException, inner)
+    {
+        _isRemote = false;
+    }
 
     /// <summary>
     /// Create a new <see cref="RpcInvocationException"/> around the given <see cref="IRpcInvocationPoint"/>.
@@ -58,6 +71,7 @@ public class RpcInvocationException : Exception
             remoteMessage ?? string.Empty)
             , inner)
     {
+        _isRemote = true;
         if (remoteExceptionType is Type exType)
         {
             RemoteExceptionType = exType;
@@ -117,5 +131,21 @@ public class RpcInvocationException : Exception
         {
             info.AddValue("InnerException_" + i.ToString(CultureInfo.InvariantCulture), InnerExceptions![i]);
         }
+    }
+    public override string ToString()
+    {
+        if (!_isRemote)
+            return base.ToString();
+
+        string? message = RemoteMessage ?? Message;
+        string str = string.IsNullOrEmpty(message) ? RemoteExceptionTypeName ?? string.Empty : RemoteExceptionTypeName + ": " + message;
+        if (InnerException != null)
+        {
+            str = str + " ---> " + InnerException + Environment.NewLine + "   --- End of stack trace from previous location where exception was thrown ---";
+        }
+        string? stackTrace = RemoteStackTrace;
+        if (stackTrace != null)
+            str = str + Environment.NewLine + stackTrace;
+        return str;
     }
 }
