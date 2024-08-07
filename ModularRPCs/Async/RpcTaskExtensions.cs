@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Async;
@@ -76,5 +77,52 @@ public static class RpcTaskExtensions
             return task.Exception is RpcNoConnectionsException;
 
         return task.Exceptions.Any(x => x is RpcNoConnectionsException);
+    }
+
+    /// <summary>
+    /// Add a <see cref="CancellationToken"/> to a task that will throw an <see cref="OperationCanceledException"/> when the token is canceled.
+    /// </summary>
+    /// <remarks>If the task is a fire-and-forget task, nothing will happen.</remarks>
+    public static RpcTask WithToken(this RpcTask task, CancellationToken token)
+    {
+        if (!task.IsCompleted)
+            task.SetToken(token);
+
+        return task;
+    }
+    internal static CombinedTokenSources CombineTokensIfNeeded(this ref CancellationToken token, CancellationToken other)
+    {
+        if (token.CanBeCanceled)
+        {
+            if (!other.CanBeCanceled)
+                return new CombinedTokenSources(token, null);
+
+            if (token == other)
+                return new CombinedTokenSources(token, null);
+
+            CancellationTokenSource src = CancellationTokenSource.CreateLinkedTokenSource(token, other);
+            token = src.Token;
+            return new CombinedTokenSources(token, src);
+        }
+
+        if (!other.CanBeCanceled)
+            return default;
+
+        token = other;
+        return new CombinedTokenSources(other, null);
+    }
+}
+internal readonly struct CombinedTokenSources : IDisposable
+{
+    private readonly CancellationTokenSource? _tknSrc;
+    public readonly CancellationToken Token;
+    internal CombinedTokenSources(CancellationToken token, CancellationTokenSource? tknSrc)
+    {
+        Token = token;
+        _tknSrc = tknSrc;
+    }
+    public void Dispose()
+    {
+        _tknSrc?.Dispose();
     }
 }

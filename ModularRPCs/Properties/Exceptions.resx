@@ -420,4 +420,7 @@
   <data name="NoDataLoadedRaw" xml:space="preserve">
     <value>The given ByteReader or ByteWriter has no data loaded.</value>
   </data>
+  <data name="RpcTaskCancelled" xml:space="preserve">
+    <value>An RPC invocation was cancelled by a CancellationToken.</value>
+  </data>
 </root>

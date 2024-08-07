@@ -1762,6 +1762,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 serializerCache = SerializerGenerator.GetSerializerType(genericArguments.Length);
             }
 
+            ushort? cancellationToken = null;
+
             bool injectedConnection = false;
             ushort injectedConnectionArgNum = 0;
             for (int i = 0; i < toInject.Count; ++i)
@@ -1769,6 +1771,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 ParameterInfo param = toInject.Array![i + toInject.Offset];
                 if (param.IsOut)
                     throw new RpcInvalidParameterException(param.Position, param, method, Properties.Exceptions.RpcInvalidParameterExceptionOutMessage);
+
+                if (param.ParameterType == typeof(CancellationToken))
+                {
+                    cancellationToken = checked ( (ushort)(param.Position + 1) );
+                    continue;
+                }
 
                 bool multi = typeof(IEnumerable<IModularRpcConnection>).IsAssignableFrom(param.ParameterType);
 
@@ -2135,6 +2143,17 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
             il.Emit(OpCodes.Ldloc, lclSerializer);
             il.Emit(OpCodes.Ldtoken, method);
+            if (cancellationToken.HasValue)
+            {
+                il.Emit(OpCodes.Ldarg, cancellationToken.Value);
+            }
+            else
+            {
+                LocalBuilder lclToken = il.DeclareLocal(typeof(CancellationToken));
+                il.Emit(OpCodes.Ldloca, lclToken);
+                il.Emit(OpCodes.Initobj, typeof(CancellationToken));
+                il.Emit(OpCodes.Ldloc, lclToken);
+            }
 
             if (!raw || !bytesParamIndex.HasValue)
             {
@@ -2407,7 +2426,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByByteWriter(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, object writerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByByteWriter(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, object writerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         ByteWriter writer = (ByteWriter)writerBox;
         if (writer.Stream != null)
@@ -2434,7 +2453,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             Buffer.BlockCopy(writer.Buffer, 0, newArr, hdr.Length, writer.Count);
             fixed (byte* ptr = newArr)
             {
-                return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+                return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
             }
         }
 
@@ -2445,7 +2464,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             Buffer.MemoryCopy(bfrPtr, bfrPtr + hdr.Length, writer.Buffer.Length - hdr.Length, writer.Count);
             Buffer.MemoryCopy(hdrPtr, bfrPtr, hdr.Length, hdr.Length);
 
-            RpcTask task = router.InvokeRpc(connections, serializer, method, bfrPtr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+            RpcTask task = router.InvokeRpc(connections, serializer, method, token, bfrPtr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
 
             // undo copying the header
             Buffer.MemoryCopy(bfrPtr + hdr.Length, bfrPtr, writer.Buffer.Length, writer.Count);
@@ -2461,7 +2480,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByByteReader(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, object readerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByByteReader(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, object readerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         ByteReader reader = (ByteReader)readerBox;
         if (reader.Stream != null)
@@ -2471,7 +2490,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 byteCt = checked ( (uint)(reader.Stream.Length - reader.Stream.Position) );
             }
 
-            return router.InvokeRpc(connections, serializer, method, new ArraySegment<byte>(hdr), reader.Stream, true, byteCt, ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, new ArraySegment<byte>(hdr), reader.Stream, true, byteCt, ref callInfo);
         }
 
         if (reader.Data.Array == null)
@@ -2493,7 +2512,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         Buffer.BlockCopy(reader.Data.Array!, reader.Position, newArr, hdr.Length, (int)byteCt);
         fixed (byte* ptr = newArr)
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
         }
     }
 
@@ -2501,7 +2520,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByPointer(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, byte* bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByPointer(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, byte* bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         if (byteCt < hdr.Length)
             throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
@@ -2511,28 +2530,28 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             Buffer.MemoryCopy(ptr, bytes, byteCt, hdr.Length);
         }
 
-        return router.InvokeRpc(connections, serializer, method, bytes, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
+        return router.InvokeRpc(connections, serializer, method, token, bytes, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
     }
 
     /// <summary>
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RpcTask InvokeRpcInvokerByMemory(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, Memory<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-        => InvokeRpcInvokerBySpan(router, connections, serializer, method, bytes.Span, byteCt, hdr, ref callInfo);
+    public static RpcTask InvokeRpcInvokerByMemory(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, Memory<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+        => InvokeRpcInvokerBySpan(router, connections, serializer, method, token, bytes.Span, byteCt, hdr, ref callInfo);
 
     /// <summary>
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RpcTask InvokeRpcInvokerByReadOnlyMemory(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, ReadOnlyMemory<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-        => InvokeRpcInvokerByReadOnlySpan(router, connections, serializer, method, bytes.Span, byteCt, hdr, ref callInfo);
+    public static RpcTask InvokeRpcInvokerByReadOnlyMemory(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ReadOnlyMemory<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+        => InvokeRpcInvokerByReadOnlySpan(router, connections, serializer, method, token, bytes.Span, byteCt, hdr, ref callInfo);
 
     /// <summary>
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerBySpan(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, Span<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerBySpan(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, Span<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         if (bytes.Length < hdr.Length || byteCt < hdr.Length)
             throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
@@ -2543,7 +2562,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         hdr.AsSpan().CopyTo(bytes.Slice(0, hdr.Length));
         fixed (byte* ptr = bytes)
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
         }
     }
 
@@ -2551,7 +2570,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByReadOnlySpan(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, ReadOnlySpan<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByReadOnlySpan(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ReadOnlySpan<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         if (byteCt > bytes.Length)
             throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
@@ -2561,7 +2580,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         bytes.Slice(0, checked ( (int)byteCt )).CopyTo(ttlArray.AsSpan(hdr.Length));
         fixed (byte* ptr = ttlArray)
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
         }
     }
 
@@ -2569,7 +2588,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByArray(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, byte[] bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByArray(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, byte[] bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         if (bytes.Length < hdr.Length || byteCt < hdr.Length)
             throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
@@ -2580,7 +2599,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         Buffer.BlockCopy(hdr, 0, bytes, 0, hdr.Length);
         fixed (byte* ptr = bytes)
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
         }
     }
 
@@ -2588,7 +2607,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByArraySegment(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, ArraySegment<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByArraySegment(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ArraySegment<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         if (bytes.Array == null || bytes.Count < hdr.Length || byteCt < hdr.Length)
             throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
@@ -2599,7 +2618,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         Buffer.BlockCopy(hdr, 0, bytes.Array, bytes.Offset, hdr.Length);
         fixed (byte* ptr = &bytes.Array[bytes.Offset])
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
         }
     }
 
@@ -2607,7 +2626,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByCollection(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, ICollection<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByCollection(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ICollection<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         if (byteCt > bytes.Count)
             throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
@@ -2617,7 +2636,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         bytes.CopyTo(ttlArray, hdr.Length);
         fixed (byte* ptr = ttlArray)
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
         }
     }
 
@@ -2625,7 +2644,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// This is an internal API and shouldn't be used by external code.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByEnumerable(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, IEnumerable<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    public static unsafe RpcTask InvokeRpcInvokerByEnumerable(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, IEnumerable<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         byte[] ttlArray;
         if (byteCt == uint.MaxValue)
@@ -2633,7 +2652,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             ttlArray = hdr.Concat(bytes).ToArray();
             fixed (byte* ptr = ttlArray)
             {
-                return router.InvokeRpc(connections, serializer, method, ptr, ttlArray.Length, (uint)(ttlArray.Length - hdr.Length), ref callInfo);
+                return router.InvokeRpc(connections, serializer, method, token, ptr, ttlArray.Length, (uint)(ttlArray.Length - hdr.Length), ref callInfo);
             }
         }
 
@@ -2647,7 +2666,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         fixed (byte* ptr = ttlArray)
         {
-            return router.InvokeRpc(connections, serializer, method, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
         }
     }
     private static void EmitCalculateIdSize(IOpCodeEmitter il, LocalBuilder lclOverheadSize, bool isOnce, FieldInfo? idField, LocalBuilder lclSerializer, ref TypeCode tc, ref LocalBuilder? lclIdTypeSize, ref string? idTypeName, ref LocalBuilder? lclKnownTypeId, ref LocalBuilder? lclHasKnownTypeId, ref bool canQuickSerialize, ref bool passByRef, ref LocalBuilder? lclPreCalcId)

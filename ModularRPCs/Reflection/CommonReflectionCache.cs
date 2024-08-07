@@ -113,34 +113,36 @@ internal static class CommonReflectionCache
                                                                                       .WithPropertyType<IEnumerable<IModularRpcRemoteConnection>>()
                                                                                       .WithNoSetter()
                                                                                   );
-    
+
     /// <summary>
-    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,byte*,int,uint,ref RpcCallMethodInfo)"/>.
+    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,byte*,int,uint,ref RpcCallMethodInfo)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcRouterInvokeRpcBytes = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                                                      [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(byte*), typeof(int), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
+                                                                      [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(CancellationToken), typeof(byte*), typeof(int), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
                                                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
                                                                       .DeclaredIn<IRpcRouter>(isStatic: false)
                                                                       .WithParameter<object>("connections")
                                                                       .WithParameter<IRpcSerializer>("serializer")
                                                                       .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
+                                                                      .WithParameter<CancellationToken>("token")
                                                                       .WithParameter(typeof(byte*), "bytesSt")
                                                                       .WithParameter<int>("byteCt")
                                                                       .WithParameter<uint>("dataCt")
                                                                       .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.Ref)
                                                                       .Returning<RpcTask>()
                                                                   );
-    
+
     /// <summary>
-    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,ArraySegment{byte},Stream,bool,uint,ref RpcCallMethodInfo)"/>.
+    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,ArraySegment{byte},Stream,bool,uint,ref RpcCallMethodInfo)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcRouterInvokeRpcStream = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                                                       [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(ArraySegment<byte>), typeof(Stream), typeof(bool), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
+                                                                       [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(CancellationToken), typeof(ArraySegment<byte>), typeof(Stream), typeof(bool), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
                                                                        .DeclaredIn<IRpcRouter>(isStatic: false)
                                                                        .WithParameter<object>("connections")
                                                                        .WithParameter<IRpcSerializer>("serializer")
                                                                        .WithParameter<RuntimeMethodHandle>("sourceMethodHandle")
+                                                                       .WithParameter<CancellationToken>("token")
                                                                        .WithParameter<ArraySegment<byte>>("overheadBuffer")
                                                                        .WithParameter<Stream>("dataStream")
                                                                        .WithParameter<bool>("leaveOpen")

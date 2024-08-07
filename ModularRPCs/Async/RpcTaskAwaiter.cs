@@ -25,6 +25,7 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
 
         IsCompleted = true;
         _continuation?.Invoke();
+        Task.CombinedTokensToDisposeOnComplete.Dispose();
     }
 
     void ICriticalNotifyCompletion.UnsafeOnCompleted(Action continuation) => ((ICriticalNotifyCompletion)this).OnCompleted(continuation);
@@ -50,7 +51,10 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
         // not thrown yet
         if (ex.StackTrace == null)
             throw ex;
-
+        
+        if (ex is OperationCanceledException)
+            throw ex;
+     
         throw new RpcInvocationException(ex);
     }
 }

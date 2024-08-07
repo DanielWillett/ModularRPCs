@@ -889,6 +889,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to An RPC invocation was cancelled by a CancellationToken..
+        /// </summary>
+        internal static string RpcTaskCancelled {
+            get {
+                return ResourceManager.GetString("RpcTaskCancelled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The RPC invocation timed out after {0} with no response..
         /// </summary>
         internal static string RpcTimeoutException {

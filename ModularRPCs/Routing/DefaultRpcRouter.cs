@@ -451,7 +451,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
 
     /// <inheritdoc />
-    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, byte* bytes, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
+    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, byte* bytes, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
     {
         ulong messageId = GetNewMessageId();
         int ovhSize = (int)((uint)byteCt - dataCt);
@@ -459,16 +459,21 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         WriteEndpoint(sourceMethodHandle, serializer, ref callMethodInfo, callMethodInfo.Endpoint.GetEndpoint(), bytes + ovhEnd, ovhSize - ovhEnd);
 
         RpcTask? rpcTask = null;
+        CombinedTokenSources tokens = token.CombineTokensIfNeeded(_cancelTokenSource.Token);
         if (connections == null)
         {
             // ReSharper disable once RedundantSuppressNullableWarningExpression
             if (!_connectionLifetime.IsSingleConnection && !callMethodInfo.IsFireAndForget)
+            {
+                tokens.Dispose();
                 throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+            }
 
             rpcTask = !callMethodInfo.IsFireAndForget
                 ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId) 
                 : new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
 
+            rpcTask.CombinedTokensToDisposeOnComplete = tokens;
             int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
             {
                 Interlocked.CompareExchange(ref rpcTask.ConnectionIntl, connection, null);
@@ -479,10 +484,10 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 
                 try
                 {
-                    ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, _cancelTokenSource.Token);
+                    ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
                     
                     if (!vt.IsCompleted)
-                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
                 }
                 catch (Exception ex)
                 {
@@ -496,10 +501,21 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             // ReSharper disable once RedundantSuppressNullableWarningExpression
             if (ct == 0)
-                throw new RpcNoConnectionsException(string.Format(Properties.Exceptions.RpcNoConnectionsExceptionConnectionLifetime, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+            {
+                rpcTask.TriggerComplete(
+                    new RpcNoConnectionsException(string.Format(Properties.Exceptions.RpcNoConnectionsExceptionConnectionLifetime, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)))
+                );
+            }
+            else
+            {
+                if (token.CanBeCanceled)
+                {
+                    rpcTask.SetToken(token);
+                }
 
-            // maybe throw exceptions if all threw
-            rpcTask.TriggerComplete(null);
+                // maybe throw exceptions if all threw
+                rpcTask.TriggerComplete(null);
+            }
 
             return rpcTask;
         }
@@ -512,41 +528,59 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             rpcTask.ConnectionIntl = remote1;
 
+            rpcTask.CombinedTokensToDisposeOnComplete = tokens;
             try
             {
-                ValueTask vt = remote1.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, _cancelTokenSource.Token);
+                ValueTask vt = remote1.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
 
                 if (!vt.IsCompleted)
-                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
             }
             catch (Exception ex)
             {
+                tokens.Dispose();
                 HandleInvokeException(sourceMethodHandle, ex);
                 rpcTask.TriggerComplete(ex);
                 FinishListening(rpcTask);
+            }
+
+            if (token.CanBeCanceled)
+            {
+                rpcTask.SetToken(token);
             }
 
             return rpcTask;
         }
 
         if (connections is not IEnumerable<IModularRpcRemoteConnection> remotes)
+        {
+            tokens.Dispose();
             throw new ArgumentException(Properties.Exceptions.InvokeRpcConnectionsInvalidType, nameof(connections));
+        }
 
         // ReSharper disable once RedundantSuppressNullableWarningExpression
         if (!callMethodInfo.IsFireAndForget)
+        {
+            tokens.Dispose();
             throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+        }
 
         foreach (IModularRpcRemoteConnection connection in remotes)
         {
-            rpcTask ??= new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
+            if (rpcTask == null)
+            {
+                rpcTask = new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
+                rpcTask.CombinedTokensToDisposeOnComplete = tokens;
+            }
+
             Interlocked.Increment(ref ((RpcBroadcastTask)rpcTask).ConnectionCountIntl);
             Interlocked.Increment(ref rpcTask.CompleteCount);
             try
             {
-                ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, _cancelTokenSource.Token);
+                ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
 
                 if (!vt.IsCompleted)
-                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
             }
             catch (Exception ex)
             {
@@ -557,7 +591,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
 
         if (rpcTask == null)
+        {
+            tokens.Dispose();
             return RpcTask.CompletedTask;
+        }
+
+        if (token.CanBeCanceled)
+        {
+            rpcTask.SetToken(token);
+        }
 
         // maybe throw exceptions if all threw
         rpcTask.TriggerComplete(null);
@@ -566,7 +608,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
 
     /// <inheritdoc />
-    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, ArraySegment<byte> overheadBuffer, Stream stream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
+    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, ArraySegment<byte> overheadBuffer, Stream stream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
     {
         bool isDisposed = false;
         try
@@ -586,11 +628,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             OverheadStreamPrepender ovhStream = new OverheadStreamPrepender(stream, overheadBuffer, dataCt, true);
             ArraySegment<byte> nonSingle;
             RpcTask? rpcTask = null;
+            CombinedTokenSources tokens = token.CombineTokensIfNeeded(_cancelTokenSource.Token);
             if (connections == null)
             {
                 // ReSharper disable once RedundantSuppressNullableWarningExpression
                 if (!_connectionLifetime.IsSingleConnection && !callMethodInfo.IsFireAndForget)
+                {
+                    tokens.Dispose();
                     throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+                }
 
                 rpcTask = !callMethodInfo.IsFireAndForget
                     ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
@@ -611,6 +657,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     }
                 }
 
+                rpcTask.CombinedTokensToDisposeOnComplete = tokens;
+
                 int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
                 {
                     Interlocked.CompareExchange(ref rpcTask.ConnectionIntl, connection, null);
@@ -623,19 +671,19 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     {
                         if (nonSingle.Array != null)
                         {
-                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, _cancelTokenSource.Token);
+                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, token);
 
                             if (!vt.IsCompleted)
-                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
                         }
                         else
                         {
-                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, ovhStream, _cancelTokenSource.Token);
+                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, ovhStream, token);
 
                             if (!vt.IsCompleted)
                             {
                                 // ReSharper disable once AccessToDisposedClosure
-                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream));
+                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream), token);
                                 isDisposed = true;
                             }
                         }
@@ -652,12 +700,22 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
                 // ReSharper disable once RedundantSuppressNullableWarningExpression
                 if (ct == 0)
-                    throw new RpcNoConnectionsException(string.Format(Properties.Exceptions.RpcNoConnectionsExceptionConnectionLifetime, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+                {
+                    rpcTask.TriggerComplete(
+                        new RpcNoConnectionsException(string.Format(Properties.Exceptions.RpcNoConnectionsExceptionConnectionLifetime, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)))
+                    );
+                }
+                else
+                {
+                    if (token.CanBeCanceled)
+                    {
+                        rpcTask.SetToken(token);
+                    }
+                    // maybe throw exceptions if all threw
+                    rpcTask.TriggerComplete(null);
 
-                // maybe throw exceptions if all threw
-                rpcTask.TriggerComplete(null);
-
-                return rpcTask;
+                    return rpcTask;
+                }
             }
 
             if (connections is IModularRpcRemoteConnection remote1)
@@ -667,14 +725,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
 
                 rpcTask.ConnectionIntl = remote1;
+                rpcTask.CombinedTokensToDisposeOnComplete = tokens;
 
                 try
                 {
-                    ValueTask vt = remote1.SendDataAsync(_defaultSerializer, ovhStream, _cancelTokenSource.Token);
+                    ValueTask vt = remote1.SendDataAsync(_defaultSerializer, ovhStream, token);
 
                     if (!vt.IsCompleted)
                     {
-                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream));
+                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream), token);
                         isDisposed = true;
                     }
                 }
@@ -685,15 +744,26 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     FinishListening(rpcTask);
                 }
 
+                if (token.CanBeCanceled)
+                {
+                    rpcTask.SetToken(token);
+                }
+
                 return rpcTask;
             }
 
             if (connections is not IEnumerable<IModularRpcRemoteConnection> remotes)
+            {
+                tokens.Dispose();
                 throw new ArgumentException(Properties.Exceptions.InvokeRpcConnectionsInvalidType, nameof(connections));
+            }
 
             // ReSharper disable once RedundantSuppressNullableWarningExpression
             if (!callMethodInfo.IsFireAndForget)
+            {
+                tokens.Dispose();
                 throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
+            }
 
             nonSingle = default;
             if (remotes is not ICollection<IModularRpcRemoteConnection> { Count: 1 })
@@ -717,26 +787,30 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     break;
 
                 ++ind;
-                rpcTask ??= new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
+                if (rpcTask == null)
+                {
+                    rpcTask = new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
+                    rpcTask.CombinedTokensToDisposeOnComplete = tokens;
+                }
                 Interlocked.Increment(ref ((RpcBroadcastTask)rpcTask).ConnectionCountIntl);
                 Interlocked.Increment(ref rpcTask.CompleteCount);
                 try
                 {
                     if (nonSingle.Array != null)
                     {
-                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, _cancelTokenSource.Token);
+                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, token);
 
                         if (!vt.IsCompleted)
-                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask));
+                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
                     }
                     else
                     {
-                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, ovhStream, _cancelTokenSource.Token);
+                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, ovhStream, token);
 
                         if (!vt.IsCompleted)
                         {
                             // ReSharper disable once AccessToDisposedClosure
-                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream));
+                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream), token);
                             isDisposed = true;
                         }
                     }
@@ -750,7 +824,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
 
             if (rpcTask == null)
+            {
+                tokens.Dispose();
                 return RpcTask.CompletedTask;
+            }
+
+            if (token.CanBeCanceled)
+            {
+                rpcTask.SetToken(token);
+            }
 
             // maybe throw exceptions if all threw
             rpcTask.TriggerComplete(null);

@@ -10,6 +10,7 @@ namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask
 {
     private protected RpcTaskAwaiter Awaiter = null!;
+    private TokenRegistration? _token;
     internal IModularRpcRemoteConnection? ConnectionIntl;
     internal Exception? Exception;
     internal ConcurrentBag<Exception>? Exceptions;
@@ -17,6 +18,7 @@ public class RpcTask
     internal TimeSpan Timeout;
     internal int CompleteCount = 1;
     internal bool IgnoreNoConnectionsIntl;
+    internal CombinedTokenSources CombinedTokensToDisposeOnComplete;
 
     /// <summary>
     /// If the RPC has completed or errored.
@@ -75,12 +77,82 @@ public class RpcTask
         Awaiter = new RpcTaskAwaiter(this, true);
     }
     public RpcTaskAwaiter GetAwaiter() => Awaiter;
+    internal void SetToken(CancellationToken token)
+    {
+        if (IsFireAndForget)
+            return;
+
+        TokenRegistration? old;
+        if (!token.CanBeCanceled)
+        {
+            old = Interlocked.Exchange(ref _token, null);
+            if (old == null)
+                return;
+
+            try
+            {
+                old.Registration.Dispose();
+            }
+            catch
+            {
+                // ignored
+            }
+
+            return;
+        }
+
+        TokenRegistration reg = new TokenRegistration
+        {
+            Token = token
+        };
+        old = Interlocked.Exchange(ref _token, reg);
+        if (old != null)
+        {
+            try
+            {
+                old.Registration.Dispose();
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
+            return;
+        }
+
+        reg.Registration = token.Register(() =>
+        {
+            TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
+        });
+
+        if (ReferenceEquals(_token, reg))
+            return;
+
+        try
+        {
+            reg.Registration.Dispose();
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+    private class TokenRegistration
+    {
+        public CancellationToken Token;
+        public CancellationTokenRegistration Registration;
+    }
+
     public Exception? GetException()
     {
         if (Exceptions == null)
         {
             Exception? x = Exception;
-            if (x is not RpcNoConnectionsException && (ConnectionIntl is not { IsClosed: true } || x is not RpcTimeoutException))
+            if (!IgnoreNoConnectionsIntl || (x is not RpcNoConnectionsException && (ConnectionIntl is not { IsClosed: true } || x is not RpcTimeoutException)))
                 return x;
 
             return null;
@@ -100,31 +172,49 @@ public class RpcTask
     }
     internal void TriggerComplete(Exception? exception)
     {
-        if (exception == null)
+        try
         {
-            Awaiter.TriggerComplete();
-            return;
-        }
-
-        ConcurrentBag<Exception>? bag = null;
-        if (Exception == null)
-        {
-            Exception? alreadyThereException = Interlocked.CompareExchange(ref Exception, exception, null);
-            if (alreadyThereException != null)
+            if (exception == null)
             {
-                if (Exceptions == null)
-                    bag = Interlocked.CompareExchange(ref Exceptions, new ConcurrentBag<Exception>(), null) ?? Exceptions;
-                else
-                    bag = Exceptions;
+                Awaiter.TriggerComplete();
+                return;
+            }
+
+            ConcurrentBag<Exception>? bag = null;
+            if (Exception == null)
+            {
+                Exception? alreadyThereException = Interlocked.CompareExchange(ref Exception, exception, null);
+                if (alreadyThereException != null)
+                {
+                    if (Exceptions == null)
+                        bag = Interlocked.CompareExchange(ref Exceptions, new ConcurrentBag<Exception>(), null) ?? Exceptions;
+                    else
+                        bag = Exceptions;
+                }
+            }
+            else if (Exceptions == null)
+                bag = Interlocked.CompareExchange(ref Exceptions, new ConcurrentBag<Exception>(), null) ?? Exceptions;
+            else
+                bag = Exceptions;
+
+            bag?.Add(exception);
+            Awaiter.TriggerComplete();
+        }
+        finally
+        {
+            if (Awaiter.IsCompleted)
+            {
+                TokenRegistration? tkn = Interlocked.Exchange(ref _token, null);
+                if (tkn != null)
+                {
+                    tkn.Registration.Dispose();
+                    if (tkn.Token.IsCancellationRequested)
+                    {
+                        TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
+                    }
+                }
             }
         }
-        else if (Exceptions == null)
-            bag = Interlocked.CompareExchange(ref Exceptions, new ConcurrentBag<Exception>(), null) ?? Exceptions;
-        else
-            bag = Exceptions;
-
-        bag?.Add(exception);
-        Awaiter.TriggerComplete();
     }
     public static RpcTask<T> FromResult<T>(T value) => new RpcTask<T>(value);
 }
