@@ -1,17 +1,80 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <VersionSuffix>prerelease01</VersionSuffix>
+
+    <PackageReleaseNotes>Initial pre-release.</PackageReleaseNotes>
+
     <TargetFrameworks>netstandard2.0;net461</TargetFrameworks>
+
+  </PropertyGroup>
+
+  <!-- Package Configuration -->
+  <PropertyGroup>
+    <PackageId>DanielWillett.ModularRpcs.Unity</PackageId>
+    <Title>Modular RPCs Unity Extensions</Title>
+
+    <Description>UnityEngine extensions for DanielWillett.ModularRPCs.</Description>
+
+    <Authors>Daniel Willett</Authors>
+    <Company>$(Authors)</Company>
+
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/DanielWillett/ModularRPCs</PackageProjectUrl>
+    <RepositoryUrl>$(PackageProjectUrl).git</RepositoryUrl>
+
+    <PackageIcon></PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <PackageTags>RPC;Networking;Unity;Remote;Netcall;Video Game Networking;Netcode</PackageTags>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <NeutralLanguage>en-US</NeutralLanguage>
+  </PropertyGroup>
+
+  <!-- Package Embedded Files -->
+  <ItemGroup>
+    <None Include="$(SolutionDir)README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AssemblyTitle>DanielWillett.ModularRPCs.Unity</AssemblyTitle>
+    <AssemblyName>$(AssemblyTitle)</AssemblyName>
+    <Product>$(PackageId)</Product>
+
+    <FileVersion>$(VersionPrefix).0</FileVersion>
+
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
-    <RootNamespace>DanielWillett.ModularRpcs</RootNamespace>
-    <AssemblyName>DanielWillett.ModularRPCs.Unity</AssemblyName>
+
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="JetBrains.Annotations" Version="[2018.2.1,)" />
     <Reference Include="UnityEngine.CoreModule" HintPath="./lib/UnityEngine.CoreModule.dll" />
   </ItemGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\ModularRPCs\ModularRPCs.csproj" />
+    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease01,1.*]" />
   </ItemGroup>
+
+  <!-- Build Configurations -->
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugType>portable</DebugType>
+    <Optimize>true</Optimize>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
 </Project>
