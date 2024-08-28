@@ -1,14 +1,13 @@
 ﻿using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Loopback;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
-using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.IoC;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Reflection;
-using DanielWillett.ReflectionTools;
 
 namespace ModularRPCs.Test.CodeGen;
 internal static class TestSetup

@@ -61,7 +61,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[3.1.0,)" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease01,1.*]" />
+    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease01, 2)" />
   </ItemGroup>
 
   <!-- Build Configurations -->

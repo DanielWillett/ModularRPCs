@@ -535,6 +535,148 @@ public class ParserTests
         Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(value, buffer, 3));
     }
 
+#if NET7_0_OR_GREATER
+    [Test]
+    [TestCase(0ul, 0ul)]
+    [TestCase(ulong.MaxValue, ulong.MinValue)]
+    [TestCase(ulong.MinValue, ulong.MaxValue)]
+    [TestCase(ulong.MinValue, ulong.MinValue)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    public void TestUInt128Stream(ulong upper, ulong lower)
+    {
+        UInt128Parser parser = new UInt128Parser();
+        using Stream memStream = new MemoryStream();
+        WriteBuffer(memStream);
+
+        UInt128 value = new UInt128(upper, lower);
+
+        parser.WriteObject(value, memStream);
+
+        Assert.That(memStream.Length, Is.EqualTo(BufferSize + 16));
+
+        memStream.Seek(0, SeekOrigin.Begin);
+
+        CheckBuffer(memStream);
+        UInt128 readValue = parser.ReadObject(memStream, out int bytesRead);
+
+        Assert.That(bytesRead, Is.EqualTo(16));
+        Assert.That(readValue, Is.EqualTo(value));
+    }
+
+    [Test]
+    [TestCase(0ul, 0ul)]
+    [TestCase(ulong.MaxValue, ulong.MinValue)]
+    [TestCase(ulong.MinValue, ulong.MaxValue)]
+    [TestCase(ulong.MinValue, ulong.MinValue)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    public unsafe void TestUInt128Bytes(ulong upper, ulong lower)
+    {
+        UInt128Parser parser = new UInt128Parser();
+
+        UInt128 value = new UInt128(upper, lower);
+
+        uint maxSize = 64;
+        byte* buffer = stackalloc byte[(int)maxSize];
+        WriteBuffer(ref buffer, ref maxSize);
+        int bytesWritten = parser.WriteObject(value, buffer, maxSize);
+
+        Assert.That(bytesWritten, Is.EqualTo(16));
+
+        CheckBuffer(buffer, maxSize);
+        UInt128 readValue = parser.ReadObject(buffer, maxSize, out int bytesRead);
+
+        Assert.That(bytesRead, Is.EqualTo(16));
+        Assert.That(readValue, Is.EqualTo(value));
+    }
+
+    [Test]
+    [TestCase(0ul, 0ul)]
+    [TestCase(ulong.MaxValue, ulong.MinValue)]
+    [TestCase(ulong.MinValue, ulong.MaxValue)]
+    [TestCase(ulong.MinValue, ulong.MinValue)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    public unsafe void TestUInt128BytesThrowsOutOfRangeError(ulong upper, ulong lower)
+    {
+        UInt128Parser parser = new UInt128Parser();
+
+        UInt128 value = new UInt128(upper, lower);
+
+        byte* buffer = stackalloc byte[15];
+
+        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(value, buffer, 15));
+    }
+
+    [Test]
+    [TestCase(0ul, 0ul)]
+    [TestCase(ulong.MaxValue, ulong.MinValue)]
+    [TestCase(ulong.MinValue, ulong.MaxValue)]
+    [TestCase(ulong.MinValue, ulong.MinValue)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    public void TestInt128Stream(ulong upper, ulong lower)
+    {
+        Int128Parser parser = new Int128Parser();
+        using Stream memStream = new MemoryStream();
+        WriteBuffer(memStream);
+
+        Int128 value = new Int128(upper, lower);
+
+        parser.WriteObject(value, memStream);
+
+        Assert.That(memStream.Length, Is.EqualTo(BufferSize + 16));
+
+        memStream.Seek(0, SeekOrigin.Begin);
+
+        CheckBuffer(memStream);
+        Int128 readValue = parser.ReadObject(memStream, out int bytesRead);
+
+        Assert.That(bytesRead, Is.EqualTo(16));
+        Assert.That(readValue, Is.EqualTo(value));
+    }
+
+    [Test]
+    [TestCase(0ul, 0ul)]
+    [TestCase(ulong.MaxValue, ulong.MinValue)]
+    [TestCase(ulong.MinValue, ulong.MaxValue)]
+    [TestCase(ulong.MinValue, ulong.MinValue)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    public unsafe void TestInt128Bytes(ulong upper, ulong lower)
+    {
+        Int128 value = new Int128(upper, lower);
+
+        Int128Parser parser = new Int128Parser();
+
+        uint maxSize = 128;
+        byte* buffer = stackalloc byte[(int)maxSize];
+        WriteBuffer(ref buffer, ref maxSize);
+        int bytesWritten = parser.WriteObject(value, buffer, maxSize);
+
+        Assert.That(bytesWritten, Is.EqualTo(16));
+
+        CheckBuffer(buffer, maxSize);
+        Int128 readValue = parser.ReadObject(buffer, maxSize, out int bytesRead);
+
+        Assert.That(bytesRead, Is.EqualTo(16));
+        Assert.That(readValue, Is.EqualTo(value));
+    }
+
+    [Test]
+    [TestCase(0ul, 0ul)]
+    [TestCase(ulong.MaxValue, ulong.MinValue)]
+    [TestCase(ulong.MinValue, ulong.MaxValue)]
+    [TestCase(ulong.MinValue, ulong.MinValue)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    public unsafe void TestInt128BytesThrowsOutOfRangeError(ulong upper, ulong lower)
+    {
+        Int128 value = new Int128(upper, lower);
+
+        Int128Parser parser = new Int128Parser();
+
+        byte* buffer = stackalloc byte[15];
+
+        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(value, buffer, 15));
+    }
+#endif
+
     [Test]
     [TestCase((ulong)1)]
     [TestCase(ulong.MaxValue)]
@@ -563,7 +705,7 @@ public class ParserTests
     {
         UIntPtrParser parser = new UIntPtrParser();
 
-        uint maxSize = 64;
+        uint maxSize = 128;
         byte* buffer = stackalloc byte[(int)maxSize];
         WriteBuffer(ref buffer, ref maxSize);
         int bytesWritten = parser.WriteObject((nuint)value, buffer, maxSize);

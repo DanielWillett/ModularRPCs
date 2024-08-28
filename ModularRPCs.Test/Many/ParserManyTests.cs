@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 
 namespace ModularRPCs.Test.Many;
 
-[Ignore("these take forever")]
+//[Ignore("these take forever")]
 public partial class ParserManyTests
 {
     private unsafe void TestManyParserBytes<T>(T[] values, IArrayBinaryTypeParser<T> parser)
