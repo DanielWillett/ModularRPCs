@@ -16,4 +16,5 @@ using NUnit.Framework;
 // The following GUID is for the ID of the typelib if this project is exposed to COM.
 
 [assembly: Guid("bfda7eff-67ec-479f-a506-3f475a8020a3")]
-[assembly: LevelOfParallelism(1)]
+[assembly: LevelOfParallelism(16)]
+[assembly: Parallelizable(ParallelScope.Children)]

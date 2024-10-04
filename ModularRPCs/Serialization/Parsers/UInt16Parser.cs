@@ -86,6 +86,7 @@ public class UInt16Parser : BinaryTypeParser<ushort>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 2)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt16Parser))) { ErrorCode = 2 };
 
@@ -100,7 +101,6 @@ public class UInt16Parser : BinaryTypeParser<ushort>
         }
 #endif
 
-        bytesRead = 2;
         return unchecked( (ushort)value );
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<ushort>(config);

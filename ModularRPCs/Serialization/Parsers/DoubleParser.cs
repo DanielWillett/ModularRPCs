@@ -107,6 +107,7 @@ public class DoubleParser : BinaryTypeParser<double>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DoubleParser))) { ErrorCode = 2 };
 
@@ -127,7 +128,6 @@ public class DoubleParser : BinaryTypeParser<double>
         }
 #endif
 
-        bytesRead = 8;
         return value;
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<double>(config);

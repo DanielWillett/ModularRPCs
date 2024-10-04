@@ -209,6 +209,7 @@ public partial class ParserManyTests
                 int pos = 0;
                 for (int i = 0; i < arrCtNoBit; ++i)
                 {
+                    Console.WriteLine(i);
                     T[] readArray = ((IBinaryTypeParser<T[]>)parser).ReadObject(buffer + pos, maxSize - (uint)pos, out int bytesRead);
                     pos += bytesRead;
                     Assert.That(readArray, Is.EqualTo(values));

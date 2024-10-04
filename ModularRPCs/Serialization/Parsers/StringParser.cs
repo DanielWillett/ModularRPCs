@@ -479,6 +479,7 @@ public class StringParser : BinaryTypeParser<string?>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct + 1;
         if (ct != hdrSize)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
@@ -556,6 +557,7 @@ public class StringParser : BinaryTypeParser<string?>
                         try
                         {
                             int ct = state.Stream.Read(buffer, 0, state.ByteSize);
+                            state.BytesRead += ct;
                             if (ct != state.ByteSize)
                                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
 
@@ -570,6 +572,7 @@ public class StringParser : BinaryTypeParser<string?>
                     {
                         byte[] buffer = new byte[state.ByteSize];
                         int ct = state.Stream.Read(buffer, 0, state.ByteSize);
+                        state.BytesRead += ct;
                         if (ct != state.ByteSize)
                             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
 
@@ -585,6 +588,7 @@ public class StringParser : BinaryTypeParser<string?>
                         {
                             int sizeToRead = Math.Min(buffer.Length - keepDataOffset, bytesLeft);
                             int ct = state.Stream.Read(buffer, keepDataOffset, sizeToRead);
+                            state.BytesRead += ct;
                             if (ct != sizeToRead)
                                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
 
@@ -606,9 +610,11 @@ public class StringParser : BinaryTypeParser<string?>
             catch (ArgumentException)
             {
                 char[] chars = new char[charLen];
+                long pos = stream.Position;
                 using StreamReader reader = new StreamReader(stream, _encoding, false, Math.Min(size, _config.MaximumBufferSize), leaveOpen: true);
                 int actualChars = reader.Read(chars, 0, charLen);
                 str = new string(chars, 0, actualChars);
+                bytesRead += (int)(stream.Position - pos);
             }
         }
         else
@@ -616,6 +622,7 @@ public class StringParser : BinaryTypeParser<string?>
             byte* dataPtr = stackalloc byte[size];
             Span<byte> dataSpan = new Span<byte>(dataPtr, size);
             ct = stream.Read(dataSpan);
+            bytesRead += ct;
             if (ct != size)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
@@ -644,6 +651,7 @@ public class StringParser : BinaryTypeParser<string?>
             try
             {
                 int ct2 = stream.Read(data, 0, size);
+                bytesRead += ct2;
                 if (ct2 != size)
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
@@ -658,6 +666,7 @@ public class StringParser : BinaryTypeParser<string?>
         {
             byte[] data = new byte[size];
             int ct2 = stream.Read(data, 0, size);
+            bytesRead += ct2;
             if (ct2 != size)
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
@@ -677,6 +686,7 @@ public class StringParser : BinaryTypeParser<string?>
                 {
                     int sizeToRead = Math.Min(buffer.Length - keepDataOffset, bytesLeft);
                     int ct = stream.Read(buffer, keepDataOffset, sizeToRead);
+                    bytesRead += ct;
                     if (ct != sizeToRead)
                         throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 2 };
 
@@ -699,7 +709,6 @@ public class StringParser : BinaryTypeParser<string?>
         
 #endif
 
-        bytesRead = size + hdrSize + 1;
         return str;
     }
     internal static byte GetLengthFlag(int size, int charLen)
@@ -749,12 +758,13 @@ public class StringParser : BinaryTypeParser<string?>
         return 1 + GetLengthSize(flag) + byteCt;
     }
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-    private struct ReadStringStreamContext
+    private unsafe struct ReadStringStreamContext
     {
         public Stream Stream;
         public int ByteSize;
         public int MaxBufferSize;
         public StringParser Parser;
+        public int* BytesRead;
     }
     private struct ReadStringBytesContext
     {

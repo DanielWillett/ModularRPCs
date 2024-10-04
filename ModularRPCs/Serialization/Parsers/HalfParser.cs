@@ -91,6 +91,7 @@ public class HalfParser : BinaryTypeParser<Half>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 2)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(HalfParser))) { ErrorCode = 2 };
 
@@ -105,12 +106,11 @@ public class HalfParser : BinaryTypeParser<Half>
         }
 #endif
 
-        bytesRead = 2;
         return *(Half*)&value;
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Half>
     {
-        public Many(SerializationConfiguration config) : base(config, sizeof(ushort), sizeof(ushort), !BitConverter.IsLittleEndian,
+        public Many(SerializationConfiguration config) : base(config, sizeof(ushort), sizeof(ushort), true,
             &WriteToBufferIntl,
             &WriteToBufferUnalignedIntl,
             &WriteToBufferSpanIntl,

@@ -17,11 +17,23 @@
     <PackageReference Include="NUnit" Version="3.13.1" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.17.0" />
     <PackageReference Include="coverlet.collector" Version="3.0.2" />
+    <Reference Include="UnityEngine" HintPath="../ModularRPCs.Unity/Libraries/UnityEngine.dll" />
   </ItemGroup>
 
 
   <ItemGroup>
+    <ProjectReference Include="..\ModularRPCs.Unity\ModularRPCs.Unity.csproj" />
     <ProjectReference Include="..\ModularRPCs\ModularRPCs.csproj" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <EditorConfigFiles Remove="A:\repos\ModularRPCs\ModularRPCs.Test\.editorconfig" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <None Include="A:\repos\ModularRPCs\ModularRPCs.Test\.editorconfig" />
   </ItemGroup>
 
 </Project>

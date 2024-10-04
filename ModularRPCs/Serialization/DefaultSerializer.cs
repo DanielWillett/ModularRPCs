@@ -9,6 +9,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Buffers;
+using System.Numerics;
 using System.Text;
 using DanielWillett.ModularRpcs.Configuration;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
@@ -149,7 +150,6 @@ public class DefaultSerializer : IRpcSerializer
 
         _primitiveParsers.AddManySerializer(new DecimalParser.Many(_config));
         _primitiveParsers.AddManySerializer(Encoding.UTF8.Equals(_config.StringEncoding) ? new Utf8Parser.Many(_config) : new StringParser.Many(_config, _config.StringEncoding));
-        _primitiveParsers.AddManySerializer(new Utf8Parser.Many(_config));
 #if NET5_0_OR_GREATER
         _primitiveParsers.AddManySerializer(new HalfParser.Many(_config));
 #endif
@@ -157,6 +157,10 @@ public class DefaultSerializer : IRpcSerializer
         _primitiveParsers.AddManySerializer(new TimeSpanParser.Many(_config));
         _primitiveParsers.AddManySerializer(new DateTimeParser.Many(_config));
         _primitiveParsers.AddManySerializer(new DateTimeOffsetParser.Many(_config));
+
+        Type? unityRegistrationType = Type.GetType("DanielWillett.ModularRpcs.Serialization.UnitySerializationRegistrationHelper, DanielWillett.ModularRPCs.Unity");
+        if (unityRegistrationType != null)
+            AddUnityParserTypes(unityRegistrationType);
     }
     private void SetupPrimitiveParsers()
     {
@@ -183,6 +187,15 @@ public class DefaultSerializer : IRpcSerializer
         _primitiveParsers.Add(typeof(DateTimeOffset), new DateTimeOffsetParser());
         _primitiveParsers.Add(typeof(TimeSpan), new TimeSpanParser());
         _primitiveParsers.Add(typeof(Guid), new GuidParser());
+    }
+
+    private void AddUnityParserTypes(Type unityRegistrationType)
+    {
+        MethodInfo? apply = unityRegistrationType.GetMethod("ApplyUnityParsers", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+        if (apply == null)
+            return;
+
+        apply.Invoke(null, [ _primitiveParsers, _primitiveSizes, _config]);
     }
 
     /// <summary>

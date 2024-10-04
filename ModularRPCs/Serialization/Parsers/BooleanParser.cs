@@ -1,5 +1,4 @@
-﻿//#define SIM_BIG_ENDIAN
-using DanielWillett.ModularRpcs.Configuration;
+﻿using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
@@ -162,13 +161,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             bool needsReturn = false;
             int rdCt;
 
-#if !SIM_BIG_ENDIAN
-            bool isLittleEndian = BitConverter.IsLittleEndian;
-#else
-            const bool isLittleEndian = false;
-#endif
-
-            if (isLittleEndian && size > DefaultSerializer.MaxArrayPoolSize)
+            if (BitConverter.IsLittleEndian && size > DefaultSerializer.MaxArrayPoolSize)
             {
                 byte[] bytes = new byte[size];
 
@@ -255,6 +248,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                         int index = 0;
                         byte current = span[0];
+                        int stInd = length - elementsLeft;
                         for (int i = 0; i < elemToRead; i++)
                         {
                             byte mod = (byte)(i % 8);
@@ -263,7 +257,7 @@ public class BooleanParser : BinaryTypeParser<bool>
                                 ++index;
                                 current = span[index];
                             }
-                            arr.Set(i, (1 & (current >>> mod)) != 0);
+                            arr.Set(i + stInd, (1 & (current >>> mod)) != 0);
                         }
                         bytesLeft -= sizeToRead;
                         elementsLeft -= elemToRead;
@@ -2014,17 +2008,12 @@ public class BooleanParser : BinaryTypeParser<bool>
 
             int size = (length - 1) / 8 + 1;
 
-#if !SIM_BIG_ENDIAN
-            bool isLittleEndian = BitConverter.IsLittleEndian;
-#else
-            const bool isLittleEndian = false;
-#endif
             if (size <= DefaultSerializer.MaxArrayPoolSize)
             {
                 byte[] bytes = DefaultSerializer.ArrayPool.Rent(size);
                 try
                 {
-                    if (isLittleEndian)
+                    if (BitConverter.IsLittleEndian)
                         value.CopyTo(bytes, 0);
                     else
                         WriteFromBitArray(value, 0, length, bytes);
@@ -2038,7 +2027,7 @@ public class BooleanParser : BinaryTypeParser<bool>
             else if (size <= _config.MaximumBufferSize)
             {
                 byte[] bytes = new byte[size];
-                if (isLittleEndian)
+                if (BitConverter.IsLittleEndian)
                     value.CopyTo(bytes, 0);
                 else
                     WriteFromBitArray(value, 0, length, bytes);

@@ -100,6 +100,7 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 2 };
         
@@ -115,12 +116,11 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
         }
 #endif
 
-        bytesRead = 8;
         return new TimeSpan(value);
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<TimeSpan>
     {
-        public Many(SerializationConfiguration config) : base(config, sizeof(long), sizeof(long), !BitConverter.IsLittleEndian, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+        public Many(SerializationConfiguration config) : base(config, sizeof(long), sizeof(long), true, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
             &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
         {
 

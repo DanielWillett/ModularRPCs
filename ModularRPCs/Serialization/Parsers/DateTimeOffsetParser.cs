@@ -105,6 +105,10 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
     {
         return new DateTimeOffset(new DateTime(ticks), TimeSpan.FromMinutes(offset));
     }
+    private static DateTimeOffset FromUnflippedComponents(long ticks, short offset)
+    {
+        return new DateTimeOffset(new DateTime(ticks), TimeSpan.FromMinutes(offset));
+    }
     private static void ToComponents(ref DateTimeOffset dateTime, out long ticks, out short offset)
     {
         ticks = dateTime.Ticks;
@@ -124,6 +128,7 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 10)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DateTimeOffsetParser))) { ErrorCode = 2 };
 
@@ -143,12 +148,11 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
         }
 #endif
 
-        bytesRead = 10;
         return FromComponents(ticks, offset);
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<DateTimeOffset>
     {
-        public Many(SerializationConfiguration config) : base(config, sizeof(long) + sizeof(short), sizeof(long), !BitConverter.IsLittleEndian, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+        public Many(SerializationConfiguration config) : base(config, sizeof(long) + sizeof(short), sizeof(long), true, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
             &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
         {
 

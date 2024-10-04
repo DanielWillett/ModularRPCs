@@ -38,18 +38,16 @@ public struct PrimitiveRpcOverhead
         if (maxSize < 18)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
         
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
         byte codeId = rawData[0];
-        uint size = isLittleEndian
+        uint size = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<uint>(ref Unsafe.AsRef(in rawData[1]))
             : (uint)rawData[1] << 24 | (uint)rawData[2] << 16 | (uint)rawData[3] << 8 | rawData[4];
         
-        uint size2 = isLittleEndian
+        uint size2 = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<uint>(ref Unsafe.AsRef(in rawData[5]))
             : (uint)rawData[5] << 24 | (uint)rawData[6] << 16 | (uint)rawData[7] << 8 | rawData[8];
 
-        ulong messageId = isLittleEndian
+        ulong messageId = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ulong>(ref Unsafe.AsRef(in rawData[9]))
             : ((ulong)((uint)rawData[9] << 24 | (uint)rawData[10] << 16 | (uint)rawData[11] << 8 | rawData[12]) << 32) | ((uint)rawData[13] << 24 | (uint)rawData[14] << 16 | (uint)rawData[15] << 8 | rawData[16]);
 
@@ -84,18 +82,16 @@ public struct PrimitiveRpcOverhead
         if (rdCt != 18)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
         byte codeId = headerSpan[0];
-        uint size = isLittleEndian
+        uint size = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<uint>(ref headerSpan[1])
             : (uint)headerSpan[1] << 24 | (uint)headerSpan[2] << 16 | (uint)headerSpan[3] << 8 | headerSpan[4];
 
-        uint size2 = isLittleEndian
+        uint size2 = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<uint>(ref headerSpan[5])
             : (uint)headerSpan[5] << 24 | (uint)headerSpan[6] << 16 | (uint)headerSpan[7] << 8 | headerSpan[8];
 
-        ulong messageId = isLittleEndian
+        ulong messageId = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ulong>(ref headerSpan[9])
             : ((ulong)((uint)headerSpan[9] << 24 | (uint)headerSpan[10] << 16 | (uint)headerSpan[11] << 8 | headerSpan[12]) << 32) | ((uint)headerSpan[13] << 24 | (uint)headerSpan[14] << 16 | (uint)headerSpan[15] << 8 | headerSpan[16]);
 

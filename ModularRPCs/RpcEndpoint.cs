@@ -445,8 +445,6 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (maxCt < 13)
             throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
 
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
         EndpointFlags flags = ParametersAreBindedParametersOnly ? EndpointFlags.ArgsAreBindOnly : 0;
         flags |= (EndpointFlags)((ParameterTypeNames != null ? 1 : 0) * (int)EndpointFlags.DefinesParameters);
         flags |= (EndpointFlags)((IsBroadcast ? 1 : 0) * (int)EndpointFlags.Broadcast);
@@ -455,7 +453,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         ++bytes;
         
         uint enpId = EndpointId.GetValueOrDefault();
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, enpId);
         }
@@ -469,7 +467,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         bytes += 4;
 
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, SignatureHash);
         }
@@ -492,7 +490,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (methodNameLenCt > ushort.MaxValue)
             throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionMethodNameTooLong, DeclaringTypeName)) { ErrorCode = 3 };
 
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, (ushort)typeNameLenCt);
         }
@@ -504,7 +502,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         bytes += 2;
 
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, (ushort)methodNameLenCt);
         }
@@ -543,7 +541,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (maxCt < size)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, (ushort)argCt);
         }
@@ -565,7 +563,7 @@ public class RpcEndpoint : IRpcInvocationPoint
                 throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionParameterTypeNameTooLong, DeclaringTypeName, MethodName)) { ErrorCode = 5 };
 
             argLens[i] = (ushort)utf8Len;
-            if (isLittleEndian)
+            if (BitConverter.IsLittleEndian)
             {
                 Unsafe.WriteUnaligned(bytes, (ushort)utf8Len);
             }
@@ -601,31 +599,29 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (maxCt < 13)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
         byte* originalPtr = bytes;
         EndpointFlags flags1 = (EndpointFlags)(*bytes);
         ++bytes;
 
-        uint knownRpcShortcutId = isLittleEndian
+        uint knownRpcShortcutId = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<uint>(bytes)
             : (uint)*bytes << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3];
 
         bytes += sizeof(uint);
 
-        int signatureHash = isLittleEndian
+        int signatureHash = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<int>(bytes)
             : *bytes << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3];
 
         bytes += sizeof(int);
 
-        int rpcTypeLength = isLittleEndian
+        int rpcTypeLength = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(bytes)
             : (ushort)(*bytes << 8 | bytes[1]);
 
         bytes += sizeof(ushort);
 
-        int rpcMethodLength = isLittleEndian
+        int rpcMethodLength = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(bytes)
             : (ushort)(*bytes << 8 | bytes[1]);
 
@@ -647,7 +643,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             if (maxCt < size)
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-            int argCt = isLittleEndian
+            int argCt = BitConverter.IsLittleEndian
                 ? Unsafe.ReadUnaligned<ushort>(bytes)
                 : (ushort)(*bytes << 8 | bytes[1]);
             bytes += 2;
@@ -661,7 +657,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             int ttlLen = 0;
             for (int i = 0; i < argCt; ++i)
             {
-                ushort len = isLittleEndian
+                ushort len = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<ushort>(bytes)
                     : (ushort)(*bytes << 8 | bytes[1]);
                 argLens[i] = len;
@@ -692,8 +688,6 @@ public class RpcEndpoint : IRpcInvocationPoint
     [Pure]
     internal static unsafe IRpcInvocationPoint ReadFromStream(IRpcSerializer serializer, IRpcRouter router, Stream stream, out int bytesRead)
     {
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = new byte[64];
 
@@ -708,25 +702,25 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         EndpointFlags flags1 = (EndpointFlags)bytes[0];
 
-        uint knownRpcShortcutId = isLittleEndian
+        uint knownRpcShortcutId = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<uint>(ref bytes[1])
             : (uint)bytes[1] << 24 | (uint)bytes[2] << 16 | (uint)bytes[3] << 8 | bytes[4];
 
         int index = sizeof(uint) + 1;
 
-        int signatureHash = isLittleEndian
+        int signatureHash = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<int>(ref bytes[index])
             : bytes[index] << 24 | bytes[index + 1] << 16 | bytes[index + 2] << 8 | bytes[index + 3];
 
         index += sizeof(int);
 
-        int rpcTypeLength = isLittleEndian
+        int rpcTypeLength = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(ref bytes[index])
             : (ushort)(bytes[index] << 8 | bytes[index + 1]);
 
         index += sizeof(ushort);
 
-        int rpcMethodLength = isLittleEndian
+        int rpcMethodLength = BitConverter.IsLittleEndian
             ? Unsafe.ReadUnaligned<ushort>(ref bytes[index])
             : (ushort)(bytes[index] << 8 | bytes[index + 1]);
 
@@ -786,7 +780,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             if (byteCt < 2)
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-            int argCt = isLittleEndian
+            int argCt = BitConverter.IsLittleEndian
                 ? Unsafe.ReadUnaligned<ushort>(ref bytes[0])
                 : (ushort)(bytes[0] << 8 | bytes[1]);
             args = new string[argCt];
@@ -811,7 +805,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
             for (int i = 0; i < argCt; ++i)
             {
-                int len = isLittleEndian
+                int len = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<ushort>(ref bytes[i * argCt])
                     : (ushort)(bytes[i * argCt] << 8 | bytes[i * argCt + 1]);
                 index += sizeof(ushort);

@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
 
+[NonParallelizable]
 public class SendRawTestsWithId
 {
     private static bool _wasInvoked;

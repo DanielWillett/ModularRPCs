@@ -99,6 +99,7 @@ public class SingleParser : BinaryTypeParser<float>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 4)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(SingleParser))) { ErrorCode = 2 };
 
@@ -119,7 +120,6 @@ public class SingleParser : BinaryTypeParser<float>
         }
 #endif
 
-        bytesRead = 4;
         return value;
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<float>(config);

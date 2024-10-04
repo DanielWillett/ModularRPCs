@@ -86,6 +86,7 @@ public class Int16Parser : BinaryTypeParser<short>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 2)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int16Parser))) { ErrorCode = 2 };
 
@@ -100,7 +101,6 @@ public class Int16Parser : BinaryTypeParser<short>
         }
 #endif
 
-        bytesRead = 2;
         return unchecked( (short)value );
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<short>(config);

@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 // ReSharper disable LocalizableElement
 
 namespace ModularRPCs.Test.CodeGen;
+
+[NonParallelizable]
 public class SendRawTestsNoId
 {
     private static bool _wasInvoked;

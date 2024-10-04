@@ -285,7 +285,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                     object[] oldParams = constructorParameters;
                     constructorParameters = new object[oldParams.Length + 1];
                     constructorParameters[0] = router;
-                    Array.Copy(oldParams, 0, constructorParameters, 0, oldParams.Length);
+                    Array.Copy(oldParams, 0, constructorParameters, 1, oldParams.Length);
                 }
             }
 

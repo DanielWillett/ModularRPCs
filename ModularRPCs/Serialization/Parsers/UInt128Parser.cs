@@ -100,6 +100,7 @@ public class UInt128Parser : BinaryTypeParser<UInt128>
         Span<byte> span = stackalloc byte[16];
         int ct = stream.Read(span);
 
+        bytesRead = ct;
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt128Parser))) { ErrorCode = 2 };
 

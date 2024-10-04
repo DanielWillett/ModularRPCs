@@ -8,6 +8,8 @@ using System;
 using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
+
+[NonParallelizable]
 public class ParameterlessVoidInvocationTests
 {
     private static bool _wasInvoked;

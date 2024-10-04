@@ -10,6 +10,10 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+/// <summary>
+/// Helper functions for finding and registering <see cref="IBinaryTypeParser"/> objects.
+/// </summary>
 public static class SerializationHelper
 {
     /// <summary>
@@ -19,16 +23,25 @@ public static class SerializationHelper
     /// <typeparam name="TElementType">The element type of the array.</typeparam>
     public static void AddManySerializer<TElementType>(this IDictionary<Type, IBinaryTypeParser> dict, IArrayBinaryTypeParser<TElementType> parser)
     {
-        dict[typeof(TElementType[])] = parser;
-        dict[typeof(IList<TElementType>)] = parser;
-        dict[typeof(IReadOnlyList<TElementType>)] = parser;
-        dict[typeof(ICollection<TElementType>)] = parser;
-        dict[typeof(IReadOnlyCollection<TElementType>)] = parser;
-        dict[typeof(IEnumerable<TElementType>)] = parser;
-        dict[typeof(Span<TElementType>)] = parser;
-        dict[typeof(ReadOnlySpan<TElementType>)] = parser;
-        if (typeof(TElementType) == typeof(bool))
-            dict[typeof(BitArray)] = parser;
+        if (!dict.ContainsKey(typeof(TElementType[])))
+            dict.Add(typeof(TElementType[]), parser);
+        if (!dict.ContainsKey(typeof(IList<TElementType>)))
+            dict.Add(typeof(IList<TElementType>), parser);
+        if (!dict.ContainsKey(typeof(IReadOnlyList<TElementType>)))
+            dict.Add(typeof(IReadOnlyList<TElementType>), parser);
+        if (!dict.ContainsKey(typeof(ICollection<TElementType>)))
+            dict.Add(typeof(ICollection<TElementType>), parser);
+        if (!dict.ContainsKey(typeof(IReadOnlyCollection<TElementType>)))
+            dict.Add(typeof(IReadOnlyCollection<TElementType>), parser);
+        if (!dict.ContainsKey(typeof(IEnumerable<TElementType>)))
+            dict.Add(typeof(IEnumerable<TElementType>), parser);
+        if (!dict.ContainsKey(typeof(Span<TElementType>)))
+            dict.Add(typeof(Span<TElementType>), parser);
+        if (!dict.ContainsKey(typeof(ReadOnlySpan<TElementType>)))
+            dict.Add(typeof(ReadOnlySpan<TElementType>), parser);
+
+        if (typeof(TElementType) == typeof(bool) && parser is IBinaryTypeParser<BitArray> && !dict.ContainsKey(typeof(BitArray)))
+            dict.Add(typeof(BitArray), parser);
     }
 
     /// <summary>
@@ -38,44 +51,68 @@ public static class SerializationHelper
     /// <typeparam name="TElementType">The element type of the array.</typeparam>
     public static void AddManySerializer<TElementType>(this IDictionary<Type, IBinaryTypeParser> dict, Func<Type, IBinaryTypeParser?> parserFactory)
     {
-        IBinaryTypeParser? parser = parserFactory(typeof(TElementType[]));
-        if (parser != null)
-            dict[typeof(TElementType[])] = parser;
-
-        parser = parserFactory(typeof(IList<TElementType>));
-        if (parser != null)
-            dict[typeof(IList<TElementType>)] = parser;
-
-        parser = parserFactory(typeof(IReadOnlyList<TElementType>));
-        if (parser != null)
-            dict[typeof(IReadOnlyList<TElementType>)] = parser;
-
-        parser = parserFactory(typeof(ICollection<TElementType>));
-        if (parser != null)
-            dict[typeof(ICollection<TElementType>)] = parser;
-
-        parser = parserFactory(typeof(IReadOnlyCollection<TElementType>));
-        if (parser != null)
-            dict[typeof(IReadOnlyCollection<TElementType>)] = parser;
-
-        parser = parserFactory(typeof(IEnumerable<TElementType>));
-        if (parser != null)
-            dict[typeof(IEnumerable<TElementType>)] = parser;
-
-        parser = parserFactory(typeof(Span<TElementType>));
-        if (parser != null)
-            dict[typeof(Span<TElementType>)] = parser;
-
-        parser = parserFactory(typeof(ReadOnlySpan<TElementType>));
-        if (parser != null)
-            dict[typeof(ReadOnlySpan<TElementType>)] = parser;
-
-        if (typeof(TElementType) != typeof(bool))
-            return;
-
-        parser = parserFactory(typeof(BitArray));
-        if (parser != null)
-            dict[typeof(BitArray)] = parser;
+        if (!dict.ContainsKey(typeof(TElementType[])))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(TElementType[]));
+            if (parser != null)
+                dict.Add(typeof(TElementType[]), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(IList<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(IList<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(IList<TElementType>), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(IReadOnlyList<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(IReadOnlyList<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(IReadOnlyList<TElementType>), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(ICollection<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(ICollection<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(ICollection<TElementType>), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(IReadOnlyCollection<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(IReadOnlyCollection<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(IReadOnlyCollection<TElementType>), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(IEnumerable<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(IEnumerable<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(IEnumerable<TElementType>), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(Span<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(Span<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(Span<TElementType>), parser);
+        }
+        
+        if (!dict.ContainsKey(typeof(ReadOnlySpan<TElementType>)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(ReadOnlySpan<TElementType>));
+            if (parser != null)
+                dict.Add(typeof(ReadOnlySpan<TElementType>), parser);
+        }
+        
+        if (typeof(TElementType) == typeof(bool) && !dict.ContainsKey(typeof(BitArray)))
+        {
+            IBinaryTypeParser? parser = parserFactory(typeof(BitArray));
+            if (parser != null)
+                dict.Add(typeof(BitArray), parser);
+        }
     }
 
     /// <summary>
@@ -357,7 +394,7 @@ public static class SerializationHelper
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, parser.GetType().Name)) { ErrorCode = 1 };
                 length = BitConverter.IsLittleEndian
                     ? Unsafe.ReadUnaligned<int>(bytes + index)
-                    : bytes[index] << 24 | bytes[index + 1] << 16 | bytes[index + 2] << 8 | bytes[index + index + 3];
+                    : bytes[index] << 24 | bytes[index + 1] << 16 | bytes[index + 2] << 8 | bytes[index + 3];
                 index += 4;
                 break;
         }

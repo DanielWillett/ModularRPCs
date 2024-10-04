@@ -90,6 +90,7 @@ public class Int32Parser : BinaryTypeParser<int>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 4)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int32Parser))) { ErrorCode = 2 };
 
@@ -104,7 +105,6 @@ public class Int32Parser : BinaryTypeParser<int>
         }
 #endif
 
-        bytesRead = 4;
         return value;
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<int>(config);

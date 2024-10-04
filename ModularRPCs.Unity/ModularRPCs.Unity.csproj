@@ -3,11 +3,16 @@
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease01</VersionSuffix>
+    <VersionSuffix>prerelease02</VersionSuffix>
 
     <PackageReleaseNotes>Initial pre-release.</PackageReleaseNotes>
 
-    <TargetFrameworks>netstandard2.0;net461</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net461;netstandard2.1</TargetFrameworks>
+
+    <!-- TODO TURN THIS OFF BEFORE PUBLISHING -->
+    <UseTestEndianProvider>True</UseTestEndianProvider>
+
+    <NoWarn>CS1591</NoWarn>
 
   </PropertyGroup>
 
@@ -42,8 +47,17 @@
     <None Include="$(SolutionDir)README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <PropertyGroup Condition="$(UseTestEndianProvider)">
+    <DefineConstants>$(DefineConstants);USE_TEST_ENDIANNESS_SWITCH</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="$(UseTestEndianProvider)">
+    <Using Include="DanielWillett.ModularRpcs.TestEndiannessSwitch" Alias="BitConverter"/>
+  </ItemGroup>
+
   <PropertyGroup>
     <AssemblyTitle>DanielWillett.ModularRPCs.Unity</AssemblyTitle>
+    <RootNamespace>DanielWillett.ModularRpcs</RootNamespace>
     <AssemblyName>$(AssemblyTitle)</AssemblyName>
     <Product>$(PackageId)</Product>
 
@@ -57,12 +71,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="[2018.2.1,)" />
-    <Reference Include="UnityEngine.CoreModule" HintPath="./lib/UnityEngine.CoreModule.dll" />
+    <PackageReference Include="JetBrains.Annotations" Version="[2018.2.1,)" Aliases="JetBrains" />
+    <Reference Include="UnityEngine" HintPath="./Libraries/UnityEngine.dll" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease01, 2)" />
+    <!--<PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease02, 2)" />-->
+    <ProjectReference Include="../ModularRPCs/ModularRPCs.csproj"/>
   </ItemGroup>
 
   <!-- Build Configurations -->

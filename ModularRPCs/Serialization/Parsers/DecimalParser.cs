@@ -136,6 +136,7 @@ public class DecimalParser : BinaryTypeParser<decimal>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DecimalParser))) { ErrorCode = 2 };
 
@@ -163,7 +164,6 @@ public class DecimalParser : BinaryTypeParser<decimal>
         }
 #endif
 
-        bytesRead = 16;
         return value;
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<decimal>

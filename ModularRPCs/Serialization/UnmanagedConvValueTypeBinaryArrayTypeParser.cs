@@ -143,7 +143,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             ftn(bytes + hdrSize + i * elementSize, arr[ofs + i]);
         }
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, hdrSize, size);
 
         return size + hdrSize;
@@ -170,7 +170,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             ftn(bytes + hdrSize + i * elementSize, value[i]);
         }
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, hdrSize, size);
 
         return size + hdrSize;
@@ -225,7 +225,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 break;
         }
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, hdrSize, size);
 
         return size + hdrSize;
@@ -280,7 +280,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 break;
         }
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, hdrSize, size);
 
         return size + hdrSize;
@@ -324,7 +324,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             ftn(bytes + i++ * elementSize, enumerator.Current);
         }
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, hdrSize, size);
 
         if (i == length)
@@ -393,7 +393,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         bytes -= hdrSize;
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, hdrSize, size);
 
         if (i == length)
@@ -464,7 +464,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             }
         }
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, 0, actualCount);
 
         int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
@@ -515,7 +515,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), arr[ofs + i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -531,7 +531,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             {
                 ftn(buffer.AsSpan(i * elementSize, elementSize), arr[ofs + i]);
             }
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
                 FlipBits(buffer, 0, size);
             stream.Write(buffer, 0, size);
         }
@@ -548,7 +548,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), arr[offset + i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, sizeToCopy);
                 stream.Write(buffer, 0, sizeToCopy);
                 bytesLeft -= sizeToCopy;
@@ -579,7 +579,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), value[i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -595,7 +595,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             {
                 ftn(buffer.AsSpan(i * elementSize, elementSize), value[i]);
             }
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
                 FlipBits(buffer, 0, size);
             stream.Write(buffer, 0, size);
         }
@@ -612,7 +612,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), value[ofs + i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, sizeToCopy);
                 stream.Write(buffer, 0, sizeToCopy);
                 bytesLeft -= sizeToCopy;
@@ -656,7 +656,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), value[i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -672,7 +672,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             {
                 ftn(buffer.AsSpan(i * elementSize, elementSize), value[i]);
             }
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
                 FlipBits(buffer, 0, size);
             stream.Write(buffer, 0, size);
         }
@@ -689,7 +689,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), value[ofs + i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, sizeToCopy);
                 stream.Write(buffer, 0, sizeToCopy);
                 bytesLeft -= sizeToCopy;
@@ -733,7 +733,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), value[i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -749,7 +749,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
             {
                 ftn(buffer.AsSpan(i * elementSize, elementSize), value[i]);
             }
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
                 FlipBits(buffer, 0, size);
             stream.Write(buffer, 0, size);
         }
@@ -766,7 +766,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 {
                     ftn(buffer.AsSpan(i * elementSize, elementSize), value[ofs + i]);
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, sizeToCopy);
                 stream.Write(buffer, 0, sizeToCopy);
                 bytesLeft -= sizeToCopy;
@@ -813,7 +813,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                     ++i;
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -832,7 +832,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                 ++i;
             }
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
                 FlipBits(buffer, 0, size);
             stream.Write(buffer, 0, size);
         }
@@ -851,7 +851,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                     ++i;
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, sizeToCopy);
                 stream.Write(buffer, 0, sizeToCopy);
                 bytesLeft -= sizeToCopy;
@@ -898,7 +898,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                     ++i;
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -917,7 +917,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                 ++i;
             }
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
                 FlipBits(buffer, 0, size);
             stream.Write(buffer, 0, size);
         }
@@ -936,7 +936,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                     ++i;
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, sizeToCopy);
                 stream.Write(buffer, 0, sizeToCopy);
                 bytesLeft -= sizeToCopy;
@@ -989,7 +989,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                         ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                         ++i;
                     }
-                    if (_flipBits)
+                    if (!BitConverter.IsLittleEndian && _flipBits)
                         FlipBits(buffer, 0, size);
                     stream.Write(buffer, 0, size);
                 }
@@ -1007,7 +1007,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                     ++i;
                 }
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                     FlipBits(buffer, 0, size);
                 stream.Write(buffer, 0, size);
             }
@@ -1025,7 +1025,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                         ftn(buffer.AsSpan(i * elementSize, elementSize), enumerator.Current);
                         ++i;
                     }
-                    if (_flipBits)
+                    if (!BitConverter.IsLittleEndian && _flipBits)
                         FlipBits(buffer, 0, sizeToCopy);
                     stream.Write(buffer, 0, sizeToCopy);
                     bytesLeft -= sizeToCopy;
@@ -1069,7 +1069,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         bytes += index;
         delegate*<byte*, TElementType> ftn = (nint)bytes % _alignSize == 0 ? _readFromBuffer : _readFromBufferUnaligned;
         
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
         {
             for (int i = 0; i < length; ++i)
             {
@@ -1120,7 +1120,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         TElementType[] arr = output.Array!;
         int ofs = output.Offset;
         
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
         {
             for (int i = 0; i < length; ++i)
             {
@@ -1168,7 +1168,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         bytesRead = size;
         delegate*<byte*, TElementType> ftn = (nint)bytes % _alignSize == 0 ? _readFromBuffer : _readFromBufferUnaligned;
 
-        if (_flipBits)
+        if (!BitConverter.IsLittleEndian && _flipBits)
         {
             for (int i = 0; i < length; ++i)
             {
@@ -1267,7 +1267,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 arr[i] = ftn(bytes + i * elementSize);
             }
 
-            if (!_flipBits)
+            if (BitConverter.IsLittleEndian || !_flipBits)
                 return length - arrOffset;
 
             for (int i = arrOffset; i < length; ++i)
@@ -1279,7 +1279,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
         if (setInsteadOfAdding)
         {
-            if (!_flipBits)
+            if (BitConverter.IsLittleEndian || !_flipBits)
             {
                 for (int i = 0; i < length; ++i)
                 {
@@ -1296,7 +1296,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 }
             }
         }
-        else if (!_flipBits)
+        else if (BitConverter.IsLittleEndian || !_flipBits)
         {
             for (int i = 0; i < length; ++i)
             {
@@ -1344,7 +1344,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                 }
 
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < length; ++i)
                     {
@@ -1374,7 +1374,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
             }
 
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
             {
                 for (int i = 0; i < length; ++i)
                 {
@@ -1405,7 +1405,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
                 int stInd = (arrSize - bytesLeft) / elementSize;
                 int elementsToCopy = sizeToCopy / elementSize;
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < elementsToCopy; ++i)
                     {
@@ -1463,7 +1463,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                 }
 
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < length; ++i)
                     {
@@ -1493,7 +1493,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
             }
 
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
             {
                 for (int i = 0; i < length; ++i)
                 {
@@ -1524,7 +1524,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
                 int stInd = ofs + (arrSize - bytesLeft) / elementSize;
                 int elemToCopy = sizeToCopy / elementSize;
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < elemToCopy; ++i)
                     {
@@ -1581,7 +1581,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                 }
 
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < length; ++i)
                     {
@@ -1611,7 +1611,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
             }
 
-            if (_flipBits)
+            if (!BitConverter.IsLittleEndian && _flipBits)
             {
                 for (int i = 0; i < length; ++i)
                 {
@@ -1642,7 +1642,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
                 int stInd = (arrSize - bytesLeft) / elementSize;
                 int elemToCopy = sizeToCopy / elementSize;
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < elemToCopy; ++i)
                     {
@@ -1746,7 +1746,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                         throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                     }
 
-                    if (_flipBits)
+                    if (!BitConverter.IsLittleEndian && _flipBits)
                     {
                         for (int i = 0; i < length; ++i)
                         {
@@ -1776,7 +1776,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 2 };
                 }
 
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < length; ++i)
                     {
@@ -1807,7 +1807,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
                     int stInd = arrOffset + (arrSize - bytesLeft) / elementSize;
                     int elemToCopy = sizeToCopy / elementSize;
-                    if (_flipBits)
+                    if (!BitConverter.IsLittleEndian && _flipBits)
                     {
                         for (int i = 0; i < elemToCopy; ++i)
                         {
@@ -1844,7 +1844,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
                 if (setInsteadOfAdding)
                 {
-                    if (_flipBits)
+                    if (!BitConverter.IsLittleEndian && _flipBits)
                     {
                         for (int i = 0; i < length; ++i)
                         {
@@ -1859,7 +1859,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                         }
                     }
                 }
-                else if (!_flipBits)
+                else if (BitConverter.IsLittleEndian || !_flipBits)
                 {
                     for (int i = 0; i < length; ++i)
                     {
@@ -1891,7 +1891,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
 
             if (setInsteadOfAdding)
             {
-                if (_flipBits)
+                if (!BitConverter.IsLittleEndian && _flipBits)
                 {
                     for (int i = 0; i < length; ++i)
                     {
@@ -1906,7 +1906,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                     }
                 }
             }
-            else if (!_flipBits)
+            else if (BitConverter.IsLittleEndian || !_flipBits)
             {
                 for (int i = 0; i < length; ++i)
                 {
@@ -1939,7 +1939,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 if (setInsteadOfAdding)
                 {
                     int stInd = (arrSize - bytesLeft) / elementSize;
-                    if (_flipBits)
+                    if (!BitConverter.IsLittleEndian && _flipBits)
                     {
                         for (int i = 0; i < elementsToCopy; ++i)
                         {
@@ -1954,7 +1954,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                         }
                     }
                 }
-                else if (!_flipBits)
+                else if (BitConverter.IsLittleEndian || !_flipBits)
                 {
                     for (int i = 0; i < elementsToCopy; ++i)
                     {

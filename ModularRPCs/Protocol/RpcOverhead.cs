@@ -87,8 +87,6 @@ public class RpcOverhead
     internal bool CheckSizeHashValid() => _size2Check == MessageSize;
     public static RpcOverhead ReadFromStream(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, in PrimitiveRpcOverhead primitiveOverhead)
     {
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
 #if NETFRAMEWORK || NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
         byte[] bytes = DefaultSerializer.ArrayPool.Rent(2);
 
@@ -101,7 +99,7 @@ public class RpcOverhead
         if (byteCt != 2)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-        RpcFlags flags = isLittleEndian ? (RpcFlags)(bytes[0] | bytes[1] << 8) : (RpcFlags)(bytes[0] << 8 | bytes[1]);
+        RpcFlags flags = BitConverter.IsLittleEndian ? (RpcFlags)(bytes[0] | bytes[1] << 8) : (RpcFlags)(bytes[0] << 8 | bytes[1]);
         int index = 2;
 
         IRpcInvocationPoint? endPoint;
@@ -115,7 +113,7 @@ public class RpcOverhead
             if (byteCt < 4)
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
-            uint endpointId = isLittleEndian
+            uint endpointId = BitConverter.IsLittleEndian
                 ? Unsafe.ReadUnaligned<uint>(ref bytes[index])
                 : (uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3];
 
@@ -148,12 +146,10 @@ public class RpcOverhead
     }
     public static unsafe RpcOverhead ReadFromBytes(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, byte* bytes, uint maxCt, in PrimitiveRpcOverhead primitiveOverhead)
     {
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
         if (maxCt < 2)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-        RpcFlags flags = isLittleEndian ? (RpcFlags)Unsafe.ReadUnaligned<ushort>(bytes) : (RpcFlags)(*bytes << 8 | bytes[1]);
+        RpcFlags flags = BitConverter.IsLittleEndian ? (RpcFlags)Unsafe.ReadUnaligned<ushort>(bytes) : (RpcFlags)(*bytes << 8 | bytes[1]);
         int index = 2;
 
         IRpcInvocationPoint? endPoint;
@@ -162,7 +158,7 @@ public class RpcOverhead
             if (maxCt < index + 4)
                 throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
-            uint endpointId = isLittleEndian
+            uint endpointId = BitConverter.IsLittleEndian
                 ? Unsafe.ReadUnaligned<uint>(bytes + index)
                 : (uint)bytes[index] << 24 | (uint)bytes[index + 1] << 16 | (uint)bytes[index + 2] << 8 | bytes[index + 3];
 
@@ -195,8 +191,6 @@ public class RpcOverhead
     }
     internal static unsafe int WriteToBytes(IRpcSerializer serializer, IRpcRouter router, RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo, byte* bytes, int maxCt, uint dataCt, ulong msgId, byte subMsgId)
     {
-        bool isLittleEndian = BitConverter.IsLittleEndian;
-
         const int size = 20;
         if (maxCt < size)
             throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
@@ -206,7 +200,7 @@ public class RpcOverhead
 
         for (int i = 0; i < 2; ++i)
         {
-            if (isLittleEndian)
+            if (BitConverter.IsLittleEndian)
             {
                 Unsafe.WriteUnaligned(bytes, dataCt);
             }
@@ -256,7 +250,7 @@ public class RpcOverhead
             flags |= RpcFlags.FireAndForget;
         }
 
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, (ushort)flags);
         }
@@ -275,7 +269,7 @@ public class RpcOverhead
             throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
 
         uint enpId = callMethodInfo.KnownId;
-        if (isLittleEndian)
+        if (BitConverter.IsLittleEndian)
         {
             Unsafe.WriteUnaligned(bytes, enpId);
         }

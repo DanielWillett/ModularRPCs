@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -10,6 +11,7 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
 {
     public override bool IsVariableSize => false;
     public override int MinimumSize => 8;
+
     public override unsafe int WriteObject(DateTime value, byte* bytes, uint maxSize)
     {
         if (maxSize < 8)
@@ -94,9 +96,30 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
         l &= ~(0b11L << 62);
         return new DateTime(l, kind);
     }
+    private static DateTime FromUnflippedInt64(long l)
+    {
+        if (!BitConverter.IsLittleEndian)
+        {
+            l = BinaryPrimitives.ReverseEndianness(l);
+        }
+
+        DateTimeKind kind = (DateTimeKind)((l >> 62) & 0b11);
+        l &= ~(0b11L << 62);
+        return new DateTime(l, kind);
+    }
     private static long ToInt64(DateTime dateTime)
     {
         return (long)dateTime.Kind << 62 | dateTime.Ticks;
+    }
+    private static long ToUnflippedInt64(DateTime dateTime)
+    {
+        long l = (long)dateTime.Kind << 62 | dateTime.Ticks;
+        if (!BitConverter.IsLittleEndian)
+        {
+            l = BinaryPrimitives.ReverseEndianness(l);
+        }
+
+        return l;
     }
     public override DateTime ReadObject(Stream stream, out int bytesRead)
     {
@@ -111,6 +134,7 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(DateTimeParser))) { ErrorCode = 2 };
         
@@ -126,40 +150,39 @@ public class DateTimeParser : BinaryTypeParser<DateTime>
         }
 #endif
 
-        bytesRead = 8;
         return FromInt64(value);
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<DateTime>
     {
-        public Many(SerializationConfiguration config) : base(config, sizeof(long), sizeof(long), !BitConverter.IsLittleEndian, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+        public Many(SerializationConfiguration config) : base(config, sizeof(long), sizeof(long), false, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
             &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
         {
 
         }
         private static void WriteToBufferIntl(byte* ptr, DateTime dateTime)
         {
-            *(long*)ptr = ToInt64(dateTime);
+            *(long*)ptr = ToUnflippedInt64(dateTime);
         }
         private static void WriteToBufferUnalignedIntl(byte* ptr, DateTime dateTime)
         {
-            Unsafe.WriteUnaligned(ptr, ToInt64(dateTime));
+            Unsafe.WriteUnaligned(ptr, ToUnflippedInt64(dateTime));
         }
         private static void WriteToBufferSpanIntl(Span<byte> span, DateTime dateTime)
         {
-            long int64 = ToInt64(dateTime);
+            long int64 = ToUnflippedInt64(dateTime);
             MemoryMarshal.Write(span, ref int64);
         }
         private static DateTime ReadFromBufferIntl(byte* ptr)
         {
-            return FromInt64(*(long*)ptr);
+            return FromUnflippedInt64(*(long*)ptr);
         }
         private static DateTime ReadFromBufferUnalignedIntl(byte* ptr)
         {
-            return FromInt64(Unsafe.ReadUnaligned<long>(ptr));
+            return FromUnflippedInt64(Unsafe.ReadUnaligned<long>(ptr));
         }
         private static DateTime ReadFromBufferSpanIntl(Span<byte> span)
         {
-            return FromInt64(MemoryMarshal.Read<long>(span));
+            return FromUnflippedInt64(MemoryMarshal.Read<long>(span));
         }
     }
 }

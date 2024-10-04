@@ -79,21 +79,20 @@ public class GuidParser : BinaryTypeParser<Guid>
     public override Guid ReadObject(Stream stream, out int bytesRead)
     {
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
-        Guid guid = ReadGuidFromStream(stream);
+        Guid guid = ReadGuidFromStream(stream, out bytesRead);
 #else
         Span<byte> span = stackalloc byte[16];
         int ct = stream.Read(span);
+        bytesRead = ct;
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 2 };
 
         Guid guid = new Guid(span);
 #endif
-
-        bytesRead = 16;
         return guid;
     }
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
-    private static Guid ReadGuidFromStream(Stream stream)
+    private static Guid ReadGuidFromStream(Stream stream, out int bytesRead)
     {
         // rent until we get an array with the exact length
         byte[] span = DefaultSerializer.ArrayPool.Rent(16);
@@ -102,6 +101,7 @@ public class GuidParser : BinaryTypeParser<Guid>
             if (span.Length == 16)
             {
                 int ct = stream.Read(span, 0, 16);
+                bytesRead = ct;
                 if (ct != 16)
                     throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(GuidParser))) { ErrorCode = 2 };
 
@@ -109,7 +109,7 @@ public class GuidParser : BinaryTypeParser<Guid>
             }
             else
             {
-                return ReadGuidFromStream(stream);
+                return ReadGuidFromStream(stream, out bytesRead);
             }
         }
         finally

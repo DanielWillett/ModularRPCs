@@ -103,6 +103,7 @@ public class UIntPtrParser : BinaryTypeParser<nuint>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UIntPtrParser))) { ErrorCode = 2 };
         
@@ -120,7 +121,6 @@ public class UIntPtrParser : BinaryTypeParser<nuint>
         if (UIntPtr.Size == 4)
             CheckUInt32Overflow(value);
 
-        bytesRead = 8;
         return (nuint)value;
     }
     private static void CheckUInt32Overflow(ulong value)
@@ -130,7 +130,7 @@ public class UIntPtrParser : BinaryTypeParser<nuint>
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<nuint>
     {
-        public Many(SerializationConfiguration config) : base(config, sizeof(ulong), sizeof(ulong), !BitConverter.IsLittleEndian,
+        public Many(SerializationConfiguration config) : base(config, sizeof(ulong), sizeof(ulong), true,
             &WriteToBufferIntl,
             &WriteToBufferUnalignedIntl,
             &WriteToBufferSpanIntl,

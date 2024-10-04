@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
+
+[NonParallelizable]
 public class CancelTests
 {
     private const int DelayMs = 100;

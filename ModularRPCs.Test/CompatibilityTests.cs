@@ -3,6 +3,8 @@ using DanielWillett.ModularRpcs.Reflection;
 using NUnit.Framework;
 
 namespace ModularRPCs.Test;
+
+[NonParallelizable]
 public class CompatibilityTests
 {
     [Test]

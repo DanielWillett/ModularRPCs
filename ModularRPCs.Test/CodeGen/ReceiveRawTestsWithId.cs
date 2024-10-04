@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
 
+[NonParallelizable]
 public class ReceiveRawTestsWithId
 {
     private static bool _wasInvoked;

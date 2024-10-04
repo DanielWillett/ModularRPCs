@@ -13,6 +13,8 @@ using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace ModularRPCs.Test.CodeGen;
+
+[NonParallelizable]
 public class InjectionTests
 {
     [Test]

@@ -86,6 +86,7 @@ public class CharParser : BinaryTypeParser<char>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 2)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(CharParser))) { ErrorCode = 2 };
 
@@ -100,7 +101,6 @@ public class CharParser : BinaryTypeParser<char>
         }
 #endif
 
-        bytesRead = 2;
         return unchecked( (char)value );
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<char>(config);

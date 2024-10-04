@@ -7,6 +7,10 @@ using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace DanielWillett.ModularRpcs;
+
+/// <summary>
+/// Extensions that allow creating RPC proxies as Unity components.
+/// </summary>
 public static class ProxyGeneratorUnityExtensions
 {
     /// <summary>
@@ -39,7 +43,7 @@ public static class ProxyGeneratorUnityExtensions
     }
 
     /// <summary>
-    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate{TObjectType}(TObjectType, Vector3, Quaternion, Transform)"/> on <paramref name="objectToInstantiate"/>.
+    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate(Object, Vector3, Quaternion, Transform)"/> on <paramref name="objectToInstantiate"/>.
     /// </summary>
     public static TObjectType CreateInstantiatedProxy<TObjectType>(this ProxyGenerator proxyGenerator, TObjectType objectToInstantiate, Vector3 position, Quaternion rotation, Transform parent, IRpcRouter router) where TObjectType : Object
         => (TObjectType)CreateInstantiatedProxy(proxyGenerator, (Object)objectToInstantiate, position, rotation, parent, router);
@@ -73,7 +77,7 @@ public static class ProxyGeneratorUnityExtensions
     }
 
     /// <summary>
-    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate{TObjectType}(TObjectType, Transform, bool)"/> on <paramref name="objectToInstantiate"/>.
+    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate(Object, Transform, bool)"/> on <paramref name="objectToInstantiate"/>.
     /// </summary>
     public static TObjectType CreateInstantiatedProxy<TObjectType>(this ProxyGenerator proxyGenerator, TObjectType objectToInstantiate, Transform transform, bool instantiateInWorldSpace, IRpcRouter router) where TObjectType : Object
         => (TObjectType)CreateInstantiatedProxy(proxyGenerator, (Object)objectToInstantiate, transform, instantiateInWorldSpace, router);
@@ -107,7 +111,7 @@ public static class ProxyGeneratorUnityExtensions
     }
 
     /// <summary>
-    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate{TObjectType}(TObjectType, Transform)"/> on <paramref name="objectToInstantiate"/>.
+    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate(Object, Transform)"/> on <paramref name="objectToInstantiate"/>.
     /// </summary>
     public static TObjectType CreateInstantiatedProxy<TObjectType>(this ProxyGenerator proxyGenerator, TObjectType objectToInstantiate, Transform transform, IRpcRouter router) where TObjectType : Object
         => (TObjectType)CreateInstantiatedProxy(proxyGenerator, (Object)objectToInstantiate, transform, false, router);
@@ -119,7 +123,7 @@ public static class ProxyGeneratorUnityExtensions
         => CreateInstantiatedProxy(proxyGenerator, objectToInstantiate, transform, false, router);
 
     /// <summary>
-    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate{TObjectType}(TObjectType)"/> on <paramref name="objectToInstantiate"/>.
+    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate(Object)"/> on <paramref name="objectToInstantiate"/>.
     /// </summary>
     public static TObjectType CreateInstantiatedProxy<TObjectType>(this ProxyGenerator proxyGenerator, TObjectType objectToInstantiate, IRpcRouter router) where TObjectType : Object
         => (TObjectType)CreateInstantiatedProxy(proxyGenerator, (Object)objectToInstantiate, router);
@@ -153,7 +157,7 @@ public static class ProxyGeneratorUnityExtensions
     }
 
     /// <summary>
-    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate{TObjectType}(TObjectType, Vector3, Quaternion)"/> on <paramref name="objectToInstantiate"/>.
+    /// Create an instance of an RPC proxy of another <typeparamref name="TObjectType"/> by calling <see cref="Object.Instantiate(Object, Vector3, Quaternion)"/> on <paramref name="objectToInstantiate"/>.
     /// </summary>
     public static TObjectType CreateInstantiatedProxy<TObjectType>(this ProxyGenerator proxyGenerator, TObjectType objectToInstantiate, Vector3 position, Quaternion rotation, IRpcRouter router) where TObjectType : Object
         => (TObjectType)CreateInstantiatedProxy(proxyGenerator, (Object)objectToInstantiate, position, rotation, router);

@@ -100,6 +100,7 @@ public class Int128Parser : BinaryTypeParser<Int128>
         Span<byte> span = stackalloc byte[16];
         int ct = stream.Read(span);
 
+        bytesRead = ct;
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(Int128Parser))) { ErrorCode = 2 };
 
@@ -118,7 +119,6 @@ public class Int128Parser : BinaryTypeParser<Int128>
             value = new Int128(upper, lower);
         }
 
-        bytesRead = 16;
         return value;
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<Int128>(config);

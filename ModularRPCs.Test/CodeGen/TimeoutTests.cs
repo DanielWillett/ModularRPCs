@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using DanielWillett.ModularRpcs.Exceptions;
 
 namespace ModularRPCs.Test.CodeGen;
+
+[NonParallelizable]
 public class TimeoutTests
 {
     private const int MsTimeout = 100;

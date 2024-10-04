@@ -1,0 +1,3 @@
+https://unity.com/legal/licenses/unity-reference-only-license
+
+UnityEngine.dll from 5.4.0f1

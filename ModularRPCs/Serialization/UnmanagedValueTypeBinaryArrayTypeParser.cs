@@ -4,6 +4,7 @@ using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
 using JetBrains.Annotations;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -49,13 +50,15 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
     }
     private static void FlipBits([InstantHandle] byte[] bytes, int index, int size)
     {
+        size += index;
         for (; index < size; index += sizeof(TValueType))
         {
             for (int i = 0; i < sizeof(TValueType) / 2; ++i)
             {
-                byte b = bytes[i];
-                int ind = sizeof(TValueType) - i - 1;
-                bytes[i] = bytes[ind];
+                int stInd = i + index;
+                byte b = bytes[stInd];
+                int ind = sizeof(TValueType) - i - 1 + index;
+                bytes[stInd] = bytes[ind];
                 bytes[ind] = b;
             }
         }
@@ -278,7 +281,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         }
 
         if (!BitConverter.IsLittleEndian)
-            FlipBits(bytes, hdrSize, size);
+            FlipBits(bytes, 0, size);
 
         if (i == length)
             return i * sizeof(TValueType) + hdrSize;
@@ -723,7 +726,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
                                 if (!BitConverter.IsLittleEndian)
 #endif
-                                    FlipBits(buffer, 0, size);
+                                    FlipBits(buffer, 0, sizeToCopy);
                                 stream.Write(buffer, 0, sizeToCopy);
                                 break;
 
@@ -732,7 +735,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
                                 if (!BitConverter.IsLittleEndian)
 #endif
-                                    FlipBits(buffer, 0, size);
+                                    FlipBits(buffer, 0, sizeToCopy);
                                 stream.Write(buffer, 0, sizeToCopy);
                                 break;
 
@@ -913,7 +916,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
                                 if (!BitConverter.IsLittleEndian)
 #endif
-                                    FlipBits(buffer, 0, size);
+                                    FlipBits(buffer, 0, sizeToCopy);
                                 stream.Write(buffer, 0, sizeToCopy);
                                 break;
 
@@ -922,7 +925,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
                                 if (!BitConverter.IsLittleEndian)
 #endif
-                                    FlipBits(buffer, 0, size);
+                                    FlipBits(buffer, 0, sizeToCopy);
                                 stream.Write(buffer, 0, sizeToCopy);
                                 break;
 

@@ -98,6 +98,7 @@ public class UInt64Parser : BinaryTypeParser<ulong>
         int ct = stream.Read(span);
 #endif
 
+        bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UInt64Parser))) { ErrorCode = 2 };
         
@@ -113,7 +114,6 @@ public class UInt64Parser : BinaryTypeParser<ulong>
         }
 #endif
 
-        bytesRead = 8;
         return value;
     }
     public class Many(SerializationConfiguration config) : UnmanagedValueTypeBinaryArrayTypeParser<ulong>(config);
