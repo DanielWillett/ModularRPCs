@@ -107,12 +107,27 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
     }
     private static DateTimeOffset FromUnflippedComponents(long ticks, short offset)
     {
+        if (!BitConverter.IsLittleEndian)
+        {
+            ticks = BinaryPrimitives.ReverseEndianness(ticks);
+            offset = BinaryPrimitives.ReverseEndianness(offset);
+        }
         return new DateTimeOffset(new DateTime(ticks), TimeSpan.FromMinutes(offset));
     }
     private static void ToComponents(ref DateTimeOffset dateTime, out long ticks, out short offset)
     {
         ticks = dateTime.Ticks;
         offset = (short)Math.Round(dateTime.Offset.TotalMinutes);
+    }
+    private static void ToUnflippedComponents(ref DateTimeOffset dateTime, out long ticks, out short offset)
+    {
+        ticks = dateTime.Ticks;
+        offset = (short)Math.Round(dateTime.Offset.TotalMinutes);
+        if (!BitConverter.IsLittleEndian)
+        {
+            ticks = BinaryPrimitives.ReverseEndianness(ticks);
+            offset = BinaryPrimitives.ReverseEndianness(offset);
+        }
     }
     public override DateTimeOffset ReadObject(Stream stream, out int bytesRead)
     {
@@ -152,61 +167,41 @@ public class DateTimeOffsetParser : BinaryTypeParser<DateTimeOffset>
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<DateTimeOffset>
     {
-        public Many(SerializationConfiguration config) : base(config, sizeof(long) + sizeof(short), sizeof(long), true, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
+        public Many(SerializationConfiguration config) : base(config, sizeof(long) + sizeof(short), sizeof(long), false, &WriteToBufferIntl, &WriteToBufferUnalignedIntl,
             &WriteToBufferSpanIntl, &ReadFromBufferIntl, &ReadFromBufferUnalignedIntl, &ReadFromBufferSpanIntl)
         {
 
         }
 
-        protected override DateTimeOffset FlipBits(DateTimeOffset toFlip)
-        {
-            ToComponents(ref toFlip, out long ticks, out short offset);
-            ticks = BinaryPrimitives.ReverseEndianness(ticks);
-            offset = BinaryPrimitives.ReverseEndianness(offset);
-            return FromComponents(ticks, offset);
-        }
-
-        protected override void FlipBits(byte* bytes, int hdrSize, int size)
-        {
-            Unsafe.WriteUnaligned(bytes, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<long>(bytes)));
-            Unsafe.WriteUnaligned(bytes + sizeof(long), BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<short>(bytes + sizeof(long))));
-        }
-
-        protected override void FlipBits(byte[] bytes, int index, int size)
-        {
-            Unsafe.WriteUnaligned(ref bytes[0], BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<long>(ref bytes[0])));
-            Unsafe.WriteUnaligned(ref bytes[sizeof(long)], BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<short>(ref bytes[sizeof(long)])));
-        }
-
         private static void WriteToBufferIntl(byte* ptr, DateTimeOffset dateTimeOffset)
         {
-            ToComponents(ref dateTimeOffset, out long ticks, out short offset);
+            ToUnflippedComponents(ref dateTimeOffset, out long ticks, out short offset);
             *(long*)ptr = ticks;
             *(short*)(ptr + sizeof(long)) = offset;
         }
         private static void WriteToBufferUnalignedIntl(byte* ptr, DateTimeOffset dateTimeOffset)
         {
-            ToComponents(ref dateTimeOffset, out long ticks, out short offset);
+            ToUnflippedComponents(ref dateTimeOffset, out long ticks, out short offset);
             Unsafe.WriteUnaligned(ptr, ticks);
             Unsafe.WriteUnaligned(ptr + sizeof(long), offset);
         }
         private static void WriteToBufferSpanIntl(Span<byte> span, DateTimeOffset dateTimeOffset)
         {
-            ToComponents(ref dateTimeOffset, out long ticks, out short offset);
+            ToUnflippedComponents(ref dateTimeOffset, out long ticks, out short offset);
             MemoryMarshal.Write(span, ref ticks);
             MemoryMarshal.Write(span.Slice(sizeof(long)), ref offset);
         }
         private static DateTimeOffset ReadFromBufferIntl(byte* ptr)
         {
-            return FromComponents(*(long*)ptr, *(short*)(ptr + sizeof(long)));
+            return FromUnflippedComponents(*(long*)ptr, *(short*)(ptr + sizeof(long)));
         }
         private static DateTimeOffset ReadFromBufferUnalignedIntl(byte* ptr)
         {
-            return FromComponents(Unsafe.ReadUnaligned<long>(ptr), Unsafe.ReadUnaligned<short>(ptr + sizeof(long)));
+            return FromUnflippedComponents(Unsafe.ReadUnaligned<long>(ptr), Unsafe.ReadUnaligned<short>(ptr + sizeof(long)));
         }
         private static DateTimeOffset ReadFromBufferSpanIntl(Span<byte> span)
         {
-            return FromComponents(MemoryMarshal.Read<long>(span), MemoryMarshal.Read<short>(span.Slice(sizeof(long))));
+            return FromUnflippedComponents(MemoryMarshal.Read<long>(span), MemoryMarshal.Read<short>(span.Slice(sizeof(long))));
         }
     }
 }

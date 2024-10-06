@@ -72,6 +72,19 @@ public interface IRpcSerializer
     int GetMinimumSize(Type type, out bool isFixedSize);
 
     /// <summary>
+    /// Gets the minimum size of a type in bytes.
+    /// </summary>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int GetMinimumSize<T>();
+
+    /// <summary>
+    /// Gets the minimum size of a type in bytes.
+    /// </summary>
+    /// <param name="isFixedSize">Will the amount of bytes written always be the same, no matter the value?</param>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int GetMinimumSize<T>(out bool isFixedSize);
+
+    /// <summary>
     /// Write a nullable value type to a raw binary buffer.
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>

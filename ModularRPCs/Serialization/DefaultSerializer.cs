@@ -9,9 +9,10 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Buffers;
-using System.Numerics;
+using System.Globalization;
 using System.Text;
 using DanielWillett.ModularRpcs.Configuration;
+using JetBrains.Annotations;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -27,22 +28,18 @@ public class DefaultSerializer : IRpcSerializer
     internal static ArrayPool<byte> ArrayPool = ArrayPool<byte>.Create(MaxArrayPoolSize, 6);
     protected readonly ConcurrentDictionary<uint, Type> KnownTypes = new ConcurrentDictionary<uint, Type>();
     protected readonly ConcurrentDictionary<Type, uint> KnownTypeIds = new ConcurrentDictionary<Type, uint>();
-    private readonly ConcurrentDictionary<Type, InstanceGetter<object, bool>> _getNullableHasValueByBox = new ConcurrentDictionary<Type, InstanceGetter<object, bool>>();
+
+    // nullable/enum caches
     private readonly ConcurrentDictionary<Type, InstanceGetter<object, object>> _getNullableValueByBox = new ConcurrentDictionary<Type, InstanceGetter<object, object>>();
     private readonly ConcurrentDictionary<Type, NullableHasValueTypeRef> _getNullableHasValueByRefAny = new ConcurrentDictionary<Type, NullableHasValueTypeRef>();
     private readonly ConcurrentDictionary<Type, NullableValueTypeRef> _getNullableValueByRefAny = new ConcurrentDictionary<Type, NullableValueTypeRef>();
-    private readonly ConcurrentDictionary<Type, object> _nullableDefaults = new ConcurrentDictionary<Type, object>();
     private readonly ConcurrentDictionary<Type, ReadNullableBytes> _nullableReadBytes = new ConcurrentDictionary<Type, ReadNullableBytes>();
     private readonly ConcurrentDictionary<Type, ReadNullableStream> _nullableReadStream = new ConcurrentDictionary<Type, ReadNullableStream>();
     private readonly ConcurrentDictionary<Type, ReadNullableBytesRefAny> _nullableReadBytesRefAny = new ConcurrentDictionary<Type, ReadNullableBytesRefAny>();
     private readonly ConcurrentDictionary<Type, ReadNullableStreamRefAny> _nullableReadStreamRefAny = new ConcurrentDictionary<Type, ReadNullableStreamRefAny>();
+    private readonly ConcurrentDictionary<Type, AssignEnumByRefAny> _assignEnumRefAny = new ConcurrentDictionary<Type, AssignEnumByRefAny>();
+
     private readonly SerializationConfiguration _config;
-    private delegate bool NullableHasValueTypeRef(TypedReference value);
-    private delegate object NullableValueTypeRef(TypedReference value);
-    private unsafe delegate object ReadNullableBytes(byte* bytes, uint maxSize, out int bytesRead);
-    private delegate object ReadNullableStream(Stream stream, out int bytesRead);
-    private unsafe delegate void ReadNullableBytesRefAny(TypedReference value, byte* bytes, uint maxSize, out int bytesRead);
-    private delegate void ReadNullableStreamRefAny(TypedReference value, Stream stream, out int bytesRead);
     private readonly Dictionary<Type, IBinaryTypeParser> _parsers;
     private static readonly MethodInfo MtdReadBoxedNullableBytes = typeof(DefaultSerializer).GetMethod(nameof(ReadBoxedNullableBytes), BindingFlags.NonPublic | BindingFlags.Instance)
                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(ReadBoxedNullableBytes))
@@ -80,6 +77,36 @@ public class DefaultSerializer : IRpcSerializer
                                                                               .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
                                                                               .Returning<object>()
                                                                           );
+    private static readonly MethodInfo MtdAssignEnumRefAny = typeof(DefaultSerializer).GetMethod(nameof(AssignEnumRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(AssignEnumRefAny))
+                                                                              .DeclaredIn<DefaultSerializer>(isStatic: false)
+                                                                              .WithGenericParameterDefinition("TEnum")
+                                                                              .WithGenericParameterDefinition("TValue")
+                                                                              .WithParameter(typeof(TypedReference), "byref")
+                                                                              .WithParameter<object>("value")
+                                                                              .ReturningVoid()
+                                                                          );
+    private static readonly MethodInfo MtdGetNullableValueBox = typeof(DefaultSerializer).GetMethod(nameof(GetNullableValueBox), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(GetNullableValueBox))
+                                                                              .DeclaredIn<DefaultSerializer>(isStatic: false)
+                                                                              .WithGenericParameterDefinition("T")
+                                                                              .WithParameter<object>("value")
+                                                                              .Returning<object>()
+                                                                          );
+    private static readonly MethodInfo MtdGetNullableHasValueRefAny = typeof(DefaultSerializer).GetMethod(nameof(GetNullableHasValueRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                      ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(GetNullableHasValueRefAny))
+                                                                          .DeclaredIn<DefaultSerializer>(isStatic: false)
+                                                                          .WithGenericParameterDefinition("T")
+                                                                          .WithParameter(typeof(TypedReference), "value")
+                                                                          .Returning<bool>()
+                                                                      );
+    private static readonly MethodInfo MtdGetNullableValueRefAny = typeof(DefaultSerializer).GetMethod(nameof(GetNullableValueRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
+                                                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(GetNullableValueRefAny))
+                                                                       .DeclaredIn<DefaultSerializer>(isStatic: false)
+                                                                       .WithGenericParameterDefinition("T")
+                                                                       .WithParameter(typeof(TypedReference), "value")
+                                                                       .Returning<object>()
+                                                                   );
 
     private readonly ConcurrentDictionary<Type, IBinaryTypeParser?> _discoveredInParsers = new ConcurrentDictionary<Type, IBinaryTypeParser?>();
     private readonly ConcurrentDictionary<Type, IBinaryTypeParser?> _discoveredOutParsers = new ConcurrentDictionary<Type, IBinaryTypeParser?>();
@@ -268,14 +295,15 @@ public class DefaultSerializer : IRpcSerializer
         CanFastReadPrimitives = true;
         AddDefaultNonPrimitiveSerializers();
     }
-    
+
     /// <summary>
     /// Find a parser that could be assigned but aren't stored as the exact type, or from existing factories.
     /// </summary>
     /// <param name="isIn">Would this be treated as an 'in' (contravariant) parameter, or an 'out' (covariant) parameter.</param>
+    /// <param name="type">The type being parsed.</param>
     private IBinaryTypeParser? LookForParser(bool isIn, Type type)
     {
-        if (type.IsValueType || type == typeof(string))
+        if (type.IsValueType || !isIn && type.IsSealed || isIn && type.BaseType == typeof(object) || type == typeof(object) || type == typeof(ValueType) || type == typeof(string))
             return null;
         ConcurrentDictionary<Type, IBinaryTypeParser?> dict = isIn ? _discoveredInParsers : _discoveredOutParsers;
         IBinaryTypeParser? parser = dict.GetOrAdd(type, isIn ? LookForInParserFactory : LookForOutParserFactory);
@@ -359,6 +387,9 @@ public class DefaultSerializer : IRpcSerializer
     }
 
     /// <inheritdoc />
+    public int GetMinimumSize<T>() => GetMinimumSize<T>(out _);
+
+    /// <inheritdoc />
     public int GetMinimumSize(Type type) => GetMinimumSize(type, out _);
 
     /// <inheritdoc />
@@ -380,6 +411,59 @@ public class DefaultSerializer : IRpcSerializer
         {
             isFixedSize = !parser.IsVariableSize;
             return parser.MinimumSize;
+        }
+
+        if (type.IsEnum)
+        {
+            return GetMinimumSize(type.GetEnumUnderlyingType(), out isFixedSize);
+        }
+
+        Type? nullableType = Nullable.GetUnderlyingType(type);
+        if (nullableType != null)
+        {
+            isFixedSize = false;
+            if (!_parsers.ContainsKey(nullableType) && !_primitiveSizes.ContainsKey(nullableType) && !_primitiveParsers.ContainsKey(nullableType))
+                ThrowNoParserFound(type);
+            return 1;
+        }
+
+        parser = LookForParser(true, type);
+        if (parser != null)
+        {
+            isFixedSize = !parser.IsVariableSize;
+            return parser.MinimumSize;
+        }
+
+        ThrowNoParserFound(type);
+        isFixedSize = false;
+        return 0; // not reached
+    }
+
+    /// <inheritdoc />
+    public int GetMinimumSize<T>(out bool isFixedSize)
+    {
+        Type type = typeof(T);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            isFixedSize = !parser.IsVariableSize;
+            return parser.MinimumSize;
+        }
+
+        if (_primitiveSizes.TryGetValue(type, out int size))
+        {
+            isFixedSize = true;
+            return size;
+        }
+
+        if (_primitiveParsers.TryGetValue(type, out parser))
+        {
+            isFixedSize = !parser.IsVariableSize;
+            return parser.MinimumSize;
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            return GetMinimumSize(typeof(T).GetEnumUnderlyingType(), out isFixedSize);
         }
 
         Type? nullableType = Nullable.GetUnderlyingType(type);
@@ -451,6 +535,11 @@ public class DefaultSerializer : IRpcSerializer
             return parser.GetSize(__makeref(v)) + 1;
         }
 
+        if (typeof(T).IsEnum)
+        {
+            return GetMinimumSize(typeof(T).GetEnumUnderlyingType()) + 1;
+        }
+
         ThrowNoParserFound(type);
         return 0;
     }
@@ -482,6 +571,11 @@ public class DefaultSerializer : IRpcSerializer
                 return genParser.GetSize(value);
 
             return parser.GetSize(__makeref(value));
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            return GetMinimumSize(typeof(T).GetEnumUnderlyingType());
         }
 
         Type? underlyingType = Nullable.GetUnderlyingType(type);
@@ -534,6 +628,11 @@ public class DefaultSerializer : IRpcSerializer
             return GetNullableSize(value, nullableType, valueType);
         }
 
+        if (valueType.IsEnum)
+        {
+            return GetMinimumSize(valueType.GetEnumUnderlyingType());
+        }
+
         parser = LookForParser(true, valueType);
         if (parser != null)
         {
@@ -561,6 +660,11 @@ public class DefaultSerializer : IRpcSerializer
             return !parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value);
         }
 
+        if (type.IsEnum)
+        {
+            return GetMinimumSize(type.GetEnumUnderlyingType());
+        }
+
         Type? nullableType = Nullable.GetUnderlyingType(type);
         if (nullableType != null)
         {
@@ -578,7 +682,7 @@ public class DefaultSerializer : IRpcSerializer
     }
     private int GetNullableSize(object? value, Type underlyingType, Type type)
     {
-        if (value == null || !GetNullableHasValue(value, type))
+        if (value == null)
             return 1;
 
         if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
@@ -592,6 +696,11 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(underlyingType, out parser))
         {
             return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value, type))) + 1;
+        }
+
+        if (underlyingType.IsEnum)
+        {
+            return GetNullableSize(value, underlyingType.GetEnumUnderlyingType(), type);
         }
 
         ThrowNoNullableParserFound(underlyingType);
@@ -615,78 +724,14 @@ public class DefaultSerializer : IRpcSerializer
             return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value))) + 1;
         }
 
+        if (underlyingType.IsEnum)
+        {
+            return GetNullableSize(value, underlyingType.GetEnumUnderlyingType());
+        }
+
         ThrowNoNullableParserFound(underlyingType);
         return 0; // not reached
     }
-    protected bool GetNullableHasValue(object value, Type nullableType)
-    {
-        InstanceGetter<object, bool> getter = _getNullableHasValueByBox.GetOrAdd(nullableType, CreateNullableHasValueGetterByBox);
-        return getter(value);
-    }
-
-    protected object GetNullableValue(object value, Type nullableType)
-    {
-        InstanceGetter<object, object> getter = _getNullableValueByBox.GetOrAdd(nullableType, CreateNullableValueGetterByBox);
-        return getter(value);
-    }
-
-    protected bool GetNullableHasValue(TypedReference value)
-    {
-        NullableHasValueTypeRef getter = _getNullableHasValueByRefAny.GetOrAdd(__reftype(value), CreateNullableHasValueGetterByRefAny);
-        return getter(value);
-    }
-
-    protected object GetNullableValue(TypedReference value)
-    {
-        NullableValueTypeRef getter = _getNullableValueByRefAny.GetOrAdd(__reftype(value), CreateNullableValueGetterByRefAny);
-        return getter(value);
-    }
-
-    private InstanceGetter<object, bool> CreateNullableHasValueGetterByBox(Type nullableType)
-    {
-        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.HasValue))
-                                .DeclaredIn(nullableType, isStatic: false)
-                                .WithPropertyType<bool>()
-                                .WithNoSetter()
-                            );
-
-        return Accessor.GenerateInstanceCaller<InstanceGetter<object, bool>>(getter, true, allowUnsafeTypeBinding: true)!;
-    }
-    private InstanceGetter<object, object> CreateNullableValueGetterByBox(Type nullableType)
-    {
-        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.Value))
-                                .DeclaredIn(nullableType, isStatic: false)
-                                .WithPropertyType(Nullable.GetUnderlyingType(nullableType)!)
-                                .WithNoSetter()
-                            );
-
-        return Accessor.GenerateInstanceCaller<InstanceGetter<object, object>>(getter, true, allowUnsafeTypeBinding: true)!;
-    }
-    private NullableHasValueTypeRef CreateNullableHasValueGetterByRefAny(Type nullableType)
-    {
-        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.HasValue), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.HasValue))
-                                .DeclaredIn(nullableType, isStatic: false)
-                                .WithPropertyType<bool>()
-                                .WithNoSetter()
-                            );
-
-        return Accessor.GenerateInstanceCaller<NullableHasValueTypeRef>(getter, true, allowUnsafeTypeBinding: true)!;
-    }
-    private NullableValueTypeRef CreateNullableValueGetterByRefAny(Type nullableType)
-    {
-        MethodInfo getter = nullableType.GetProperty(nameof(Nullable<int>.Value), BindingFlags.Public | BindingFlags.Instance)?.GetGetMethod(true)
-                            ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.Value))
-                                .DeclaredIn(nullableType, isStatic: false)
-                                .WithPropertyType(Nullable.GetUnderlyingType(nullableType)!)
-                                .WithNoSetter()
-                            );
-
-        return Accessor.GenerateInstanceCaller<NullableValueTypeRef>(getter, true, allowUnsafeTypeBinding: true)!;
-    }
-
 
     /// <inheritdoc />
     public unsafe int WriteObject<T>(in T? value, byte* bytes, uint maxSize) where T : struct
@@ -695,9 +740,9 @@ public class DefaultSerializer : IRpcSerializer
         if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
         {
             if (parser is IBinaryTypeParser<T?> genParser)
-                return genParser.WriteObject(value, bytes + 1, maxSize - 1) + 1;
+                return genParser.WriteObject(value, bytes, maxSize);
 
-            return parser.WriteObject(__makeref(Unsafe.AsRef(in value)), bytes + 1, maxSize - 1) + 1;
+            return parser.WriteObject(__makeref(Unsafe.AsRef(in value)), bytes, maxSize);
         }
 
         if (maxSize < 1)
@@ -709,12 +754,11 @@ public class DefaultSerializer : IRpcSerializer
             return 1;
         }
 
-        *bytes = 1;
-
         type = typeof(T);
         if (_parsers.TryGetValue(type, out parser))
         {
             T v = value.Value;
+            *bytes = 1;
             if (parser is IBinaryTypeParser<T> genParser)
                 return genParser.WriteObject(v, bytes + 1, maxSize - 1) + 1;
 
@@ -724,10 +768,77 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(type, out parser))
         {
             T v = value.Value;
+            *bytes = 1;
             if (parser is IBinaryTypeParser<T> genParser)
                 return genParser.WriteObject(v, bytes + 1, maxSize - 1) + 1;
 
             return parser.WriteObject(__makeref(v), bytes + 1, maxSize - 1) + 1;
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            T v = value.Value;
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, int>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, uint>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, byte>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, sbyte>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, short>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, ushort>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, long>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, ulong>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, nint>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, nuint>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, char>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                *bytes = 1;
+                return WriteObject(Unsafe.As<T, bool>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
         }
 
         ThrowNoParserFound(type);
@@ -754,12 +865,6 @@ public class DefaultSerializer : IRpcSerializer
             return parser.WriteObject(__makeref(value), bytes, maxSize);
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(type);
-        if (underlyingType != null)
-        {
-            return WriteNullable(value!, bytes, maxSize, underlyingType, type);
-        }
-
         parser = LookForParser(true, type);
         if (parser != null)
         {
@@ -767,6 +872,59 @@ public class DefaultSerializer : IRpcSerializer
                 return genParser.WriteObject(value, bytes, maxSize);
 
             return parser.WriteObject(value, bytes, maxSize);
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                return WriteObject(Unsafe.As<T, int>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                return WriteObject(Unsafe.As<T, uint>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                return WriteObject(Unsafe.As<T, byte>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                return WriteObject(Unsafe.As<T, sbyte>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                return WriteObject(Unsafe.As<T, short>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                return WriteObject(Unsafe.As<T, ushort>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                return WriteObject(Unsafe.As<T, long>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                return WriteObject(Unsafe.As<T, ulong>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                return WriteObject(Unsafe.As<T, nint>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                return WriteObject(Unsafe.As<T, nuint>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                return WriteObject(Unsafe.As<T, char>(ref value!), bytes, maxSize);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                return WriteObject(Unsafe.As<T, bool>(ref value!), bytes, maxSize);
+            }
         }
 
         ThrowNoParserFound(type);
@@ -783,7 +941,62 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(type, out parser))
             return parser.WriteObject(value, bytes, maxSize);
 
-        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        Type? underlyingType;
+        if (type.IsEnum)
+        {
+            IConvertible val = (IConvertible)TypedReference.ToObject(value);
+            underlyingType = type.GetEnumUnderlyingType();
+            if (underlyingType == typeof(int))
+            {
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(uint))
+            {
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(byte))
+            {
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(short))
+            {
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(long))
+            {
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(nint))
+            {
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(char))
+            {
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(bool))
+            {
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(type);
         if (underlyingType != null)
         {
             return WriteNullable(value, bytes, maxSize, underlyingType);
@@ -817,10 +1030,65 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(valueType, out parser))
             return parser.WriteObject(value, bytes, maxSize);
 
-        Type? underlyingType = Nullable.GetUnderlyingType(valueType);
+        Type? underlyingType;
+        if (valueType.IsEnum)
+        {
+            IConvertible val = (IConvertible)value!;
+            underlyingType = valueType.GetEnumUnderlyingType();
+            if (underlyingType == typeof(int))
+            {
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(uint))
+            {
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(byte))
+            {
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(short))
+            {
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(long))
+            {
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(nint))
+            {
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(char))
+            {
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+            if (underlyingType == typeof(bool))
+            {
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), bytes, maxSize);
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(valueType);
         if (underlyingType != null)
         {
-            return WriteNullable(value, bytes, maxSize, underlyingType, valueType);
+            return WriteNullable(value, bytes, maxSize, underlyingType);
         }
 
         parser = LookForParser(true, valueType);
@@ -851,27 +1119,93 @@ public class DefaultSerializer : IRpcSerializer
             return 1;
         }
 
-        stream.WriteByte(1);
-
         type = typeof(T);
         if (_parsers.TryGetValue(type, out parser))
         {
             T v = value.Value;
 
+            stream.WriteByte(1);
             if (parser is IBinaryTypeParser<T> genParser)
-                return genParser.WriteObject(v, stream);
+                return genParser.WriteObject(v, stream) + 1;
 
-            return parser.WriteObject(__makeref(v), stream);
+            return parser.WriteObject(__makeref(v), stream) + 1;
         }
 
         if (_primitiveParsers.TryGetValue(type, out parser))
         {
             T v = value.Value;
 
+            stream.WriteByte(1);
             if (parser is IBinaryTypeParser<T> genParser)
-                return genParser.WriteObject(v, stream);
+                return genParser.WriteObject(v, stream) + 1;
 
-            return parser.WriteObject(__makeref(v), stream);
+            return parser.WriteObject(__makeref(v), stream) + 1;
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            T v = value.Value;
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, int>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, uint>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, byte>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, sbyte>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, short>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, ushort>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, long>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, ulong>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, nint>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, nuint>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, char>(ref v), stream) + 1;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                stream.WriteByte(1);
+                return WriteObject(Unsafe.As<T, bool>(ref v), stream) + 1;
+            }
         }
 
         ThrowNoParserFound(type);
@@ -898,10 +1232,63 @@ public class DefaultSerializer : IRpcSerializer
             return parser.WriteObject(__makeref(value), stream);
         }
 
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                return WriteObject(Unsafe.As<T, int>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                return WriteObject(Unsafe.As<T, uint>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                return WriteObject(Unsafe.As<T, byte>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                return WriteObject(Unsafe.As<T, sbyte>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                return WriteObject(Unsafe.As<T, short>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                return WriteObject(Unsafe.As<T, ushort>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                return WriteObject(Unsafe.As<T, long>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                return WriteObject(Unsafe.As<T, ulong>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                return WriteObject(Unsafe.As<T, nint>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                return WriteObject(Unsafe.As<T, nuint>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                return WriteObject(Unsafe.As<T, char>(ref value!), stream);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                return WriteObject(Unsafe.As<T, bool>(ref value!), stream);
+            }
+        }
+
         Type? underlyingType = Nullable.GetUnderlyingType(type);
         if (underlyingType != null)
         {
-            return WriteNullable(value!, stream, underlyingType, type);
+            return WriteNullable(value!, stream, underlyingType);
         }
 
         parser = LookForParser(true, type);
@@ -933,6 +1320,60 @@ public class DefaultSerializer : IRpcSerializer
             return WriteNullable(value, stream, underlyingType);
         }
 
+        if (type.IsEnum)
+        {
+            IConvertible val = (IConvertible)TypedReference.ToObject(value);
+            underlyingType = type.GetEnumUnderlyingType();
+            if (underlyingType == typeof(int))
+            {
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(uint))
+            {
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(byte))
+            {
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(short))
+            {
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(long))
+            {
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(nint))
+            {
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(char))
+            {
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(bool))
+            {
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), stream);
+            }
+        }
+
         parser = LookForParser(true, type);
         if (parser != null)
         {
@@ -961,10 +1402,65 @@ public class DefaultSerializer : IRpcSerializer
         if (_primitiveParsers.TryGetValue(valueType, out parser))
             return parser.WriteObject(value, stream);
 
-        Type? underlyingType = Nullable.GetUnderlyingType(valueType);
+        Type? underlyingType;
+        if (valueType.IsEnum)
+        {
+            underlyingType = valueType.GetEnumUnderlyingType();
+            IConvertible val = (IConvertible?)value!;
+            if (underlyingType == typeof(int))
+            {
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(uint))
+            {
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(byte))
+            {
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(short))
+            {
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(long))
+            {
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(nint))
+            {
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(char))
+            {
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), stream);
+            }
+            if (underlyingType == typeof(bool))
+            {
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), stream);
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(valueType);
         if (underlyingType != null)
         {
-            return WriteNullable(value, stream, underlyingType, valueType);
+            return WriteNullable(value, stream, underlyingType);
         }
 
         parser = LookForParser(true, valueType);
@@ -976,24 +1472,94 @@ public class DefaultSerializer : IRpcSerializer
         ThrowNoParserFound(valueType);
         return 0; // not reached
     }
-    private unsafe int WriteNullable(object? value, byte* bytes, uint maxSize, Type underlyingType, Type nullableType)
+    private unsafe int WriteNullable(object? value, byte* bytes, uint maxSize, Type underlyingType)
     {
         if (maxSize < 1)
             throw new RpcOverflowException(Properties.Exceptions.RpcOverflowException) { ErrorCode = 1 };
 
-        if (value == null || !GetNullableHasValue(value, nullableType))
+        if (value == null)
         {
             bytes[0] = 0;
             return 1;
         }
 
-        bytes[1] = 1;
-
         if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+        {
+            bytes[0] = 1;
             return parser.WriteObject(value, bytes + 1, maxSize - 1) + 1;
+        }
 
         if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+        {
+            bytes[0] = 1;
             return parser.WriteObject(value, bytes + 1, maxSize - 1) + 1;
+        }
+
+        if (underlyingType.IsEnum)
+        {
+            Type underlyingType2 = underlyingType.GetEnumUnderlyingType();
+            IConvertible val = (IConvertible?)value!;
+            if (underlyingType2 == typeof(int))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(uint))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(byte))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(sbyte))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(short))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(ushort))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(long))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(ulong))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(nint))
+            {
+                bytes[0] = 1;
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(nuint))
+            {
+                bytes[0] = 1;
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(char))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(bool))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+        }
 
         ThrowNoParserFound(underlyingType);
         return 0; // not reached
@@ -1009,32 +1575,172 @@ public class DefaultSerializer : IRpcSerializer
             return 1;
         }
 
-        bytes[1] = 1;
-
         if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+        {
+            bytes[0] = 1;
             return parser.WriteObject(GetNullableValue(value), bytes + 1, maxSize - 1) + 1;
+        }
 
         if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+        {
+            bytes[0] = 1;
             return parser.WriteObject(GetNullableValue(value), bytes + 1, maxSize - 1) + 1;
+        }
+
+        if (underlyingType.IsEnum)
+        {
+            Type underlyingType2 = underlyingType.GetEnumUnderlyingType();
+            IConvertible val = (IConvertible?)TypedReference.ToObject(value)!;
+            if (underlyingType2 == typeof(int))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(uint))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(byte))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(sbyte))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(short))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(ushort))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(long))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(ulong))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(nint))
+            {
+                bytes[0] = 1;
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(nuint))
+            {
+                bytes[0] = 1;
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(char))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+            if (underlyingType2 == typeof(bool))
+            {
+                bytes[0] = 1;
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), bytes + 1, maxSize - 1) + 1;
+            }
+        }
 
         ThrowNoParserFound(underlyingType);
         return 0; // not reached
     }
-    private int WriteNullable(object? value, Stream stream, Type underlyingType, Type nullableType)
+    private int WriteNullable(object? value, Stream stream, Type underlyingType)
     {
-        if (value == null || !GetNullableHasValue(value, nullableType))
+        if (value == null)
         {
             stream.WriteByte(0);
             return 1;
         }
 
-        stream.WriteByte(1);
-
         if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+        {
+            stream.WriteByte(1);
             return parser.WriteObject(value, stream) + 1;
+        }
 
         if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+        {
+            stream.WriteByte(1);
             return parser.WriteObject(value, stream) + 1;
+        }
+
+        if (underlyingType.IsEnum)
+        {
+            Type underlyingType2 = underlyingType.GetEnumUnderlyingType();
+            IConvertible val = (IConvertible?)value!;
+            if (underlyingType2 == typeof(int))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(uint))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(byte))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(sbyte))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(short))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(ushort))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(long))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(ulong))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(nint))
+            {
+                stream.WriteByte(1);
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(nuint))
+            {
+                stream.WriteByte(1);
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(char))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(bool))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), stream) + 1;
+            }
+        }
 
         ThrowNoParserFound(underlyingType);
         return 0; // not reached
@@ -1047,13 +1753,83 @@ public class DefaultSerializer : IRpcSerializer
             return 1;
         }
 
-        stream.WriteByte(1);
-
         if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
+        {
+            stream.WriteByte(1);
             return parser.WriteObject(GetNullableValue(value), stream) + 1;
+        }
 
         if (_primitiveParsers.TryGetValue(underlyingType, out parser))
+        {
+            stream.WriteByte(1);
             return parser.WriteObject(GetNullableValue(value), stream) + 1;
+        }
+
+        if (underlyingType.IsEnum)
+        {
+            Type underlyingType2 = underlyingType.GetEnumUnderlyingType();
+            IConvertible val = (IConvertible?)TypedReference.ToObject(value)!;
+            if (underlyingType2 == typeof(int))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToInt32(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(uint))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToUInt32(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(byte))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToByte(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(sbyte))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToSByte(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(short))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToInt16(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(ushort))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToUInt16(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(long))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(ulong))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToUInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(nint))
+            {
+                stream.WriteByte(1);
+                return WriteObject((nint)val.ToInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(nuint))
+            {
+                stream.WriteByte(1);
+                return WriteObject((nint)val.ToUInt64(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(char))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToChar(CultureInfo.InvariantCulture), stream) + 1;
+            }
+            if (underlyingType2 == typeof(bool))
+            {
+                stream.WriteByte(1);
+                return WriteObject(val.ToBoolean(CultureInfo.InvariantCulture), stream) + 1;
+            }
+        }
 
         ThrowNoParserFound(underlyingType);
         return 0; // not reached
@@ -1062,6 +1838,17 @@ public class DefaultSerializer : IRpcSerializer
     /// <inheritdoc />
     public unsafe T? ReadNullable<T>(byte* bytes, uint maxSize, out int bytesRead) where T : struct
     {
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T?> genParser)
+                return genParser.ReadObject(bytes, maxSize, out bytesRead);
+
+            T? value = default;
+            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
+            return value;
+        }
+
         if (maxSize < 1)
             throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
 
@@ -1073,22 +1860,6 @@ public class DefaultSerializer : IRpcSerializer
 
         ++bytes;
         --maxSize;
-
-        Type type = typeof(T?);
-        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
-        {
-            if (parser is IBinaryTypeParser<T?> genParser)
-            {
-                T? v = genParser.ReadObject(bytes, maxSize, out bytesRead);
-                ++bytesRead;
-                return v;
-            }
-
-            T? value = default;
-            parser.ReadObject(bytes, maxSize, out bytesRead, __makeref(value));
-            ++bytesRead;
-            return value;
-        }
 
         type = typeof(T);
         if (_parsers.TryGetValue(type, out parser))
@@ -1121,14 +1892,101 @@ public class DefaultSerializer : IRpcSerializer
             return value;
         }
 
-        ThrowNoParserFound(type);
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<int, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<uint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<byte, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<sbyte, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<short, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<ushort, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<long, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<ulong, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<nint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<nuint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<char, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<bool, T>(ref val);
+            }
+        }
+
         bytesRead = 1; // not reached
+        ThrowNoParserFound(type);
         return default!;
     }
 
     /// <inheritdoc />
     public unsafe void ReadNullable<T>(TypedReference refOut, byte* bytes, uint maxSize, out int bytesRead) where T : struct
     {
+        Type type = typeof(T?);
+        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
+        {
+            if (parser is IBinaryTypeParser<T?> genParser)
+                __refvalue(refOut, T?) = genParser.ReadObject(bytes, maxSize, out bytesRead);
+            else
+                parser.ReadObject(bytes, maxSize, out bytesRead, refOut);
+            return;
+        }
+
         if (maxSize < 1)
             throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
 
@@ -1142,14 +2000,6 @@ public class DefaultSerializer : IRpcSerializer
         ++bytes;
         --maxSize;
 
-        Type type = typeof(T?);
-        if (_parsers.TryGetValue(type, out IBinaryTypeParser? parser))
-        {
-            parser.ReadObject(bytes, maxSize, out bytesRead, refOut);
-            ++bytesRead;
-            return;
-        }
-
         type = typeof(T);
         if (_parsers.TryGetValue(type, out parser))
         {
@@ -1183,8 +2033,97 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<int, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<uint, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<byte, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<sbyte, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<short, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<ushort, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<long, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<ulong, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<nint, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<nuint, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<char, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<bool, T>(ref val);
+                return;
+            }
+        }
+
+        bytesRead = 1;
         ThrowNoParserFound(type);
-        bytesRead = 1; // not reached
     }
 
     /// <inheritdoc />
@@ -1211,25 +2150,73 @@ public class DefaultSerializer : IRpcSerializer
             return value!;
         }
 
-        if (!type.IsValueType && type.BaseType != typeof(object))
+        if (type.IsValueType)
         {
-            foreach (KeyValuePair<Type, IBinaryTypeParser> parserPair in _parsers)
+            if (typeof(T).IsEnum)
             {
-                if (type.IsAssignableFrom(parserPair.Key))
+                // this gets optimized away
+                if (typeof(T).GetEnumUnderlyingType() == typeof(int))
                 {
-                    return (T?)parserPair.Value.ReadObject(parserPair.Key, bytes, maxSize, out bytesRead);
+                    int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<int, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+                {
+                    uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<uint, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+                {
+                    byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<byte, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+                {
+                    sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<sbyte, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+                {
+                    short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<short, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+                {
+                    ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<ushort, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+                {
+                    long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<long, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+                {
+                    ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<ulong, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+                {
+                    nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<nint, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+                {
+                    nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<nuint, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+                {
+                    char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<char, T>(ref val);
+                }
+                if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+                {
+                    bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                    return Unsafe.As<bool, T>(ref val);
                 }
             }
-            foreach (KeyValuePair<Type, IBinaryTypeParser> parserPair in _primitiveParsers)
-            {
-                if (type.IsAssignableFrom(parserPair.Key))
-                {
-                    return (T?)parserPair.Value.ReadObject(parserPair.Key, bytes, maxSize, out bytesRead);
-                }
-            }
-        }
-        else
-        {
+
             Type? underlyingType = Nullable.GetUnderlyingType(type);
             if (underlyingType != null)
             {
@@ -1245,9 +2232,9 @@ public class DefaultSerializer : IRpcSerializer
 
             return (T?)parser.ReadObject(type, bytes, maxSize, out bytesRead);
         }
-
+        
+        bytesRead = 0;
         ThrowNoParserFound(type);
-        bytesRead = 0; // not reached
         return default!;
     }
 
@@ -1267,7 +2254,86 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        Type? underlyingType;
+        if (type.IsEnum)
+        {
+            underlyingType = type.GetEnumUnderlyingType();
+            // this gets optimized away
+            if (underlyingType == typeof(int))
+            {
+                int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(uint))
+            {
+                uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(byte))
+            {
+                byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(short))
+            {
+                short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(long))
+            {
+                long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(nint))
+            {
+                nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(char))
+            {
+                char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(bool))
+            {
+                bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(type);
         if (underlyingType != null)
         {
             ReadNullable(refValue, type, underlyingType, bytes, maxSize, out bytesRead);
@@ -1298,7 +2364,73 @@ public class DefaultSerializer : IRpcSerializer
             return parser.ReadObject(objectType, bytes, maxSize, out bytesRead);
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(objectType);
+        Type? underlyingType;
+        if (objectType.IsEnum)
+        {
+            underlyingType = objectType.GetEnumUnderlyingType();
+            if (underlyingType == typeof(int))
+            {
+                int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(uint))
+            {
+                uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(byte))
+            {
+                byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(short))
+            {
+                short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(long))
+            {
+                long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(nint))
+            {
+                nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(char))
+            {
+                char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(bool))
+            {
+                bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(objectType);
         if (underlyingType != null)
         {
             return ReadNullable(objectType, underlyingType, bytes, maxSize, out bytesRead);
@@ -1330,24 +2462,122 @@ public class DefaultSerializer : IRpcSerializer
         }
         
         type = typeof(T);
+
+        int b = stream.ReadByte();
+        if (b < 0)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+        if (b == 0)
+        {
+            bytesRead = 1;
+            return null;
+        }
+
         if (_parsers.TryGetValue(type, out parser))
         {
             if (parser is IBinaryTypeParser<T> genParser)
-                return genParser.ReadObject(stream, out bytesRead);
+            {
+                T v = genParser.ReadObject(stream, out bytesRead);
+                ++bytesRead;
+                return v;
+            }
 
             T value = default;
             parser.ReadObject(stream, out bytesRead, __makeref(value));
+            ++bytesRead;
             return value;
         }
 
         if (_primitiveParsers.TryGetValue(type, out parser))
         {
             if (parser is IBinaryTypeParser<T> genParser)
-                return genParser.ReadObject(stream, out bytesRead);
+            {
+                T v = genParser.ReadObject(stream, out bytesRead);
+                ++bytesRead;
+                return v;
+            }
 
             T value = default;
             parser.ReadObject(stream, out bytesRead, __makeref(value));
+            ++bytesRead;
             return value;
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                int val = ReadObject<int>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<int, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                uint val = ReadObject<uint>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<uint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                byte val = ReadObject<byte>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<byte, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<sbyte, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                short val = ReadObject<short>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<short, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<ushort, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                long val = ReadObject<long>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<long, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<ulong, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                nint val = ReadObject<nint>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<nint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<nuint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                char val = ReadObject<char>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<char, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                bool val = ReadObject<bool>(stream, out bytesRead);
+                ++bytesRead;
+                return Unsafe.As<bool, T>(ref val);
+            }
         }
 
         ThrowNoParserFound(type);
@@ -1406,6 +2636,95 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                int val = ReadObject<int>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<int, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                uint val = ReadObject<uint>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<uint, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                byte val = ReadObject<byte>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<byte, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<sbyte, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                short val = ReadObject<short>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<short, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<ushort, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                long val = ReadObject<long>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<long, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<ulong, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                nint val = ReadObject<nint>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<nint, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<nuint, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                char val = ReadObject<char>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<char, T>(ref val);
+                return;
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                bool val = ReadObject<bool>(stream, out bytesRead);
+                ++bytesRead;
+                __refvalue(refOut, T?) = Unsafe.As<bool, T>(ref val);
+                return;
+            }
+        }
+
         ThrowNoParserFound(type);
         bytesRead = 1; // not reached
     }
@@ -1432,6 +2751,71 @@ public class DefaultSerializer : IRpcSerializer
             T? value = default;
             parser.ReadObject(stream, out bytesRead, __makeref(value));
             return value!;
+        }
+
+        if (typeof(T).IsEnum)
+        {
+            // this gets optimized away
+            if (typeof(T).GetEnumUnderlyingType() == typeof(int))
+            {
+                int val = ReadObject<int>(stream, out bytesRead);
+                return Unsafe.As<int, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(uint))
+            {
+                uint val = ReadObject<uint>(stream, out bytesRead);
+                return Unsafe.As<uint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(byte))
+            {
+                byte val = ReadObject<byte>(stream, out bytesRead);
+                return Unsafe.As<byte, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                return Unsafe.As<sbyte, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(short))
+            {
+                short val = ReadObject<short>(stream, out bytesRead);
+                return Unsafe.As<short, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(stream, out bytesRead);
+                return Unsafe.As<ushort, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(long))
+            {
+                long val = ReadObject<long>(stream, out bytesRead);
+                return Unsafe.As<long, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(stream, out bytesRead);
+                return Unsafe.As<ulong, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nint))
+            {
+                nint val = ReadObject<nint>(stream, out bytesRead);
+                return Unsafe.As<nint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(stream, out bytesRead);
+                return Unsafe.As<nuint, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(char))
+            {
+                char val = ReadObject<char>(stream, out bytesRead);
+                return Unsafe.As<char, T>(ref val);
+            }
+            if (typeof(T).GetEnumUnderlyingType() == typeof(bool))
+            {
+                bool val = ReadObject<bool>(stream, out bytesRead);
+                return Unsafe.As<bool, T>(ref val);
+            }
         }
 
         Type? underlyingType = Nullable.GetUnderlyingType(type);
@@ -1470,7 +2854,85 @@ public class DefaultSerializer : IRpcSerializer
             return;
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        Type? underlyingType;
+        if (type.IsEnum)
+        {
+            underlyingType = type.GetEnumUnderlyingType();
+            if (underlyingType == typeof(int))
+            {
+                int val = ReadObject<int>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(uint))
+            {
+                uint val = ReadObject<uint>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(byte))
+            {
+                byte val = ReadObject<byte>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(short))
+            {
+                short val = ReadObject<short>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(long))
+            {
+                long val = ReadObject<long>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(nint))
+            {
+                nint val = ReadObject<nint>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(char))
+            {
+                char val = ReadObject<char>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+            if (underlyingType == typeof(bool))
+            {
+                bool val = ReadObject<bool>(stream, out bytesRead);
+                AssignEnum(refValue, val, type);
+                return;
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(type);
         if (underlyingType != null)
         {
             ReadNullable(refValue, type, underlyingType, stream, out bytesRead);
@@ -1501,7 +2963,73 @@ public class DefaultSerializer : IRpcSerializer
             return parser.ReadObject(objectType, stream, out bytesRead);
         }
 
-        Type? underlyingType = Nullable.GetUnderlyingType(objectType);
+        Type? underlyingType;
+        if (objectType.IsEnum)
+        {
+            underlyingType = objectType.GetEnumUnderlyingType();
+            if (underlyingType == typeof(int))
+            {
+                int val = ReadObject<int>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(uint))
+            {
+                uint val = ReadObject<uint>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(byte))
+            {
+                byte val = ReadObject<byte>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(sbyte))
+            {
+                sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(short))
+            {
+                short val = ReadObject<short>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(ushort))
+            {
+                ushort val = ReadObject<ushort>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(long))
+            {
+                long val = ReadObject<long>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(ulong))
+            {
+                ulong val = ReadObject<ulong>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(nint))
+            {
+                nint val = ReadObject<nint>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(nuint))
+            {
+                nuint val = ReadObject<nuint>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(char))
+            {
+                char val = ReadObject<char>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+            if (underlyingType == typeof(bool))
+            {
+                bool val = ReadObject<bool>(stream, out bytesRead);
+                return Enum.ToObject(objectType, val);
+            }
+        }
+
+        underlyingType = Nullable.GetUnderlyingType(objectType);
         if (underlyingType != null)
         {
             return ReadNullable(objectType, underlyingType, stream, out bytesRead);
@@ -1517,49 +3045,175 @@ public class DefaultSerializer : IRpcSerializer
         bytesRead = 0; // not reached
         return default!;
     }
-    protected object GetDefaultNullable(Type nullableType)
-    {
-        // ReSharper disable once RedundantSuppressNullableWarningExpression
-        return _nullableDefaults.GetOrAdd(nullableType, Activator.CreateInstance!);
-    }
+
     protected unsafe object ReadNullable(Type nullableType, Type underlyingType, byte* bytes, uint maxSize, out int bytesRead)
     {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         return _nullableReadBytes.GetOrAdd(nullableType,
-            _ => (ReadNullableBytes)MtdReadBoxedNullableBytes.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytes))
+            (_, underlyingType) => (ReadNullableBytes)MtdReadBoxedNullableBytes.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytes), this),
+            underlyingType
         )(bytes, maxSize, out bytesRead);
+#else
+        return _nullableReadBytes.GetOrAdd(nullableType,
+            _ => (ReadNullableBytes)MtdReadBoxedNullableBytes.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytes), this)
+        )(bytes, maxSize, out bytesRead);
+#endif
     }
     protected object ReadNullable(Type nullableType, Type underlyingType, Stream stream, out int bytesRead)
     {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         return _nullableReadStream.GetOrAdd(nullableType,
-            _ => (ReadNullableStream)MtdReadBoxedNullableStream.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStream))
+            (_, underlyingType) => (ReadNullableStream)MtdReadBoxedNullableStream.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStream), this),
+            underlyingType
         )(stream, out bytesRead);
+#else
+        return _nullableReadStream.GetOrAdd(nullableType,
+            _ => (ReadNullableStream)MtdReadBoxedNullableStream.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStream), this)
+        )(stream, out bytesRead);
+#endif
     }
     protected unsafe void ReadNullable(TypedReference value, Type nullableType, Type underlyingType, byte* bytes, uint maxSize, out int bytesRead)
     {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         _nullableReadBytesRefAny.GetOrAdd(nullableType,
-            _ => (ReadNullableBytesRefAny)MtdReadBoxedNullableBytesRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytes))
+            (_, underlyingType) => (ReadNullableBytesRefAny)MtdReadBoxedNullableBytesRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytesRefAny), this)
+            , underlyingType
         )(value, bytes, maxSize, out bytesRead);
+#else
+        _nullableReadBytesRefAny.GetOrAdd(nullableType,
+            _ => (ReadNullableBytesRefAny)MtdReadBoxedNullableBytesRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableBytesRefAny), this)
+        )(value, bytes, maxSize, out bytesRead);
+#endif
     }
     protected void ReadNullable(TypedReference value, Type nullableType, Type underlyingType, Stream stream, out int bytesRead)
     {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         _nullableReadStreamRefAny.GetOrAdd(nullableType,
-            _ => (ReadNullableStreamRefAny)MtdReadBoxedNullableStreamRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStream))
+            (_, underlyingType) => (ReadNullableStreamRefAny)MtdReadBoxedNullableStreamRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStreamRefAny), this),
+            underlyingType
         )(value, stream, out bytesRead);
+#else
+        _nullableReadStreamRefAny.GetOrAdd(nullableType,
+            _ => (ReadNullableStreamRefAny)MtdReadBoxedNullableStreamRefAny.MakeGenericMethod(underlyingType).CreateDelegate(typeof(ReadNullableStreamRefAny), this)
+        )(value, stream, out bytesRead);
+#endif
     }
+    protected object GetNullableValue(object value, Type nullableType)
+    {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        InstanceGetter<object, object> getter = _getNullableValueByBox.GetOrAdd(nullableType,
+            static (nullableType, serializer) => (InstanceGetter<object, object>)MtdGetNullableValueBox.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(InstanceGetter<object, object>), serializer)
+            , this
+        );
+#else
+        InstanceGetter<object, object> getter = _getNullableValueByBox.GetOrAdd(nullableType,
+            nullableType => (InstanceGetter<object, object>)MtdGetNullableValueBox.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(InstanceGetter<object, object>), this)
+        );
+#endif
+        return getter(value);
+    }
+
+    protected bool GetNullableHasValue(TypedReference value)
+    {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        NullableHasValueTypeRef getter = _getNullableHasValueByRefAny.GetOrAdd(__reftype(value),
+            static (nullableType, serializer) => (NullableHasValueTypeRef)MtdGetNullableHasValueRefAny.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(NullableHasValueTypeRef), serializer)
+            , this
+        );
+#else
+        NullableHasValueTypeRef getter = _getNullableHasValueByRefAny.GetOrAdd(__reftype(value),
+            nullableType => (NullableHasValueTypeRef)MtdGetNullableHasValueRefAny.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(NullableHasValueTypeRef), this)
+        );
+#endif
+        return getter(value);
+    }
+
+    protected object GetNullableValue(TypedReference value)
+    {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        NullableValueTypeRef getter = _getNullableValueByRefAny.GetOrAdd(__reftype(value),
+            static (nullableType, serializer) => (NullableValueTypeRef)MtdGetNullableValueRefAny.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(NullableValueTypeRef), serializer)
+            , this
+        );
+#else
+        NullableValueTypeRef getter = _getNullableValueByRefAny.GetOrAdd(__reftype(value),
+            nullableType => (NullableValueTypeRef)MtdGetNullableValueRefAny.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(NullableValueTypeRef), this)
+        );
+#endif
+
+        return getter(value);
+    }
+
+    private void AssignEnum(TypedReference byref, object value, Type enumType)
+    {
+#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+        _assignEnumRefAny.GetOrAdd(enumType,
+            static (enumType, serializer) => (AssignEnumByRefAny)MtdAssignEnumRefAny.MakeGenericMethod([ enumType, enumType.GetEnumUnderlyingType() ]).CreateDelegate(typeof(AssignEnumByRefAny), serializer)
+            , this
+        )(byref, value);
+#else
+        _assignEnumRefAny.GetOrAdd(enumType,
+            enumType => (AssignEnumByRefAny)MtdAssignEnumRefAny.MakeGenericMethod([ enumType, enumType.GetEnumUnderlyingType() ]).CreateDelegate(typeof(AssignEnumByRefAny), this)
+        )(byref, value);
+#endif
+    }
+
+    [UsedImplicitly]
+    private object GetNullableValueBox<T>(object value) where T : struct
+    {
+        return (T)value;
+    }
+
+    [UsedImplicitly]
+    private bool GetNullableHasValueRefAny<T>(TypedReference byref) where T : struct
+    {
+        ref T? val = ref __refvalue(byref, T?);
+        return val.HasValue;
+    }
+
+    [UsedImplicitly]
+    private object GetNullableValueRefAny<T>(TypedReference byref) where T : struct
+    {
+        ref T? val = ref __refvalue(byref, T?);
+        return val!.Value;
+    }
+
+    [UsedImplicitly]
     private unsafe object ReadBoxedNullableBytes<T>(byte* bytes, uint maxSize, out int bytesRead) where T : struct
     {
         return ReadNullable<T>(bytes, maxSize, out bytesRead)!;
     }
+
+    [UsedImplicitly]
     private object ReadBoxedNullableStream<T>(Stream stream, out int bytesRead) where T : struct
     {
         return ReadNullable<T>(stream, out bytesRead)!;
     }
+
+    [UsedImplicitly]
     private unsafe void ReadBoxedNullableBytesRefAny<T>(TypedReference value, byte* bytes, uint maxSize, out int bytesRead) where T : struct
     {
         ReadNullable<T>(value, bytes, maxSize, out bytesRead);
     }
+
+    [UsedImplicitly]
     private void ReadBoxedNullableStreamRefAny<T>(TypedReference value, Stream stream, out int bytesRead) where T : struct
     {
         ReadNullable<T>(value, stream, out bytesRead);
     }
+
+    [UsedImplicitly]
+    private void AssignEnumRefAny<TEnum, TValue>(TypedReference byref, object value)
+    {
+        TValue val = (TValue)value;
+        __refvalue(byref, TEnum) = Unsafe.As<TValue, TEnum>(ref val);
+    }
+
+    private delegate bool NullableHasValueTypeRef(TypedReference value);
+    private delegate object NullableValueTypeRef(TypedReference value);
+    private unsafe delegate object ReadNullableBytes(byte* bytes, uint maxSize, out int bytesRead);
+    private delegate object ReadNullableStream(Stream stream, out int bytesRead);
+    private unsafe delegate void ReadNullableBytesRefAny(TypedReference value, byte* bytes, uint maxSize, out int bytesRead);
+    private delegate void ReadNullableStreamRefAny(TypedReference value, Stream stream, out int bytesRead);
+    private delegate void AssignEnumByRefAny(TypedReference byref, object value);
 }

@@ -4,7 +4,6 @@ using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
 using JetBrains.Annotations;
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -442,7 +441,7 @@ public unsafe class UnmanagedValueTypeBinaryArrayTypeParser<TValueType> : ArrayB
         if (!BitConverter.IsLittleEndian)
             FlipBits(bytes, 0, actualCount);
 
-        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount / sizeof(TValueType), false));
         if (maxSize < actualCount + newHdrSize)
             throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
         if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap)

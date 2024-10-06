@@ -100,7 +100,8 @@ public class UnityVector2Parser : BinaryTypeParser<Vector2>
         Span<byte> span = stackalloc byte[8];
         int ct = stream.Read(span);
 #endif
-
+            
+        bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UnityVector2Parser))) { ErrorCode = 2 };
 
@@ -162,7 +163,7 @@ public class UnityVector2Parser : BinaryTypeParser<Vector2>
             const int elementSize = 8;
             for (; index < size; index += elementSize)
             {
-                ref byte pos = ref bytes[index * elementSize];
+                ref byte pos = ref bytes[index];
                 Unsafe.WriteUnaligned(ref pos, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref pos)));
 
                 pos = ref Unsafe.Add(ref pos, 4);

@@ -116,7 +116,8 @@ public class UnityVector4Parser : BinaryTypeParser<Vector4>
         Span<byte> span = stackalloc byte[16];
         int ct = stream.Read(span);
 #endif
-
+            
+        bytesRead = ct;
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UnityVector4Parser))) { ErrorCode = 2 };
 
@@ -150,7 +151,6 @@ public class UnityVector4Parser : BinaryTypeParser<Vector4>
         }
 #endif
 
-        bytesRead = 16;
         return v4;
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Vector4>
@@ -199,7 +199,7 @@ public class UnityVector4Parser : BinaryTypeParser<Vector4>
             const int elementSize = 16;
             for (; index < size; index += elementSize)
             {
-                ref byte pos = ref bytes[index * elementSize];
+                ref byte pos = ref bytes[index];
                 Unsafe.WriteUnaligned(ref pos, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref pos)));
 
                 pos = ref Unsafe.Add(ref pos, 4);

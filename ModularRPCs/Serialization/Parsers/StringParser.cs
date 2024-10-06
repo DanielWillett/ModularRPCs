@@ -548,64 +548,69 @@ public class StringParser : BinaryTypeParser<string?>
                 ctx.Stream = stream;
                 ctx.Parser = this;
                 ctx.ByteSize = size;
-                ctx.MaxBufferSize = _config.MaximumBufferSize;
-                str = string.Create(charLen, ctx, static (span, state) =>
+                fixed (int* bytesReadPtr = &bytesRead)
                 {
-                    if (state.ByteSize <= DefaultSerializer.MaxArrayPoolSize)
+                    ctx.BytesRead = bytesReadPtr;
+
+                    ctx.MaxBufferSize = _config.MaximumBufferSize;
+                    str = string.Create(charLen, ctx, static (span, state) =>
                     {
-                        byte[] buffer = DefaultSerializer.ArrayPool.Rent(state.ByteSize);
-                        try
+                        if (state.ByteSize <= DefaultSerializer.MaxArrayPoolSize)
                         {
+                            byte[] buffer = DefaultSerializer.ArrayPool.Rent(state.ByteSize);
+                            try
+                            {
+                                int ct = state.Stream.Read(buffer, 0, state.ByteSize);
+                                *state.BytesRead += ct;
+                                if (ct != state.ByteSize)
+                                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
+
+                                state.Parser._encoding.GetChars(buffer.AsSpan(0, state.ByteSize), span);
+                            }
+                            finally
+                            {
+                                DefaultSerializer.ArrayPool.Return(buffer);
+                            }
+                        }
+                        else if (state.ByteSize <= state.MaxBufferSize)
+                        {
+                            byte[] buffer = new byte[state.ByteSize];
                             int ct = state.Stream.Read(buffer, 0, state.ByteSize);
-                            state.BytesRead += ct;
+                            *state.BytesRead += ct;
                             if (ct != state.ByteSize)
                                 throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
 
                             state.Parser._encoding.GetChars(buffer.AsSpan(0, state.ByteSize), span);
                         }
-                        finally
+                        else
                         {
-                            DefaultSerializer.ArrayPool.Return(buffer);
-                        }
-                    }
-                    else if (state.ByteSize <= state.MaxBufferSize)
-                    {
-                        byte[] buffer = new byte[state.ByteSize];
-                        int ct = state.Stream.Read(buffer, 0, state.ByteSize);
-                        state.BytesRead += ct;
-                        if (ct != state.ByteSize)
-                            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
-
-                        state.Parser._encoding.GetChars(buffer.AsSpan(0, state.ByteSize), span);
-                    }
-                    else
-                    {
-                        byte[] buffer = new byte[state.MaxBufferSize];
-                        int bytesLeft = state.ByteSize;
-                        int charsLeft = span.Length;
-                        int keepDataOffset = 0;
-                        do
-                        {
-                            int sizeToRead = Math.Min(buffer.Length - keepDataOffset, bytesLeft);
-                            int ct = state.Stream.Read(buffer, keepDataOffset, sizeToRead);
-                            state.BytesRead += ct;
-                            if (ct != sizeToRead)
-                                throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
-
-                            state.Parser._decoder.Convert(buffer.AsSpan(0, sizeToRead), span.Slice(span.Length - charsLeft),
-                                bytesLeft - sizeToRead <= 0, out int bytesUsed, out int charsUsed,
-                                out _);
-                            bytesLeft -= bytesUsed;
-                            charsLeft -= charsUsed;
-                            if (bytesUsed < sizeToRead)
+                            byte[] buffer = new byte[state.MaxBufferSize];
+                            int bytesLeft = state.ByteSize;
+                            int charsLeft = span.Length;
+                            int keepDataOffset = 0;
+                            do
                             {
-                                keepDataOffset = buffer.Length - bytesUsed;
-                                Buffer.BlockCopy(buffer, bytesUsed, buffer, 0, keepDataOffset);
-                            }
-                            else keepDataOffset = 0;
-                        } while (bytesLeft > 0 && charsLeft > 0);
-                    }
-                });
+                                int sizeToRead = Math.Min(buffer.Length - keepDataOffset, bytesLeft);
+                                int ct = state.Stream.Read(buffer, keepDataOffset, sizeToRead);
+                                *state.BytesRead += ct;
+                                if (ct != sizeToRead)
+                                    throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, state.Parser.GetType().Name)) { ErrorCode = 2 };
+
+                                state.Parser._decoder.Convert(buffer.AsSpan(0, sizeToRead), span.Slice(span.Length - charsLeft),
+                                    bytesLeft - sizeToRead <= 0, out int bytesUsed, out int charsUsed,
+                                    out _);
+                                bytesLeft -= bytesUsed;
+                                charsLeft -= charsUsed;
+                                if (bytesUsed < sizeToRead)
+                                {
+                                    keepDataOffset = buffer.Length - bytesUsed;
+                                    Buffer.BlockCopy(buffer, bytesUsed, buffer, 0, keepDataOffset);
+                                }
+                                else keepDataOffset = 0;
+                            } while (bytesLeft > 0 && charsLeft > 0);
+                        }
+                    });
+                }
             }
             catch (ArgumentException)
             {

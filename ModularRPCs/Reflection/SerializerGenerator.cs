@@ -204,6 +204,7 @@ internal sealed class SerializerGenerator
     internal static bool IsPrimitiveLikeType(Type type)
     {
         return type.IsPrimitive
+               || type.IsEnum
                || type == typeof(decimal)
                || type == typeof(DateTime)
                || type == typeof(DateTimeOffset)
@@ -255,7 +256,7 @@ internal sealed class SerializerGenerator
     }
     internal static bool CanQuickSerializeType(Type type)
     {
-        return BitConverter.IsLittleEndian && type.IsPrimitive && (IntPtr.Size == 8 || type != typeof(nint) && type != typeof(nuint));
+        return BitConverter.IsLittleEndian && (type.IsPrimitive && (IntPtr.Size == 8 || type != typeof(nint) && type != typeof(nuint)) || type.IsEnum);
     }
     internal static bool ShouldBePassedByReference(Type type)
     {
@@ -316,6 +317,9 @@ internal sealed class SerializerGenerator
         {
             return 8;
         }
+
+        if (type.IsEnum)
+            return GetPrimitiveTypeSize(type.GetEnumUnderlyingType());
 
         throw new ArgumentException("Not a primitve type.");
     }
@@ -540,7 +544,7 @@ internal sealed class SerializerGenerator
     }
     internal static void LoadFromRef(Type type, IOpCodeEmitter il)
     {
-        if (type == typeof(long))
+        if (type == typeof(long) || type == typeof(ulong))
             il.Emit(OpCodes.Ldind_I8);
         else if (type == typeof(int))
             il.Emit(OpCodes.Ldind_I4);
@@ -548,11 +552,11 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Ldind_U4);
         else if (type == typeof(short))
             il.Emit(OpCodes.Ldind_I2);
-        else if (type == typeof(ushort))
+        else if (type == typeof(ushort) || type == typeof(char))
             il.Emit(OpCodes.Ldind_U2);
         else if (type == typeof(sbyte))
             il.Emit(OpCodes.Ldind_I1);
-        else if (type == typeof(byte))
+        else if (type == typeof(byte) || type == typeof(bool))
             il.Emit(OpCodes.Ldind_U1);
         else if (type == typeof(float))
             il.Emit(OpCodes.Ldind_R4);
@@ -563,36 +567,38 @@ internal sealed class SerializerGenerator
         else if (type == typeof(nuint))
             il.Emit(OpCodes.Ldind_I);
         else if (type.IsValueType)
-            il.Emit(OpCodes.Ldobj, type);
+        {
+            if (!type.IsEnum)
+                il.Emit(OpCodes.Ldobj, type);
+            else
+                LoadFromRef(type.GetEnumUnderlyingType(), il);
+        }
         else
             il.Emit(OpCodes.Ldind_Ref);
     }
     internal static void SetToRef(Type type, IOpCodeEmitter il)
     {
-        if (type == typeof(long))
+        if (type == typeof(long) || type == typeof(ulong))
             il.Emit(OpCodes.Stind_I8);
-        else if (type == typeof(int))
+        else if (type == typeof(int) || type == typeof(uint))
             il.Emit(OpCodes.Stind_I4);
-        else if (type == typeof(uint))
-            il.Emit(OpCodes.Stind_I4);
-        else if (type == typeof(short))
+        else if (type == typeof(short) || type == typeof(ushort))
             il.Emit(OpCodes.Stind_I2);
-        else if (type == typeof(ushort))
-            il.Emit(OpCodes.Stind_I2);
-        else if (type == typeof(sbyte))
-            il.Emit(OpCodes.Stind_I1);
-        else if (type == typeof(byte))
+        else if (type == typeof(sbyte) || type == typeof(byte) || type == typeof(bool))
             il.Emit(OpCodes.Stind_I1);
         else if (type == typeof(float))
             il.Emit(OpCodes.Stind_R4);
         else if (type == typeof(double))
             il.Emit(OpCodes.Stind_R8);
-        else if (type == typeof(nint))
-            il.Emit(OpCodes.Stind_I);
-        else if (type == typeof(nuint))
+        else if (type == typeof(nint) || type == typeof(nuint))
             il.Emit(OpCodes.Stind_I);
         else if (type.IsValueType)
-            il.Emit(OpCodes.Stobj, type);
+        {
+            if (!type.IsEnum)
+                il.Emit(OpCodes.Stobj, type);
+            else
+                SetToRef(type.GetEnumUnderlyingType(), il);
+        }
         else
             il.Emit(OpCodes.Stind_Ref);
     }

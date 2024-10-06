@@ -1,8 +1,8 @@
 ﻿extern alias JetBrains;
-using System;
-using System.Collections.Generic;
 using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace DanielWillett.ModularRpcs.Serialization;
@@ -49,6 +49,21 @@ internal static class UnitySerializationRegistrationHelper
 
         primitiveParsers.Add(typeof(Matrix4x4), new UnityMatrix4x4Parser());
         primitiveParsers.AddManySerializer(new UnityMatrix4x4Parser.Many(config));
+
+        primitiveParsers.Add(typeof(Plane), new UnityPlaneParser());
+        primitiveParsers.AddManySerializer(new UnityPlaneParser.Many(config));
+
+        primitiveParsers.Add(typeof(Ray), new UnityRayParser());
+        primitiveParsers.AddManySerializer(new UnityRayParser.Many(config));
+
+        primitiveParsers.Add(typeof(Ray2D), new UnityRay2DParser());
+        primitiveParsers.AddManySerializer(new UnityRay2DParser.Many(config));
+
+        primitiveParsers.Add(typeof(Rect), new UnityRectParser());
+        primitiveParsers.AddManySerializer(new UnityRectParser.Many(config));
+
+        primitiveParsers.Add(typeof(Resolution), new UnityResolutionParser());
+        primitiveParsers.AddManySerializer(new UnityResolutionParser.Many(config));
     }
 #pragma warning restore IDE0051
 }

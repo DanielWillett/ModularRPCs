@@ -475,7 +475,7 @@ public class ParserTests
 
         byte* buffer = stackalloc byte[7];
 
-        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(value, buffer, 3));
+        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(value, buffer, 7));
     }
 
     [Test]
@@ -728,7 +728,7 @@ public class ParserTests
 
         byte* buffer = stackalloc byte[7];
 
-        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject((nuint)value, buffer, 3));
+        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject((nuint)value, buffer, 7));
     }
 
     [Test]

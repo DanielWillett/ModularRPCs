@@ -36,6 +36,7 @@ namespace DanielWillett.ModularRpcs.Reflection;
 public sealed class ProxyGenerator : IRefSafeLoggable
 {
     private readonly Dictionary<Type, ProxyTypeInfo> _proxies = new Dictionary<Type, ProxyTypeInfo>();
+
     private readonly ConcurrentDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions = new ConcurrentDictionary<Type, Func<object, WeakReference?>>();
     private readonly ConcurrentDictionary<Type, Func<object, bool>> _releaseObjectFunctions = new ConcurrentDictionary<Type, Func<object, bool>>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate?> _getCallInfoFunctions = new ConcurrentDictionary<RuntimeMethodHandle, Delegate?>();
@@ -45,6 +46,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsBytes = new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
     private readonly ConcurrentDictionary<Type, ConvReturnValueToVt> _convFromReturnFunctions = new ConcurrentDictionary<Type, ConvReturnValueToVt>();
     private readonly ConcurrentDictionary<Type, ConvVtToReturnValue> _convToReturnFunctions = new ConcurrentDictionary<Type, ConvVtToReturnValue>();
+
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
     private delegate ref RpcCallMethodInfo GetCallInfo();
@@ -490,9 +492,9 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// Try's to release an object by it's identifier.
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
-    /// <exception cref="ArgumentException"><paramref name="instanceType"/> does not implement <see cref="IRpcObject{T}"/>.</exception>
+    /// <exception cref="ArgumentException"><typeparamref name="T"/> does not implement <see cref="IRpcObject{T}"/>.</exception>
     /// <returns><see langword="true"/> if the object was found and released, otherwise <see langword="false"/>.</returns>
-    public bool ReleaseObject<T>(T obj) where T : class
+    public bool ReleaseObject<T>(T obj) where T : class, IRpcObject<T>
     {
         return ReleaseObject(typeof(T), obj);
     }

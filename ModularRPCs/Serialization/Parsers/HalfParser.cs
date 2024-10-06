@@ -121,20 +121,6 @@ public class HalfParser : BinaryTypeParser<Half>
 
         }
 
-        protected override Half FlipBits(Half toFlip)
-        {
-            ushort flip = *(ushort*)&toFlip;
-            flip = BinaryPrimitives.ReverseEndianness(flip);
-            return *(Half*)flip;
-        }
-        protected override void FlipBits(byte* bytes, int hdrSize, int size)
-        {
-            Unsafe.WriteUnaligned(bytes, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(bytes)));
-        }
-        protected override void FlipBits(byte[] bytes, int hdrSize, int size)
-        {
-            Unsafe.WriteUnaligned(ref bytes[0], BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ushort>(ref bytes[0])));
-        }
         private static void WriteToBufferIntl(byte* ptr, Half v)
         {
             *(ushort*)ptr = *(ushort*)&v;

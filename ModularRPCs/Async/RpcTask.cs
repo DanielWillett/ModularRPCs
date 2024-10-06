@@ -162,9 +162,12 @@ public class RpcTask
             ? Exceptions.Where(x => x is not RpcNoConnectionsException && (ConnectionIntl is not { IsClosed: true } || x is not RpcTimeoutException)).ToArray()
             : Exceptions.ToArray();
 
-        return newExceptions.Length == 0
-            ? null
-            : new AggregateException(newExceptions);
+        return newExceptions.Length switch
+        {
+            0 => null,
+            1 => newExceptions[0],
+            _ => new AggregateException(newExceptions)
+        };
     }
     protected internal virtual bool TrySetResult(object? value)
     {

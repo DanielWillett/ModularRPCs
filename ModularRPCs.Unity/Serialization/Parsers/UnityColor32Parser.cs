@@ -21,7 +21,7 @@ public class UnityColor32Parser : BinaryTypeParser<Color32>
 
         return 4;
     }
-    public override unsafe int WriteObject(Color32 value, Stream stream)
+    public override int WriteObject(Color32 value, Stream stream)
     {
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         byte[] span = DefaultSerializer.ArrayPool.Rent(4);
@@ -66,7 +66,7 @@ public class UnityColor32Parser : BinaryTypeParser<Color32>
         bytesRead = 4;
         return v4;
     }
-    public override unsafe Color32 ReadObject(Stream stream, out int bytesRead)
+    public override Color32 ReadObject(Stream stream, out int bytesRead)
     {
         Color32 v4 = default;
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
@@ -78,7 +78,8 @@ public class UnityColor32Parser : BinaryTypeParser<Color32>
         Span<byte> span = stackalloc byte[4];
         int ct = stream.Read(span);
 #endif
-
+            
+        bytesRead = ct;
         if (ct != 4)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UnityColor32Parser))) { ErrorCode = 2 };
 
@@ -95,7 +96,6 @@ public class UnityColor32Parser : BinaryTypeParser<Color32>
         }
 #endif
 
-        bytesRead = 4;
         return v4;
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Color32>

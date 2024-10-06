@@ -8,33 +8,34 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
-public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
+public class UnityRectParser : BinaryTypeParser<Rect>
 {
     public override bool IsVariableSize => false;
     public override int MinimumSize => 16;
-    public override unsafe int WriteObject(Quaternion value, byte* bytes, uint maxSize)
+    public override unsafe int WriteObject(Rect value, byte* bytes, uint maxSize)
     {
         if (maxSize < 16)
-            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, nameof(UnityQuaternionParser))) { ErrorCode = 1 };
+            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, nameof(UnityRectParser))) { ErrorCode = 1 };
 
         if (BitConverter.IsLittleEndian)
         {
-            Unsafe.WriteUnaligned(bytes, value.x);
-            Unsafe.WriteUnaligned(bytes + 4, value.y);
-            Unsafe.WriteUnaligned(bytes + 8, value.z);
-            Unsafe.WriteUnaligned(bytes + 12, value.w);
+            Unsafe.WriteUnaligned(bytes,      value.x);
+            Unsafe.WriteUnaligned(bytes +  4, value.y);
+            Unsafe.WriteUnaligned(bytes +  8, value.width);
+            Unsafe.WriteUnaligned(bytes + 12, value.height);
         }
         else
         {
-            Unsafe.WriteUnaligned(bytes,      BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.x)));
-            Unsafe.WriteUnaligned(bytes +  4, BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.y)));
-            Unsafe.WriteUnaligned(bytes +  8, BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.z)));
-            Unsafe.WriteUnaligned(bytes + 12, BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.w)));
+            float x = value.x, y = value.y, w = value.width, h = value.height;
+            Unsafe.WriteUnaligned(bytes,      BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref x)));
+            Unsafe.WriteUnaligned(bytes +  4, BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref y)));
+            Unsafe.WriteUnaligned(bytes +  8, BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref w)));
+            Unsafe.WriteUnaligned(bytes + 12, BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref h)));
         }
 
         return 16;
     }
-    public override unsafe int WriteObject(Quaternion value, Stream stream)
+    public override int WriteObject(Rect value, Stream stream)
     {
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         byte[] span = DefaultSerializer.ArrayPool.Rent(16);
@@ -45,17 +46,18 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
 #endif
         if (BitConverter.IsLittleEndian)
         {
-            Unsafe.WriteUnaligned(ref span[0], value.x);
-            Unsafe.WriteUnaligned(ref span[4], value.y);
-            Unsafe.WriteUnaligned(ref span[8], value.z);
-            Unsafe.WriteUnaligned(ref span[12], value.w);
+            Unsafe.WriteUnaligned(ref span[ 0], value.x);
+            Unsafe.WriteUnaligned(ref span[ 4], value.y);
+            Unsafe.WriteUnaligned(ref span[ 8], value.width);
+            Unsafe.WriteUnaligned(ref span[12], value.height);
         }
         else
         {
-            Unsafe.WriteUnaligned(ref span[ 0], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.x)));
-            Unsafe.WriteUnaligned(ref span[ 4], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.y)));
-            Unsafe.WriteUnaligned(ref span[ 8], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.z)));
-            Unsafe.WriteUnaligned(ref span[12], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref value.w)));
+            float x = value.x, y = value.y, w = value.width, h = value.height;
+            Unsafe.WriteUnaligned(ref span[ 0], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref x)));
+            Unsafe.WriteUnaligned(ref span[ 4], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref y)));
+            Unsafe.WriteUnaligned(ref span[ 8], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref w)));
+            Unsafe.WriteUnaligned(ref span[12], BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref h)));
         }
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
@@ -73,18 +75,18 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
 #endif
         return 16;
     }
-    public override unsafe Quaternion ReadObject(byte* bytes, uint maxSize, out int bytesRead)
+    public override unsafe Rect ReadObject(byte* bytes, uint maxSize, out int bytesRead)
     {
         if (maxSize < 16)
-            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(UnityQuaternionParser))) { ErrorCode = 1 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(UnityRectParser))) { ErrorCode = 1 };
 
-        Quaternion v4 = default;
+        Rect v4 = default;
         if (BitConverter.IsLittleEndian)
         {
             v4.x = Unsafe.ReadUnaligned<float>(bytes);
             v4.y = Unsafe.ReadUnaligned<float>(bytes + 4);
-            v4.z = Unsafe.ReadUnaligned<float>(bytes + 8);
-            v4.w = Unsafe.ReadUnaligned<float>(bytes + 12);
+            v4.width = Unsafe.ReadUnaligned<float>(bytes + 8);
+            v4.height = Unsafe.ReadUnaligned<float>(bytes + 12);
         }
         else
         {
@@ -95,18 +97,18 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
             v4.y = Unsafe.As<int, float>(ref read);
 
             read = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(bytes + 8));
-            v4.z = Unsafe.As<int, float>(ref read);
+            v4.width = Unsafe.As<int, float>(ref read);
 
             read = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(bytes + 12));
-            v4.w = Unsafe.As<int, float>(ref read);
+            v4.height = Unsafe.As<int, float>(ref read);
         }
 
         bytesRead = 16;
         return v4;
     }
-    public override Quaternion ReadObject(Stream stream, out int bytesRead)
+    public override Rect ReadObject(Stream stream, out int bytesRead)
     {
-        Quaternion v4 = default;
+        Rect v4 = default;
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         byte[] span = DefaultSerializer.ArrayPool.Rent(16);
         try
@@ -116,17 +118,17 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
         Span<byte> span = stackalloc byte[16];
         int ct = stream.Read(span);
 #endif
-
+            
         bytesRead = ct;
         if (ct != 16)
-            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UnityQuaternionParser))) { ErrorCode = 2 };
+            throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UnityRectParser))) { ErrorCode = 2 };
 
         if (BitConverter.IsLittleEndian)
         {
             v4.x = Unsafe.ReadUnaligned<float>(ref span[0]);
             v4.y = Unsafe.ReadUnaligned<float>(ref span[4]);
-            v4.z = Unsafe.ReadUnaligned<float>(ref span[8]);
-            v4.w = Unsafe.ReadUnaligned<float>(ref span[12]);
+            v4.width = Unsafe.ReadUnaligned<float>(ref span[8]);
+            v4.height = Unsafe.ReadUnaligned<float>(ref span[12]);
         }
         else
         {
@@ -137,10 +139,10 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
             v4.y = Unsafe.As<int, float>(ref read);
 
             read = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref span[8]));
-            v4.z = Unsafe.As<int, float>(ref read);
+            v4.width = Unsafe.As<int, float>(ref read);
 
             read = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref span[12]));
-            v4.w = Unsafe.As<int, float>(ref read);
+            v4.height = Unsafe.As<int, float>(ref read);
         }
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
@@ -153,21 +155,22 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
 
         return v4;
     }
-    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Quaternion>
+    public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Rect>
     {
-        protected override Quaternion FlipBits(Quaternion toFlip)
+        protected override Rect FlipBits(Rect toFlip)
         {
-            int read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref toFlip.x));
+            float x = toFlip.x, y = toFlip.y, w = toFlip.width, h = toFlip.height;
+            int read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref x));
             toFlip.x = Unsafe.As<int, float>(ref read);
 
-            read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref toFlip.y));
+            read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref y));
             toFlip.y = Unsafe.As<int, float>(ref read);
 
-            read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref toFlip.z));
-            toFlip.z = Unsafe.As<int, float>(ref read);
+            read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref w));
+            toFlip.width = Unsafe.As<int, float>(ref read);
 
-            read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref toFlip.w));
-            toFlip.w = Unsafe.As<int, float>(ref read);
+            read = BinaryPrimitives.ReverseEndianness(Unsafe.As<float, int>(ref h));
+            toFlip.height = Unsafe.As<int, float>(ref read);
             return toFlip;
         }
 
@@ -218,52 +221,53 @@ public class UnityQuaternionParser : BinaryTypeParser<Quaternion>
         {
 
         }
-        private static void WriteToBufferIntl(byte* ptr, Quaternion value)
+        private static void WriteToBufferIntl(byte* ptr, Rect value)
         {
             *(float*)ptr = value.x;
             *(float*)(ptr + 4) = value.y;
-            *(float*)(ptr + 8) = value.z;
-            *(float*)(ptr + 12) = value.w;
+            *(float*)(ptr + 8) = value.width;
+            *(float*)(ptr + 12) = value.height;
         }
-        private static void WriteToBufferUnalignedIntl(byte* ptr, Quaternion value)
+        private static void WriteToBufferUnalignedIntl(byte* ptr, Rect value)
         {
             Unsafe.WriteUnaligned(ptr, value.x);
             Unsafe.WriteUnaligned(ptr + 4, value.y);
-            Unsafe.WriteUnaligned(ptr + 8, value.z);
-            Unsafe.WriteUnaligned(ptr + 12, value.w);
+            Unsafe.WriteUnaligned(ptr + 8, value.width);
+            Unsafe.WriteUnaligned(ptr + 12, value.height);
         }
-        private static void WriteToBufferSpanIntl(Span<byte> span, Quaternion value)
+        private static void WriteToBufferSpanIntl(Span<byte> span, Rect value)
         {
-            MemoryMarshal.Write(span, ref value.x);
-            MemoryMarshal.Write(span.Slice(4), ref value.y);
-            MemoryMarshal.Write(span.Slice(8), ref value.z);
-            MemoryMarshal.Write(span.Slice(12), ref value.w);
+            float x = value.x, y = value.y, w = value.width, h = value.height;
+            MemoryMarshal.Write(span, ref x);
+            MemoryMarshal.Write(span.Slice(4), ref y);
+            MemoryMarshal.Write(span.Slice(8), ref w);
+            MemoryMarshal.Write(span.Slice(12), ref h);
         }
-        private static Quaternion ReadFromBufferIntl(byte* ptr)
+        private static Rect ReadFromBufferIntl(byte* ptr)
         {
-            Quaternion v4 = default;
+            Rect v4 = default;
             v4.x = *(float*)ptr;
             v4.y = *(float*)(ptr + 4);
-            v4.z = *(float*)(ptr + 8);
-            v4.w = *(float*)(ptr + 12);
+            v4.width = *(float*)(ptr + 8);
+            v4.height = *(float*)(ptr + 12);
             return v4;
         }
-        private static Quaternion ReadFromBufferUnalignedIntl(byte* ptr)
+        private static Rect ReadFromBufferUnalignedIntl(byte* ptr)
         {
-            Quaternion v4 = default;
+            Rect v4 = default;
             v4.x = Unsafe.ReadUnaligned<float>(ptr);
             v4.y = Unsafe.ReadUnaligned<float>(ptr + 4);
-            v4.z = Unsafe.ReadUnaligned<float>(ptr + 8);
-            v4.w = Unsafe.ReadUnaligned<float>(ptr + 12);
+            v4.width = Unsafe.ReadUnaligned<float>(ptr + 8);
+            v4.height = Unsafe.ReadUnaligned<float>(ptr + 12);
             return v4;
         }
-        private static Quaternion ReadFromBufferSpanIntl(Span<byte> span)
+        private static Rect ReadFromBufferSpanIntl(Span<byte> span)
         {
-            Quaternion v4 = default;
+            Rect v4 = default;
             v4.x = MemoryMarshal.Read<float>(span);
             v4.y = MemoryMarshal.Read<float>(span.Slice(4));
-            v4.z = MemoryMarshal.Read<float>(span.Slice(8));
-            v4.w = MemoryMarshal.Read<float>(span.Slice(12));
+            v4.width = MemoryMarshal.Read<float>(span.Slice(8));
+            v4.height = MemoryMarshal.Read<float>(span.Slice(12));
             return v4;
         }
     }

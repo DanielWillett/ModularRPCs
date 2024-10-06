@@ -8,67 +8,67 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
-public class UnityUnityVector2ParserTests
+public class UnityUnityColor32ParserTests
 {
     [Test]
-    public void TestVector2Stream()
+    public void TestColor32Stream()
     {
         Random r = new Random();
 
-        float x = (float)r.NextDouble();
-        Vector2 v2 = new Vector2(x, x + 1);
+        byte x = (byte)r.Next(2, 256);
+        Color32 v2 = new Color32(x, (byte)(x + 1), (byte)(x - 1), (byte)(x * 2));
 
-        UnityVector2Parser parser = new UnityVector2Parser();
+        UnityColor32Parser parser = new UnityColor32Parser();
         using Stream memStream = new MemoryStream();
         ParserTests.WriteBuffer(memStream);
         parser.WriteObject(v2, memStream);
 
-        Assert.That(memStream.Length, Is.EqualTo(ParserTests.BufferSize + 8));
+        Assert.That(memStream.Length, Is.EqualTo(ParserTests.BufferSize + 4));
 
         memStream.Seek(0, SeekOrigin.Begin);
 
         ParserTests.CheckBuffer(memStream);
-        Vector2 readValue = parser.ReadObject(memStream, out int bytesRead);
+        Color32 readValue = parser.ReadObject(memStream, out int bytesRead);
 
-        Assert.That(bytesRead, Is.EqualTo(8));
+        Assert.That(bytesRead, Is.EqualTo(4));
         Assert.That(readValue, Is.EqualTo(v2));
     }
 
     [Test]
-    public unsafe void TestVector2Bytes()
+    public unsafe void TestColor32Bytes()
     {
         Random r = new Random();
 
-        float x = (float)r.NextDouble();
-        Vector2 v2 = new Vector2(x, x + 1);
+        byte x = (byte)r.Next(2, 256);
+        Color32 v2 = new Color32(x, (byte)(x + 1), (byte)(x - 1), (byte)(x * 2));
 
-        UnityVector2Parser parser = new UnityVector2Parser();
+        UnityColor32Parser parser = new UnityColor32Parser();
 
         uint maxSize = 64;
         byte* buffer = stackalloc byte[(int)maxSize];
         ParserTests.WriteBuffer(ref buffer, ref maxSize);
         int bytesWritten = parser.WriteObject(v2, buffer, maxSize);
 
-        Assert.That(bytesWritten, Is.EqualTo(8));
+        Assert.That(bytesWritten, Is.EqualTo(4));
 
         ParserTests.CheckBuffer(buffer, maxSize);
-        Vector2 readValue = parser.ReadObject(buffer, maxSize, out int bytesRead);
+        Color32 readValue = parser.ReadObject(buffer, maxSize, out int bytesRead);
 
-        Assert.That(bytesRead, Is.EqualTo(8));
+        Assert.That(bytesRead, Is.EqualTo(4));
         Assert.That(readValue, Is.EqualTo(v2));
     }
 
     [Test]
-    public unsafe void TestVector2BytesThrowsOutOfRangeError()
+    public unsafe void TestColor32BytesThrowsOutOfRangeError()
     {
         Random r = new Random();
 
-        float x = (float)r.NextDouble();
-        Vector2 v2 = new Vector2(x, x + 1);
+        byte x = (byte)r.Next(2, 256);
+        Color32 v2 = new Color32(x, (byte)(x + 1), (byte)(x - 1), (byte)(x * 2));
 
-        UnityVector2Parser parser = new UnityVector2Parser();
+        UnityColor32Parser parser = new UnityColor32Parser();
 
-        byte* buffer = stackalloc byte[7];
+        byte* buffer = stackalloc byte[3];
 
         Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(v2, buffer, 3));
     }
@@ -85,18 +85,18 @@ public class UnityUnityVector2ParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
-    public void TestVector2Many(int count)
+    public void TestColor32Many(int count)
     {
         Random r = new Random();
 
-        Vector2[] arr = new Vector2[count];
+        Color32[] arr = new Color32[count];
         for (int i = 0; i < count; ++i)
         {
-            float x = (float)r.NextDouble();
-            arr[i] = new Vector2(x, x + 1);
+            byte x = (byte)r.Next(2, 256);
+            arr[i] = new Color32(x, (byte)(x + 1), (byte)(x - 1), (byte)(x * 2));
         }
 
-        UnityVector2Parser.Many parser = new UnityVector2Parser.Many(new SerializationConfiguration());
+        UnityColor32Parser.Many parser = new UnityColor32Parser.Many(new SerializationConfiguration());
         ParserManyTests.TestManyParserBytes(arr, parser);
         ParserManyTests.TestManyParserStream(arr, parser);
     }

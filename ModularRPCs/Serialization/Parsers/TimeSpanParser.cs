@@ -1,6 +1,7 @@
 ﻿using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -16,22 +17,8 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
             throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 1 };
 
         long ticks = value.Ticks;
-        if (BitConverter.IsLittleEndian)
-        {
-            Unsafe.WriteUnaligned(bytes, ticks);
-        }
-        else
-        {
-            bytes[7] = unchecked((byte)ticks);
-            bytes[6] = unchecked((byte)(ticks >>> 8));
-            bytes[5] = unchecked((byte)(ticks >>> 16));
-            bytes[4] = unchecked((byte)(ticks >>> 24));
-            bytes[3] = unchecked((byte)(ticks >>> 32));
-            bytes[2] = unchecked((byte)(ticks >>> 40));
-            bytes[1] = unchecked((byte)(ticks >>> 48));
-            *bytes   = unchecked((byte)(ticks >>> 56));
-        }
-        
+        Unsafe.WriteUnaligned(bytes, BitConverter.IsLittleEndian ? ticks : BinaryPrimitives.ReverseEndianness(ticks));
+
         return 8;
     }
     public override int WriteObject(TimeSpan value, Stream stream)
@@ -44,21 +31,7 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
         Span<byte> span = stackalloc byte[8];
 #endif
         long ticks = value.Ticks;
-        if (BitConverter.IsLittleEndian)
-        {
-            Unsafe.WriteUnaligned(ref span[0], ticks);
-        }
-        else
-        {
-            span[7] = unchecked((byte)ticks);
-            span[6] = unchecked((byte)(ticks >>> 8));
-            span[5] = unchecked((byte)(ticks >>> 16));
-            span[4] = unchecked((byte)(ticks >>> 24));
-            span[3] = unchecked((byte)(ticks >>> 32));
-            span[2] = unchecked((byte)(ticks >>> 40));
-            span[1] = unchecked((byte)(ticks >>> 48));
-            span[0] = unchecked((byte)(ticks >>> 56));
-        }
+        Unsafe.WriteUnaligned(ref span[0], BitConverter.IsLittleEndian ? ticks : BinaryPrimitives.ReverseEndianness(ticks));
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         stream.Write(span, 0, 8);
@@ -80,9 +53,9 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
         if (maxSize < 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 1 };
 
-        long value = BitConverter.IsLittleEndian
-            ? Unsafe.ReadUnaligned<long>(bytes)
-            : ((long)((uint)*bytes << 24 | (uint)bytes[1] << 16 | (uint)bytes[2] << 8 | bytes[3]) << 32) | ((uint)bytes[4] << 24 | (uint)bytes[5] << 16 | (uint)bytes[6] << 8 | bytes[7]);
+        long value = Unsafe.ReadUnaligned<long>(bytes);
+        if (!BitConverter.IsLittleEndian)
+            value = BinaryPrimitives.ReverseEndianness(value);
 
         bytesRead = 8;
         return new TimeSpan(value);
@@ -103,10 +76,10 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
         bytesRead = ct;
         if (ct != 8)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(TimeSpanParser))) { ErrorCode = 2 };
-        
-        value = BitConverter.IsLittleEndian
-            ? Unsafe.ReadUnaligned<long>(ref span[0])
-            : ((long)((uint)span[0] << 24 | (uint)span[1] << 16 | (uint)span[2] << 8 | span[3]) << 32) | ((uint)span[4] << 24 | (uint)span[5] << 16 | (uint)span[6] << 8 | span[7]);
+
+        value = Unsafe.ReadUnaligned<long>(ref span[0]);
+        if (!BitConverter.IsLittleEndian)
+            value = BinaryPrimitives.ReverseEndianness(value);
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         }
@@ -125,27 +98,33 @@ public class TimeSpanParser : BinaryTypeParser<TimeSpan>
         {
 
         }
+
         private static void WriteToBufferIntl(byte* ptr, TimeSpan timeSpan)
         {
             *(long*)ptr = timeSpan.Ticks;
         }
+
         private static void WriteToBufferUnalignedIntl(byte* ptr, TimeSpan timeSpan)
         {
             Unsafe.WriteUnaligned(ptr, timeSpan.Ticks);
         }
+
         private static void WriteToBufferSpanIntl(Span<byte> span, TimeSpan timeSpan)
         {
             long ticks = timeSpan.Ticks;
             MemoryMarshal.Write(span, ref ticks);
         }
+
         private static TimeSpan ReadFromBufferIntl(byte* ptr)
         {
             return new TimeSpan(*(long*)ptr);
         }
+
         private static TimeSpan ReadFromBufferUnalignedIntl(byte* ptr)
         {
             return new TimeSpan(Unsafe.ReadUnaligned<long>(ptr));
         }
+
         private static TimeSpan ReadFromBufferSpanIntl(Span<byte> span)
         {
             return new TimeSpan(MemoryMarshal.Read<long>(span));

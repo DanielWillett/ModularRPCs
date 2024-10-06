@@ -593,7 +593,7 @@ public class UnityMatrix4x4Parser : BinaryTypeParser<Matrix4x4>, IBinaryTypePars
             const int elementSize = 64;
             for (; index < size; index += elementSize)
             {
-                ref byte pos = ref bytes[index * elementSize];
+                ref byte pos = ref bytes[index];
                 Unsafe.WriteUnaligned(ref pos, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref pos)));
 
                 pos = ref Unsafe.Add(ref pos, 4);

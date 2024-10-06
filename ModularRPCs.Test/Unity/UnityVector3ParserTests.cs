@@ -8,69 +8,69 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
-public class UnityUnityVector2ParserTests
+public class UnityUnityVector3ParserTests
 {
     [Test]
-    public void TestVector2Stream()
+    public void TestVector3Stream()
     {
         Random r = new Random();
 
         float x = (float)r.NextDouble();
-        Vector2 v2 = new Vector2(x, x + 1);
+        Vector3 v2 = new Vector3(x, x + 1, x - 1);
 
-        UnityVector2Parser parser = new UnityVector2Parser();
+        UnityVector3Parser parser = new UnityVector3Parser();
         using Stream memStream = new MemoryStream();
         ParserTests.WriteBuffer(memStream);
         parser.WriteObject(v2, memStream);
 
-        Assert.That(memStream.Length, Is.EqualTo(ParserTests.BufferSize + 8));
+        Assert.That(memStream.Length, Is.EqualTo(ParserTests.BufferSize + 12));
 
         memStream.Seek(0, SeekOrigin.Begin);
 
         ParserTests.CheckBuffer(memStream);
-        Vector2 readValue = parser.ReadObject(memStream, out int bytesRead);
+        Vector3 readValue = parser.ReadObject(memStream, out int bytesRead);
 
-        Assert.That(bytesRead, Is.EqualTo(8));
+        Assert.That(bytesRead, Is.EqualTo(12));
         Assert.That(readValue, Is.EqualTo(v2));
     }
 
     [Test]
-    public unsafe void TestVector2Bytes()
+    public unsafe void TestVector3Bytes()
     {
         Random r = new Random();
 
         float x = (float)r.NextDouble();
-        Vector2 v2 = new Vector2(x, x + 1);
+        Vector3 v2 = new Vector3(x, x + 1, x - 1);
 
-        UnityVector2Parser parser = new UnityVector2Parser();
+        UnityVector3Parser parser = new UnityVector3Parser();
 
         uint maxSize = 64;
         byte* buffer = stackalloc byte[(int)maxSize];
         ParserTests.WriteBuffer(ref buffer, ref maxSize);
         int bytesWritten = parser.WriteObject(v2, buffer, maxSize);
 
-        Assert.That(bytesWritten, Is.EqualTo(8));
+        Assert.That(bytesWritten, Is.EqualTo(12));
 
         ParserTests.CheckBuffer(buffer, maxSize);
-        Vector2 readValue = parser.ReadObject(buffer, maxSize, out int bytesRead);
+        Vector3 readValue = parser.ReadObject(buffer, maxSize, out int bytesRead);
 
-        Assert.That(bytesRead, Is.EqualTo(8));
+        Assert.That(bytesRead, Is.EqualTo(12));
         Assert.That(readValue, Is.EqualTo(v2));
     }
 
     [Test]
-    public unsafe void TestVector2BytesThrowsOutOfRangeError()
+    public unsafe void TestVector3BytesThrowsOutOfRangeError()
     {
         Random r = new Random();
 
         float x = (float)r.NextDouble();
-        Vector2 v2 = new Vector2(x, x + 1);
+        Vector3 v2 = new Vector3(x, x + 1, x - 1);
 
-        UnityVector2Parser parser = new UnityVector2Parser();
+        UnityVector3Parser parser = new UnityVector3Parser();
 
-        byte* buffer = stackalloc byte[7];
+        byte* buffer = stackalloc byte[11];
 
-        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(v2, buffer, 3));
+        Assert.Throws(Is.TypeOf<RpcOverflowException>(), () => parser.WriteObject(v2, buffer, 11));
     }
 
     [Test]
@@ -85,18 +85,18 @@ public class UnityUnityVector2ParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
-    public void TestVector2Many(int count)
+    public void TestVector3Many(int count)
     {
         Random r = new Random();
 
-        Vector2[] arr = new Vector2[count];
+        Vector3[] arr = new Vector3[count];
         for (int i = 0; i < count; ++i)
         {
             float x = (float)r.NextDouble();
-            arr[i] = new Vector2(x, x + 1);
+            arr[i] = new Vector3(x, x + 1, x - 1);
         }
 
-        UnityVector2Parser.Many parser = new UnityVector2Parser.Many(new SerializationConfiguration());
+        UnityVector3Parser.Many parser = new UnityVector3Parser.Many(new SerializationConfiguration());
         ParserManyTests.TestManyParserBytes(arr, parser);
         ParserManyTests.TestManyParserStream(arr, parser);
     }

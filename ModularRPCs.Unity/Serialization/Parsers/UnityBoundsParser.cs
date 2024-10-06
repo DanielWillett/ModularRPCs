@@ -311,7 +311,7 @@ public class UnityBoundsParser : BinaryTypeParser<Bounds>
             const int elementSize = 24;
             for (; index < size; index += elementSize)
             {
-                ref byte pos = ref bytes[index * elementSize];
+                ref byte pos = ref bytes[index];
                 Unsafe.WriteUnaligned(ref pos, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref pos)));
 
                 pos = ref Unsafe.Add(ref pos, 4);

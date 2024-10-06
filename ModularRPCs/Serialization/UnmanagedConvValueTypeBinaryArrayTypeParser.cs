@@ -108,9 +108,10 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         {
             for (int i = 0; i < elementSize / 2; ++i)
             {
-                byte b = bytes[i];
-                int ind = elementSize - i - 1;
-                bytes[i] = bytes[ind];
+                int stInd = i + index;
+                byte b = bytes[stInd];
+                int ind = elementSize - i - 1 + index;
+                bytes[stInd] = bytes[ind];
                 bytes[ind] = b;
             }
         }
@@ -325,7 +326,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         }
 
         if (!BitConverter.IsLittleEndian && _flipBits)
-            FlipBits(bytes, hdrSize, size);
+            FlipBits(bytes, 0, size);
 
         if (i == length)
             return i * elementSize + hdrSize;
@@ -458,7 +459,6 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
                 if (maxSize < actualCount + 1)
                     throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
 
-                *(TElementType*)(bytes + actualCount) = enumerator.Current;
                 ftn(bytes + actualCount, enumerator.Current);
                 actualCount += elementSize;
             }
@@ -467,7 +467,7 @@ public unsafe class UnmanagedConvValueTypeBinaryArrayTypeParser<TElementType> : 
         if (!BitConverter.IsLittleEndian && _flipBits)
             FlipBits(bytes, 0, actualCount);
 
-        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount, false));
+        int newHdrSize = SerializationHelper.GetHeaderSize(SerializationHelper.GetLengthFlag(actualCount / elementSize, false));
         if (maxSize < actualCount + newHdrSize)
             throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcOverflowExceptionIBinaryTypeParser, Accessor.ExceptionFormatter.Format(GetType()))) { ErrorCode = 1 };
         if (!Compatibility.IncompatibleWithBufferMemoryCopyOverlap)

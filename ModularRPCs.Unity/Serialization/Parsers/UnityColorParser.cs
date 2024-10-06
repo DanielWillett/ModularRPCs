@@ -34,7 +34,7 @@ public class UnityColorParser : BinaryTypeParser<Color>
 
         return 16;
     }
-    public override unsafe int WriteObject(Color value, Stream stream)
+    public override int WriteObject(Color value, Stream stream)
     {
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         byte[] span = DefaultSerializer.ArrayPool.Rent(16);
@@ -104,7 +104,7 @@ public class UnityColorParser : BinaryTypeParser<Color>
         bytesRead = 16;
         return v4;
     }
-    public override unsafe Color ReadObject(Stream stream, out int bytesRead)
+    public override Color ReadObject(Stream stream, out int bytesRead)
     {
         Color v4 = default;
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
@@ -116,7 +116,8 @@ public class UnityColorParser : BinaryTypeParser<Color>
         Span<byte> span = stackalloc byte[16];
         int ct = stream.Read(span);
 #endif
-
+            
+        bytesRead = ct;
         if (ct != 16)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionStreamRunOutIBinaryTypeParser, nameof(UnityColorParser))) { ErrorCode = 2 };
 
@@ -150,7 +151,6 @@ public class UnityColorParser : BinaryTypeParser<Color>
         }
 #endif
 
-        bytesRead = 16;
         return v4;
     }
     public unsafe class Many : UnmanagedConvValueTypeBinaryArrayTypeParser<Color>
@@ -199,7 +199,7 @@ public class UnityColorParser : BinaryTypeParser<Color>
             const int elementSize = 16;
             for (; index < size; index += elementSize)
             {
-                ref byte pos = ref bytes[index * elementSize];
+                ref byte pos = ref bytes[index];
                 Unsafe.WriteUnaligned(ref pos, BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<int>(ref pos)));
 
                 pos = ref Unsafe.Add(ref pos, 4);
