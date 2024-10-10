@@ -3,7 +3,7 @@
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease02</VersionSuffix>
+    <VersionSuffix>prerelease03</VersionSuffix>
 
     <PackageReleaseNotes>Initial pre-release.</PackageReleaseNotes>
 
@@ -63,10 +63,10 @@
     <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
 
+  <!-- Enables and imports the TestEndiannessSwitch file as BitConverter to easily replace all BitConverter.IsLittleEndian calls. -->
   <PropertyGroup Condition="$(UseTestEndianProvider)">
     <DefineConstants>$(DefineConstants);USE_TEST_ENDIANNESS_SWITCH</DefineConstants>
   </PropertyGroup>
-
   <ItemGroup Condition="$(UseTestEndianProvider)">
     <Using Include="DanielWillett.ModularRpcs.TestEndiannessSwitch" Alias="BitConverter"/>
   </ItemGroup>
