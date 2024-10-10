@@ -169,33 +169,90 @@ public static class SerializationHelper
     {
         foreach (Type type in Accessor.GetTypesSafe(assembly, removeIgnored: false))
         {
-            if (!type.TryGetAttributeSafe(out RpcParserAttribute parserAttribute))
+            Type valueType = type;
+            if (!valueType.TryGetAttributeSafe(out RpcParserAttribute parserAttribute))
                 continue;
 
-            Type? parserType = parserAttribute.ParserType;
-
-            if (parserType == null || !typeof(IBinaryTypeParser).IsAssignableFrom(parserType))
+            Type? parserType = parserAttribute.Type;
+            if (parserType == null)
                 continue;
 
-            ConstructorInfo? configCtor = parserType.GetConstructor(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null,
-                CallingConventions.Any, [ typeof(SerializationConfiguration) ], null);
-
-            if (configCtor != null)
+            // parserType is the target type instead of the parser
+            if (typeof(IBinaryTypeParser).IsAssignableFrom(valueType))
             {
-                dict[type] = (IBinaryTypeParser)configCtor.Invoke([ configuration ]);
-                continue;
+                (valueType, parserType) = (parserType, valueType);
             }
 
-            ConstructorInfo? emptyCtor = parserType.GetConstructor(
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null,
-                CallingConventions.Any, Type.EmptyTypes, null);
-
-            if (emptyCtor == null)
+            if (parserType.IsAbstract || !typeof(IBinaryTypeParser).IsAssignableFrom(parserType))
                 continue;
 
-            dict[type] = (IBinaryTypeParser)emptyCtor.Invoke(Array.Empty<object>());
+            foreach (Type nestedParserType in parserType.GetNestedTypes())
+            {
+                // look for nested parsers
+                if (nestedParserType.IsAbstract || !typeof(IBinaryTypeParser).IsAssignableFrom(nestedParserType) || nestedParserType.IsIgnored())
+                    continue;
+
+                if (TryCreateParser(nestedParserType, configuration, out IBinaryTypeParser arrayParser))
+                {
+                    RegisterParser(valueType, nestedParserType, dict, arrayParser);
+                }
+            }
+
+            if (!TryCreateParser(parserType, configuration, out IBinaryTypeParser parser))
+                continue;
+
+            RegisterParser(valueType, parserType, dict, parser);
         }
+    }
+
+    private static void RegisterParser(Type valueType, Type parserType, IDictionary<Type, IBinaryTypeParser> dict, IBinaryTypeParser parser)
+    {
+        Type[] valueTypeArray = [ valueType ];
+
+        if (!typeof(IArrayBinaryTypeParser<>).MakeGenericType(valueTypeArray).IsAssignableFrom(parserType))
+        {
+            dict[valueType] = parser;
+            return;
+        }
+
+        dict[valueType.MakeArrayType()] = parser;
+        dict[typeof(IList<>).MakeGenericType(valueTypeArray)] = parser;
+        dict[typeof(IReadOnlyList<>).MakeGenericType(valueTypeArray)] = parser;
+        dict[typeof(ICollection<>).MakeGenericType(valueTypeArray)] = parser;
+        dict[typeof(IReadOnlyCollection<>).MakeGenericType(valueTypeArray)] = parser;
+        dict[typeof(IEnumerable<>).MakeGenericType(valueTypeArray)] = parser;
+        dict[typeof(Span<>).MakeGenericType(valueTypeArray)] = parser;
+        dict[typeof(ReadOnlySpan<>).MakeGenericType(valueTypeArray)] = parser;
+        if (valueType == typeof(bool) && typeof(IBinaryTypeParser<BitArray>).IsAssignableFrom(parserType))
+        {
+            dict[typeof(BitArray)] = parser;
+        }
+    }
+
+    private static bool TryCreateParser(Type parserType, SerializationConfiguration configuration, out IBinaryTypeParser parser)
+    {
+        ConstructorInfo? configCtor = parserType.GetConstructor(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null,
+            CallingConventions.Any, [typeof(SerializationConfiguration)], null);
+
+        if (configCtor != null)
+        {
+            parser = (IBinaryTypeParser)configCtor.Invoke([ configuration ]);
+            return true;
+        }
+
+        ConstructorInfo? emptyCtor = parserType.GetConstructor(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null,
+            CallingConventions.Any, Type.EmptyTypes, null);
+
+        if (emptyCtor != null)
+        {
+            parser = (IBinaryTypeParser)emptyCtor.Invoke(Array.Empty<object>());
+            return true;
+        }
+
+        parser = null!;
+        return false;
     }
 
     /*
