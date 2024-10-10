@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
+using DanielWillett.ModularRpcs.Routing;
 
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask
@@ -77,7 +78,7 @@ public class RpcTask
         Awaiter = new RpcTaskAwaiter(this, true);
     }
     public RpcTaskAwaiter GetAwaiter() => Awaiter;
-    internal void SetToken(CancellationToken token)
+    internal void SetToken(CancellationToken token, IRpcRouter router)
     {
         if (IsFireAndForget)
             return;
@@ -120,12 +121,14 @@ public class RpcTask
 
         if (token.IsCancellationRequested)
         {
+            router.InvokeCancellation(this);
             TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
             return;
         }
 
         reg.Registration = token.Register(() =>
         {
+            router.InvokeCancellation(this);
             TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
         });
 

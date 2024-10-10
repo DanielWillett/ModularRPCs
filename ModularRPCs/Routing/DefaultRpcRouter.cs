@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -30,7 +31,23 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     private readonly CancellationTokenSource _cancelTokenSource = new CancellationTokenSource();
     private long _lastMsgId;
     private readonly ConcurrentDictionary<ulong, RpcTask> _listeningTasks = new ConcurrentDictionary<ulong, RpcTask>();
+    private readonly ConcurrentDictionary<UniqueMessageKey, CancellationTokenSource> _pendingCancellableMessages = new ConcurrentDictionary<UniqueMessageKey, CancellationTokenSource>();
     private readonly Dictionary<string, IReadOnlyList<RpcEndpointTarget>> _broadcastListeners = new Dictionary<string, IReadOnlyList<RpcEndpointTarget>>(StringComparer.Ordinal);
+
+    private readonly struct UniqueMessageKey : IEquatable<UniqueMessageKey>
+    {
+        public readonly ulong MessageId;
+        public readonly IModularRpcRemoteConnection Sender;
+        public UniqueMessageKey(ulong messageId, IModularRpcRemoteConnection sender)
+        {
+            MessageId = messageId;
+            Sender = sender;
+        }
+
+        public bool Equals(UniqueMessageKey key) => key.MessageId == MessageId && Sender.Equals(key.Sender);
+        public override bool Equals(object? obj) => obj is UniqueMessageKey key && key.MessageId == MessageId && Sender.Equals(key.Sender);
+        public override int GetHashCode() => HashCode.Combine(MessageId, Sender);
+    }
 
     /// <inheritdoc />
     public IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
@@ -40,6 +57,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// </summary>
     protected readonly ConcurrentDictionary<uint, IRpcInvocationPoint> CachedDescriptors = new ConcurrentDictionary<uint, IRpcInvocationPoint>();
 
+    protected internal const byte OvhCodeIdCancel = 5;
     protected internal const byte OvhCodeIdVoidRtnSuccess = 4;
     protected internal const byte OvhCodeIdValueRtnSuccess = 3;
     protected internal const byte OvhCodeIdException = 2;
@@ -93,6 +111,22 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             catch (BadImageFormatException) { }
         }
     }
+
+    public void CleanupConnection(IModularRpcConnection connection)
+    {
+        if (connection is not IModularRpcRemoteConnection remote)
+            return;
+
+        foreach (KeyValuePair<UniqueMessageKey, CancellationTokenSource> cancellation in _pendingCancellableMessages.ToArray())
+        {
+            if (!cancellation.Key.Sender.Equals(remote) || !_pendingCancellableMessages.TryRemove(cancellation.Key, out CancellationTokenSource value))
+                continue;
+
+            value.Cancel();
+            value.Dispose();
+        }
+    }
+
     private void ScanAssemblyForRpcClasses(Assembly assembly)
     {
         List<RpcEndpointTarget> broadcastInfos = new List<RpcEndpointTarget>();
@@ -170,15 +204,87 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         int ct = RpcOverhead.WriteToBytes(serializer, this, sourceMethodHandle, ref callMethodInfo, bytes, byteCt, dataCt, messageId, subMsgId);
         return ct;
     }
-    protected virtual async ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+
+    public virtual void InvokeCancellation(RpcTask task)
     {
+        ulong messageId = task.MessageId;
+
+        IModularRpcRemoteConnection? connection = task.ConnectionIntl;
+        if (connection == null)
+            return;
+
+        ValueTask vt;
         try
         {
+            vt = FollowupRpcCancel(messageId, checked( (byte)(task.SubMessageId + 1) ), connection, _defaultSerializer);
+
+            if (vt.IsCompleted)
+            {
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            this.LogError(ex,
+                string.Format(Properties.Exceptions.RpcCancellationExceptionWithInvocationPointMessage,
+                    Accessor.Formatter.Format(ex.GetType()),
+                    task.Endpoint,
+                    ex.Message)
+            );
+
+            return;
+        }
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await vt;
+            }
+            catch (Exception ex)
+            {
+                this.LogError(ex,
+                    string.Format(Properties.Exceptions.RpcCancellationExceptionWithInvocationPointMessage,
+                        Accessor.Formatter.Format(ex.GetType()),
+                        task.Endpoint,
+                        ex.Message)
+                );
+            }
+        });
+    }
+
+    protected virtual async ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+    {
+        CombinedTokenSources src = default;
+        bool didAddTokenSrc = false;
+        UniqueMessageKey key = default;
+        try
+        {
+            if (rpc.SupportsRemoteCancellation && (overhead.Flags & RpcFlags.FireAndForget) == 0 && overhead.SendingConnection != null)
+            {
+                CancellationTokenSource newTokenSource = new CancellationTokenSource();
+                CancellationTokenSource existingSource = _pendingCancellableMessages.GetOrAdd(key = new UniqueMessageKey(overhead.MessageId, overhead.SendingConnection), newTokenSource);
+                if (!ReferenceEquals(existingSource, newTokenSource))
+                {
+                    existingSource.Dispose();
+                }
+
+                src = token.CombineTokensIfNeeded(newTokenSource.Token);
+                didAddTokenSrc = true;
+            }
+            
             ValueTask vt = rpc.Invoke(overhead, this, serializer, stream, token);
             await vt;
 
             if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
                 return;
+
+            if (didAddTokenSrc && _pendingCancellableMessages.TryRemove(key, out CancellationTokenSource cancellable))
+            {
+                cancellable.Dispose();
+                src.Dispose();
+                didAddTokenSrc = false;
+            }
 
             try
             {
@@ -205,17 +311,52 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             HandleInvokeException(overhead, ex);
         }
+        finally
+        {
+            if (didAddTokenSrc)
+            {
+                if (_pendingCancellableMessages.TryRemove(key, out CancellationTokenSource cancellable))
+                {
+                    cancellable.Dispose();
+                }
+
+                src.Dispose();
+            }
+        }
     }
     protected virtual ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlyMemory<byte> bytes, bool canTakeOwnership, CancellationToken token = default)
     {
+        CombinedTokenSources src = default;
+        bool didAddTokenSrc = false;
+        UniqueMessageKey key = default;
         try
         {
+            if (rpc.SupportsRemoteCancellation && (overhead.Flags & RpcFlags.FireAndForget) == 0 && overhead.SendingConnection != null)
+            {
+                CancellationTokenSource newTokenSource = new CancellationTokenSource();
+                CancellationTokenSource existingSource = _pendingCancellableMessages.GetOrAdd(key = new UniqueMessageKey(overhead.MessageId, overhead.SendingConnection), newTokenSource);
+                if (!ReferenceEquals(existingSource, newTokenSource))
+                {
+                    existingSource.Dispose();
+                }
+
+                src = token.CombineTokensIfNeeded(newTokenSource.Token);
+                didAddTokenSrc = true;
+            }
+
             ValueTask vt = rpc.Invoke(overhead, this, serializer, bytes, canTakeOwnership, token);
             if (!vt.IsCompleted)
                 return new ValueTask(FinishVtTask(vt, overhead, serializer));
 
             if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
                 return default;
+
+            if (didAddTokenSrc && _pendingCancellableMessages.TryRemove(key, out CancellationTokenSource cancellable))
+            {
+                cancellable.Dispose();
+                src.Dispose();
+                didAddTokenSrc = false;
+            }
 
             try
             {
@@ -230,6 +371,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
         catch (Exception ex)
         {
+            if (didAddTokenSrc)
+            {
+                if (_pendingCancellableMessages.TryRemove(key, out CancellationTokenSource cancellable))
+                {
+                    cancellable.Dispose();
+                }
+
+                src.Dispose();
+            }
             if (overhead.SendingConnection != null)
             {
                 try
@@ -252,7 +402,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             try
             {
                 await vt;
-                
+
                 if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
                     return;
 
@@ -271,7 +421,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 {
                     try
                     {
-                        await ReplyRpcException(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)), overhead.SendingConnection, ex, serializer);
+                        await ReplyRpcException(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)),
+                            overhead.SendingConnection, ex, serializer);
                     }
                     catch (Exception ex2)
                     {
@@ -280,6 +431,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 }
 
                 HandleInvokeException(overhead, ex);
+            }
+            finally
+            {
+                if (didAddTokenSrc)
+                {
+                    if (_pendingCancellableMessages.TryRemove(key, out CancellationTokenSource cancellable))
+                    {
+                        cancellable.Dispose();
+                    }
+
+                    src.Dispose();
+                }
             }
         }
         async Task FinishExVtTask(ValueTask vt, RpcOverhead overhead)
@@ -374,6 +537,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 task?.TriggerComplete(null);
                 FinishListening(task);
                 break;
+
+            case OvhCodeIdCancel:
+                if (_pendingCancellableMessages.TryRemove(new UniqueMessageKey(primitiveOverhead.MessageId, sendingConnection), out CancellationTokenSource tokenSrc))
+                {
+                    tokenSrc.Cancel();
+                    tokenSrc.Dispose();
+                }
+
+                break;
         }
 
         return default;
@@ -435,6 +607,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                 task?.TriggerComplete(null);
                 FinishListening(task);
+                break;
+
+            case OvhCodeIdCancel:
+                if (_pendingCancellableMessages.TryRemove(new UniqueMessageKey(primitiveOverhead.MessageId, sendingConnection), out CancellationTokenSource tokenSrc))
+                {
+                    tokenSrc.Cancel();
+                    tokenSrc.Dispose();
+                }
+
                 break;
         }
 
@@ -510,7 +691,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             {
                 if (token.CanBeCanceled)
                 {
-                    rpcTask.SetToken(token);
+                    rpcTask.SetToken(token, this);
                 }
 
                 // maybe throw exceptions if all threw
@@ -546,7 +727,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             if (token.CanBeCanceled)
             {
-                rpcTask.SetToken(token);
+                rpcTask.SetToken(token, this);
             }
 
             return rpcTask;
@@ -598,7 +779,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         if (token.CanBeCanceled)
         {
-            rpcTask.SetToken(token);
+            rpcTask.SetToken(token, this);
         }
 
         // maybe throw exceptions if all threw
@@ -709,7 +890,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 {
                     if (token.CanBeCanceled)
                     {
-                        rpcTask.SetToken(token);
+                        rpcTask.SetToken(token, this);
                     }
                     // maybe throw exceptions if all threw
                     rpcTask.TriggerComplete(null);
@@ -746,7 +927,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
                 if (token.CanBeCanceled)
                 {
-                    rpcTask.SetToken(token);
+                    rpcTask.SetToken(token, this);
                 }
 
                 return rpcTask;
@@ -831,7 +1012,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             if (token.CanBeCanceled)
             {
-                rpcTask.SetToken(token);
+                rpcTask.SetToken(token, this);
             }
 
             // maybe throw exceptions if all threw
@@ -967,6 +1148,23 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
     }
+
+    private static unsafe ValueTask FollowupRpcCancel(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)
+    {
+        uint pfxSize = GetPrefixSize(serializer);
+
+        bool didStackAlloc = pfxSize <= serializer.Configuration.MaximumStackAllocationSize;
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)pfxSize] : new byte[pfxSize];
+
+        uint index;
+        fixed (byte* ptr = alloc)
+        {
+            index = WritePrefix(ptr, 0, OvhCodeIdCancel, messageId, subMessageId, serializer);
+        }
+
+        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+    }
+    
     private static unsafe ValueTask ReplyRpcVoidSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)
     {
         uint pfxSize = GetPrefixSize(serializer);
@@ -1304,21 +1502,21 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
     }
-    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+    protected virtual IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
     {
-        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash);
+        return new RpcEndpoint(knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation);
     }
 
     /// <inheritdoc />
-    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, int byteSize, object? identifier)
-        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, byteSize, identifier);
+    public IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier)
+        => ResolveEndpoint(_defaultSerializer, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation, byteSize, identifier);
 
     /// <inheritdoc />
-    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, int byteSize, object? identifier)
+    public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier)
     {
         IRpcInvocationPoint cachedEndpoint = knownRpcShortcutId == 0u
-            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
-            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash));
+            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation));
 
         return ReferenceEquals(cachedEndpoint.Identifier, identifier)
             ? cachedEndpoint
@@ -1549,6 +1747,19 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     {
         try
         {
+            while (_pendingCancellableMessages.Count > 0)
+            {
+                UniqueMessageKey[] keys = _pendingCancellableMessages.Keys.ToArray();
+                foreach (UniqueMessageKey key in keys)
+                {
+                    if (!_pendingCancellableMessages.TryRemove(key, out CancellationTokenSource source))
+                        continue;
+
+                    source.Cancel();
+                    source.Dispose();
+                }
+            }
+
             _cancelTokenSource.Cancel();
             _cancelTokenSource.Dispose();
         }

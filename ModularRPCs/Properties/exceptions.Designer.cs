@@ -403,6 +403,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to There was a {1} caneclling RPC &apos;{0}&apos;. {2}..
+        /// </summary>
+        internal static string RpcCancellationExceptionWithInvocationPointMessage {
+            get {
+                return ResourceManager.GetString("RpcCancellationExceptionWithInvocationPointMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This RPC connection is closed..
         /// </summary>
         internal static string RpcConnectionClosedException {
@@ -637,7 +646,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to There was a {1} invoking RPC &apos;{0}&apos;. {2}..
+        ///   Looks up a localized string similar to There was a {1} cancelling RPC &apos;{0}&apos;. {2}..
         /// </summary>
         internal static string RpcInvocationExceptionWithInvocationPointMessage {
             get {

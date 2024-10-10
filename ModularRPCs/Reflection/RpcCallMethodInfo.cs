@@ -1,5 +1,5 @@
-﻿using System;
-using DanielWillett.ReflectionTools.Emit;
+﻿using DanielWillett.ReflectionTools.Emit;
+using System;
 using System.Reflection;
 using System.Reflection.Emit;
 

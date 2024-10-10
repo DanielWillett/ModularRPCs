@@ -243,6 +243,7 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     }
     internal void DisposeIntl()
     {
+        Router.CleanupConnection(this);
         IsClosedIntl = true;
         try
         {

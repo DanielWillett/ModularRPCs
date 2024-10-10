@@ -20,5 +20,5 @@ public enum RpcFlags : ushort
     /// <summary>
     /// There is no listener waiting for a response from this RPC.
     /// </summary>
-    FireAndForget = 1 << 2,
+    FireAndForget = 1 << 2
 }

@@ -85,8 +85,8 @@ public static class RpcTaskExtensions
     /// <remarks>If the task is a fire-and-forget task, nothing will happen.</remarks>
     public static RpcTask WithToken(this RpcTask task, CancellationToken token)
     {
-        if (!task.IsCompleted)
-            task.SetToken(token);
+        if (task is { IsCompleted: false, ConnectionIntl: { } connection })
+            task.SetToken(token, connection.Local.Router);
 
         return task;
     }

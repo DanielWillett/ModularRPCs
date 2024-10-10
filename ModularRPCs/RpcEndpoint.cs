@@ -41,6 +41,12 @@ public class RpcEndpoint : IRpcInvocationPoint
     public bool IsStatic { get; }
 
     /// <summary>
+    /// Can this endpoint be cancelled remotely?
+    /// </summary>
+    /// <remarks>This may be a false positive in some cases.</remarks>
+    public bool SupportsRemoteCancellation { get; }
+
+    /// <summary>
     /// Is the invocation point a broadcast, meaning it should be looking for a receive listening for the given information instead of looking for the method at the given information?
     /// </summary>
     public bool IsBroadcast { get; }
@@ -113,17 +119,18 @@ public class RpcEndpoint : IRpcInvocationPoint
         Size = _sizeWithoutIdentifier = other._sizeWithoutIdentifier;
         ParametersAreBindedParametersOnly = other.ParametersAreBindedParametersOnly;
         SignatureHash = other.SignatureHash;
+        SupportsRemoteCancellation = other.SupportsRemoteCancellation;
         if (identifier != null)
         {
             Size += CalculateIdentifierSize(serializer, identifier);
         }
     }
-    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
-        : this(declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
+    internal RpcEndpoint(uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+        : this(declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
     {
         EndpointId = knownId;
     }
-    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+    internal RpcEndpoint(string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
     {
         IsStatic = false;
         DeclaringTypeName = declaringTypeName;
@@ -133,6 +140,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         IgnoreSignatureHash = ignoreSignatureHash;
         ParametersAreBindedParametersOnly = argsAreBindOnly;
         ParameterTypeNames = parameterTypeNames;
+        SupportsRemoteCancellation = supportsRemoteCancellation;
         IsBroadcast = isBroadcast;
 
         if (TypeUtility.TryResolveMethod(null, methodName, null, declaringTypeName, null, parameterTypeNames, argsAreBindOnly, out MethodInfo? foundMethod, out _))
@@ -448,6 +456,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         EndpointFlags flags = ParametersAreBindedParametersOnly ? EndpointFlags.ArgsAreBindOnly : 0;
         flags |= (EndpointFlags)((ParameterTypeNames != null ? 1 : 0) * (int)EndpointFlags.DefinesParameters);
         flags |= (EndpointFlags)((IsBroadcast ? 1 : 0) * (int)EndpointFlags.Broadcast);
+        flags |= (EndpointFlags)((SupportsRemoteCancellation ? 1 : 0) * (int)EndpointFlags.SupportsCancellation);
 
         *bytes = (byte)flags;
         ++bytes;
@@ -682,7 +691,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         bytes += bytesReadIdentifier;
 
         bytesRead = checked( (int)(bytes - originalPtr) );
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, (flags1 & EndpointFlags.SupportsCancellation) != 0, bytesRead, identifier);
     }
 
     [Pure]
@@ -849,7 +858,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         index += bytesReadIdentifier;
 
         bytesRead = index;
-        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, bytesRead, identifier);
+        return router.ResolveEndpoint(serializer, knownRpcShortcutId, typeName, methodName, args, (flags1 & EndpointFlags.ArgsAreBindOnly) != 0, (flags1 & EndpointFlags.Broadcast) != 0, signatureHash, (flags1 & EndpointFlags.IgnoreSignatureHash) != 0, (flags1 & EndpointFlags.SupportsCancellation) != 0, bytesRead, identifier);
     }
 
     [Pure]
@@ -1231,6 +1240,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         DefinesParameters = 1,
         ArgsAreBindOnly = 1 << 1,
         Broadcast = 1 << 2,
-        IgnoreSignatureHash = 1 << 3
+        IgnoreSignatureHash = 1 << 3,
+        SupportsCancellation = 1 << 4
     }
 }

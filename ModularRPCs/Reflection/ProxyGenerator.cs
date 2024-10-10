@@ -47,6 +47,10 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly ConcurrentDictionary<Type, ConvReturnValueToVt> _convFromReturnFunctions = new ConcurrentDictionary<Type, ConvReturnValueToVt>();
     private readonly ConcurrentDictionary<Type, ConvVtToReturnValue> _convToReturnFunctions = new ConcurrentDictionary<Type, ConvVtToReturnValue>();
 
+
+    private static readonly Type? VoidTaskResultTask;
+    private static readonly Type? VoidTaskResultValueTask;
+
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
     private delegate ref RpcCallMethodInfo GetCallInfo();
@@ -56,7 +60,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private delegate ValueTask ConvReturnValueToVt(object returnValue);
     private delegate object? ConvVtToReturnValue(Task task);
 #if DEBUG
-    internal const bool DebugPrint = true;
+    internal const bool DebugPrint = false;
     internal const bool BreakpointPrint = false;
 #else
     internal const bool DebugPrint = false;
@@ -161,7 +165,17 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// </summary>
     public static ProxyGenerator Instance { get; } = new ProxyGenerator();
 
-    static ProxyGenerator() { }
+    static ProxyGenerator()
+    {
+        Type? voidType = typeof(Task).Assembly.GetType("System.Threading.Tasks.VoidTaskResult", throwOnError: false);
+        if (voidType == null)
+            return;
+
+        Type[] types = [ voidType ];
+        VoidTaskResultTask = typeof(Task<>).MakeGenericType(types);
+        VoidTaskResultValueTask = typeof(Task<>).MakeGenericType(types);
+    }
+
     private ProxyGenerator()
     {
         SerializerGenerator = new SerializerGenerator(this);
@@ -3285,7 +3299,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             return null;
 
         Type taskType = task.GetType();
-        if (taskType == typeof(Task))
+        if (taskType == typeof(Task) || taskType == VoidTaskResultTask || taskType == VoidTaskResultValueTask)
             return null;
 
         return _convToReturnFunctions.GetOrAdd(

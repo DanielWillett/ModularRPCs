@@ -56,6 +56,7 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         }
         finally
         {
+            Local.Router.CleanupConnection(this);
             Semaphore.Release();
             if (!alreadyDisposed)
             {

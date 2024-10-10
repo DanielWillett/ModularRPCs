@@ -307,7 +307,10 @@
     <value>There was an error invoking the RPC.</value>
   </data>
   <data name="RpcInvocationExceptionWithInvocationPointMessage" xml:space="preserve">
-    <value>There was a {1} invoking RPC '{0}'. {2}.</value>
+    <value>There was a {1} cancelling RPC '{0}'. {2}.</value>
+  </data>
+  <data name="RpcCancellationExceptionWithInvocationPointMessage" xml:space="preserve">
+    <value>There was a {1} caneclling RPC '{0}'. {2}.</value>
   </data>
   <data name="RpcParseExceptionInvalidReturnType" xml:space="preserve">
     <value>RPC returned a value of type '{0}' when local expected it to return '{1}'.</value>

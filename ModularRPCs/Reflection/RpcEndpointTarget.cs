@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 public struct RpcEndpointTarget
@@ -22,6 +23,11 @@ public struct RpcEndpointTarget
     public string[]? ParameterTypes;
     public bool ParameterTypesAreBindOnly;
     public bool IgnoreSignatureHash;
+
+    /// <summary>
+    /// May sometimes be a false positive.
+    /// </summary>
+    public bool InjectsCancellationToken;
     public int SignatureHash;
     internal MethodInfo? OwnerMethodInfo;
 
@@ -32,10 +38,11 @@ public struct RpcEndpointTarget
     private static readonly FieldInfo ParameterTypesAreBindOnlyField = typeof(RpcEndpointTarget).GetField(nameof(ParameterTypesAreBindOnly), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo SignatureHashField = typeof(RpcEndpointTarget).GetField(nameof(SignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo IgnoreSignatureHashField = typeof(RpcEndpointTarget).GetField(nameof(IgnoreSignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
+    private static readonly FieldInfo InjectsCancellationTokenField = typeof(RpcEndpointTarget).GetField(nameof(InjectsCancellationToken), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
 
     public RpcEndpoint GetEndpoint()
     {
-        return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash, IgnoreSignatureHash);
+        return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash, IgnoreSignatureHash, InjectsCancellationToken);
     }
 
     /// <summary>
@@ -88,7 +95,10 @@ public struct RpcEndpointTarget
     {
         target.MethodName = method.Name ?? string.Empty;
         target.DeclaringTypeName = method.DeclaringType == null ? string.Empty : TypeUtility.GetAssemblyQualifiedNameNoVersion(method.DeclaringType);
-        
+
+        ParameterInfo[] parameters = method.GetParameters();
+        target.InjectsCancellationToken = Array.Exists(parameters, x => x.ParameterType == typeof(CancellationToken));
+
         if (!(forceSignatureCheck || 
             method.DeclaringType != null && method.DeclaringType
                 .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
@@ -100,7 +110,6 @@ public struct RpcEndpointTarget
             return;
         }
 
-        ParameterInfo[] parameters = method.GetParameters();
         ArraySegment<ParameterInfo> toBind;
         if (bindOnlyParameters)
             SerializerGenerator.BindParameters(parameters, out _, out toBind);
@@ -116,10 +125,14 @@ public struct RpcEndpointTarget
         target.ParameterTypesAreBindOnly = bindOnlyParameters;
         target.ParameterTypes = typeNames;
     }
+
     private static void FromAttribute(ref RpcEndpointTarget target, MethodInfo decoratingMethod, bool forceSignatureCheck, RpcTargetAttribute targetAttribute)
     {
         target.MethodName = targetAttribute.MethodName!;
         Type? declaringType;
+
+        // we cant know for sure so just say it does
+        target.InjectsCancellationToken = true;
         if (targetAttribute.Type != null)
         {
             declaringType = targetAttribute.Type;
@@ -170,8 +183,13 @@ public struct RpcEndpointTarget
             Type[] types = targetAttribute.ParameterTypes;
             string[] names = new string[types.Length];
 
+            target.InjectsCancellationToken = false;
             for (int i = 0; i < types.Length; ++i)
+            {
+                if (types[i] == typeof(CancellationToken))
+                    target.InjectsCancellationToken = true;
                 names[i] = TypeUtility.GetAssemblyQualifiedNameNoVersion(types[i]);
+            }
 
             target.ParameterTypes = names;
         }
@@ -200,6 +218,10 @@ public struct RpcEndpointTarget
         il.Emit(OpCodes.Dup);
         il.Emit(IgnoreSignatureHash ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
         il.Emit(OpCodes.Stfld, IgnoreSignatureHashField);
+        
+        il.Emit(OpCodes.Dup);
+        il.Emit(InjectsCancellationToken ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Stfld, InjectsCancellationTokenField);
 
         il.Emit(OpCodes.Dup);
         il.Emit(OpCodes.Ldc_I4, SignatureHash);

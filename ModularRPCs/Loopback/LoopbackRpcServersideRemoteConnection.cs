@@ -63,6 +63,7 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
         Local.IsClosed = true;
         Client.IsClosed = true;
         Client.Local.IsClosed = true;
+        Local.Router.CleanupConnection(this);
         if (Lifetime != null)
         {
             await Lifetime.TryRemoveConnection(this, CancellationToken.None);

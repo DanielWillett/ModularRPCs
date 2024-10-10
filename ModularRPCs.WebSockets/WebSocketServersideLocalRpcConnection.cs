@@ -50,6 +50,7 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
         try
         {
             await Remote.CloseAsync(token);
+            Router.CleanupConnection(this);
         }
         finally
         {

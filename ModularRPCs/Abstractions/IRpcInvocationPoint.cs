@@ -13,6 +13,9 @@ public interface IRpcInvocationPoint
     bool CanCache { get; }
     uint Size { get; }
     bool IsStatic { get; }
+
+    /// <remarks>This may be a false positive in some cases.</remarks>
+    bool SupportsRemoteCancellation { get; }
     object? Identifier { get; }
 
     /// <summary>

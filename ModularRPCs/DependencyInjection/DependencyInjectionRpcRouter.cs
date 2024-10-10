@@ -120,10 +120,10 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     {
         ServiceProviders = serviceProviders?.ToArray() ?? throw new ArgumentNullException(nameof(serviceProviders));
     }
-    protected override IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash)
+    protected override IRpcInvocationPoint CreateEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[]? args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
     {
         return ServiceProviders != null
-            ? new DependencyInjectionRpcEndpoint(ServiceProviders, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash)
-            : new DependencyInjectionRpcEndpoint(ServiceProvider!, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash);
+            ? new DependencyInjectionRpcEndpoint(ServiceProviders, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+            : new DependencyInjectionRpcEndpoint(ServiceProvider!, knownRpcShortcutId, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation);
     }
 }

@@ -25,6 +25,7 @@ public class LoopbackRpcClientsideLocalConnection : IModularRpcClientsideConnect
     {
         Remote.IsClosed = true;
         IsClosed = true;
+        Router.CleanupConnection(this);
         return default;
     }
 }

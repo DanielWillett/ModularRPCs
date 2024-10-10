@@ -29,10 +29,11 @@ public class WebSocketClientsideLocalRpcConnection : WebSocketLocalRpcConnection
 
     public override ValueTask DisposeAsync()
     {
-        return Remote.CloseAsync();
+        return CloseAsync(CancellationToken.None);
     }
     public override ValueTask CloseAsync(CancellationToken token = default)
     {
+        Router.CleanupConnection(this);
         return Remote.CloseAsync(token);
     }
     IModularRpcRemoteConnection IModularRpcLocalConnection.Remote => Remote;

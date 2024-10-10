@@ -32,6 +32,7 @@ public class LoopbackRpcServersideLocalConnection : IModularRpcAuthoritativePare
     {
         Remote.IsClosed = true;
         IsClosed = true;
+        Router.CleanupConnection(this);
         return default;
     }
 }

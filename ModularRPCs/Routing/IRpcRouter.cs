@@ -39,14 +39,14 @@ public interface IRpcRouter
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
     [Pure]
-    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, int byteSize, object? identifier);
+    IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier);
 
     /// <summary>
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
     [Pure]
-    IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, int byteSize, object? identifier);
+    IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier);
 
     /// <summary>
     /// Invoke an RPC from a 'call' method. Expects that there will be a blank space at the beginning of the buffer for the overhead to be written to. Use <see cref="GetOverheadSize"/> to help calculate that.
@@ -74,6 +74,16 @@ public interface IRpcRouter
     /// Get the default interface implementations for a proxy class.
     /// </summary>
     void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
+
+    /// <summary>
+    /// Sends a cancellation of a message if supported, otherwise does nothing.
+    /// </summary>
+    void InvokeCancellation(RpcTask task);
+
+    /// <summary>
+    /// Called when a connection is closed.
+    /// </summary>
+    void CleanupConnection(IModularRpcConnection connection);
 
     /// <summary>
     /// Invoke an RPC by it's invocation point. If context switching would occur and <paramref name="canTakeOwnership"/> is <see langword="false"/>, <paramref name="rawData"/> MUST BE COPIED.
