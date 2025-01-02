@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
@@ -194,8 +194,10 @@ public class RpcEndpoint : IRpcInvocationPoint
     {
         return handlerRawStream(null, targetObject, overhead, router, serializer, stream, token);
     }
-    public virtual unsafe ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
+    public virtual unsafe RpcInvocationResult Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
+        RpcInvocationResult result = default;
+
         if (!IsBroadcast)
         {
             MethodInfo? toInvoke = Method;
@@ -235,12 +237,15 @@ public class RpcEndpoint : IRpcInvocationPoint
                 }
             }
 
-            return ConvertReturnedValueToValueTask(returnedValue);
+            result.ReturnType = toInvoke.ReturnType;
+            result.Task = ConvertReturnedValueToValueTask(returnedValue);
+            return result;
         }
 
         bool any = false;
         List<Exception>? exceptions = null;
         object? firstRtnValue = null;
+        Type? firstRtnType = null;
         fixed (byte* ptr = rawData.Span)
         {
             foreach (MethodInfo method in FindBroadcastListeners(router))
@@ -261,6 +266,7 @@ public class RpcEndpoint : IRpcInvocationPoint
                 }
 
                 any = true;
+                firstRtnType ??= method.ReturnType;
 
                 try
                 {
@@ -273,12 +279,14 @@ public class RpcEndpoint : IRpcInvocationPoint
                     if (targetAttribute.Raw)
                     {
                         ProxyGenerator.RpcInvokeHandlerRawBytes invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawBytesMethod(method);
-                        firstRtnValue ??= InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
+                        object? rtn = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
+                        firstRtnValue ??= rtn;
                     }
                     else
                     {
                         ProxyGenerator.RpcInvokeHandlerBytes invokeMethod = ProxyGenerator.Instance.GetInvokeBytesMethod(method);
-                        firstRtnValue ??= InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
+                        object? rtn = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
+                        firstRtnValue ??= rtn;
                     }
 
                 }
@@ -300,10 +308,15 @@ public class RpcEndpoint : IRpcInvocationPoint
             throw new AggregateException(exceptions);
         }
 
-        return firstRtnValue == null ? default : ConvertReturnedValueToValueTask(firstRtnValue);
+        if (firstRtnValue != null)
+            result.Task = ConvertReturnedValueToValueTask(firstRtnValue);
+        result.ReturnType = firstRtnType!;
+        return result;
     }
-    public virtual ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+    public virtual RpcInvocationResult Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
     {
+        RpcInvocationResult result = default;
+
         if (!IsBroadcast)
         {
             MethodInfo? toInvoke = Method;
@@ -338,12 +351,15 @@ public class RpcEndpoint : IRpcInvocationPoint
                 returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
             }
 
-            return ConvertReturnedValueToValueTask(returnedValue);
+            result.ReturnType = toInvoke.ReturnType;
+            result.Task = ConvertReturnedValueToValueTask(returnedValue);
+            return result;
         }
 
 
         bool any = false;
         List<Exception>? exceptions = null;
+        Type? firstRtnType = null;
         object? firstRtnValue = null;
         foreach (MethodInfo method in FindBroadcastListeners(router))
         {
@@ -375,12 +391,14 @@ public class RpcEndpoint : IRpcInvocationPoint
                 if (targetAttribute.Raw)
                 {
                     ProxyGenerator.RpcInvokeHandlerStream invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawStreamMethod(method);
-                    firstRtnValue ??= InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                    object? rtn = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                    firstRtnValue ??= rtn;
                 }
                 else
                 {
                     ProxyGenerator.RpcInvokeHandlerStream invokeMethod = ProxyGenerator.Instance.GetInvokeStreamMethod(method);
-                    firstRtnValue ??= InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                    object? rtn = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                    firstRtnValue ??= rtn;
                 }
 
             }
@@ -389,14 +407,17 @@ public class RpcEndpoint : IRpcInvocationPoint
                 (exceptions ??= []).Add(ex);
             }
         }
-
+        
         if (!any)
             throw new RpcEndpointNotFoundException(this);
 
         if (exceptions != null)
             throw new AggregateException(exceptions);
 
-        return firstRtnValue == null ? default : ConvertReturnedValueToValueTask(firstRtnValue);
+        if (firstRtnValue != null)
+            result.Task = ConvertReturnedValueToValueTask(firstRtnValue);
+        result.ReturnType = firstRtnType!;
+        return result;
     }
     protected virtual ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
     {

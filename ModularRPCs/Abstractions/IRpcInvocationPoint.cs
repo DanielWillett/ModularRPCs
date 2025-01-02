@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
@@ -21,12 +21,18 @@ public interface IRpcInvocationPoint
     /// <summary>
     /// Invoke the RPC from a byte buffer. If context switching is needed, the data MUST BE COPIED if <paramref name="canTakeOwnership"/> is <see langword="false"/>.
     /// </summary>
-    ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> byteData, bool canTakeOwnership, CancellationToken token = default);
+    RpcInvocationResult Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> byteData, bool canTakeOwnership, CancellationToken token = default);
 
     /// <summary>
     /// Invoke the RPC from a stream.
     /// </summary>
-    ValueTask Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
+    RpcInvocationResult Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
     IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier);
     string ToString();
+}
+
+public struct RpcInvocationResult
+{
+    public ValueTask Task;
+    public Type ReturnType;
 }

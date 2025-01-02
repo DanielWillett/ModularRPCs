@@ -403,7 +403,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to There was a {1} caneclling RPC &apos;{0}&apos;. {2}..
+        ///   Looks up a localized string similar to There was a {0} caneclling RPC &apos;{1}&apos;. {2}..
         /// </summary>
         internal static string RpcCancellationExceptionWithInvocationPointMessage {
             get {

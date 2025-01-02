@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ModularRpcs.Serialization;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
 using System;
@@ -10,7 +10,7 @@ using System.Runtime.CompilerServices;
 
 namespace ModularRPCs.Test.Many;
 
-//[Ignore("these take forever")]
+[Ignore("these take forever")]
 public partial class ParserManyTests
 {
     public static unsafe void TestManyParserBytes<T>(T[] values, IArrayBinaryTypeParser<T> parser, Func<T, T, bool> equality = null)

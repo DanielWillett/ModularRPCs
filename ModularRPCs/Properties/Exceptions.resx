@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -310,7 +310,7 @@
     <value>There was a {1} cancelling RPC '{0}'. {2}.</value>
   </data>
   <data name="RpcCancellationExceptionWithInvocationPointMessage" xml:space="preserve">
-    <value>There was a {1} caneclling RPC '{0}'. {2}.</value>
+    <value>There was a {0} caneclling RPC '{1}'. {2}.</value>
   </data>
   <data name="RpcParseExceptionInvalidReturnType" xml:space="preserve">
     <value>RPC returned a value of type '{0}' when local expected it to return '{1}'.</value>

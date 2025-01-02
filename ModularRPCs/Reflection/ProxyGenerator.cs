@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Exceptions;
@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using ArgumentOutOfRangeException = System.ArgumentOutOfRangeException;
 using Exception = System.Exception;
+using Type = System.Type;
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -47,9 +48,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly ConcurrentDictionary<Type, ConvReturnValueToVt> _convFromReturnFunctions = new ConcurrentDictionary<Type, ConvReturnValueToVt>();
     private readonly ConcurrentDictionary<Type, ConvVtToReturnValue> _convToReturnFunctions = new ConcurrentDictionary<Type, ConvVtToReturnValue>();
 
-
-    private static readonly Type? VoidTaskResultTask;
-    private static readonly Type? VoidTaskResultValueTask;
 
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
@@ -164,17 +162,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// The singleton instance of <see cref="ProxyGenerator"/>, which stores information about the assembly used to store dynamically generated types.
     /// </summary>
     public static ProxyGenerator Instance { get; } = new ProxyGenerator();
-
-    static ProxyGenerator()
-    {
-        Type? voidType = typeof(Task).Assembly.GetType("System.Threading.Tasks.VoidTaskResult", throwOnError: false);
-        if (voidType == null)
-            return;
-
-        Type[] types = [ voidType ];
-        VoidTaskResultTask = typeof(Task<>).MakeGenericType(types);
-        VoidTaskResultValueTask = typeof(Task<>).MakeGenericType(types);
-    }
 
     private ProxyGenerator()
     {
@@ -3291,76 +3278,93 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// Converts a completed <see cref="ValueTask"/> (usually created with <see cref="ConvertReturnedValueToValueTask"/>) back to a value.
     /// </summary>
     /// <returns>The value stored in <paramref name="valueTask"/>, or <see langword="null"/> if it returned void.</returns>
-    public object? ConvertValueTaskToValue(ValueTask valueTask)
+    public object? ConvertValueTaskToValue(RpcInvocationResult valueTask)
     {
-        Task task = valueTask.AsTask();
-
+        Task task = valueTask.Task.AsTask();
         if (task == Task.CompletedTask)
             return null;
 
-        Type taskType = task.GetType();
-        if (taskType == typeof(Task) || taskType == VoidTaskResultTask || taskType == VoidTaskResultValueTask)
+        if (valueTask.ReturnType == typeof(Task) || valueTask.ReturnType == typeof(ValueTask))
             return null;
 
-        return _convToReturnFunctions.GetOrAdd(
-            taskType,
-            taskType =>
+        Type taskType = task.GetType();
+        try
+        {
+            return _convToReturnFunctions.GetOrAdd(
+                taskType,
+                taskType =>
+                {
+                    MethodInfo? getAwaiterMethod = null;
+                    taskType.ForEachBaseType((type, _) =>
+                    {
+                        getAwaiterMethod = type.GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, Type.EmptyTypes, null);
+                        return getAwaiterMethod == null;
+                    });
+
+                    if (getAwaiterMethod == null || getAwaiterMethod.ReturnType == typeof(void))
+                    {
+                        return _ => null;
+                    }
+
+                    Type awaiterType = getAwaiterMethod.ReturnType;
+                    MethodInfo? getResultMethod = null;
+                    awaiterType.ForEachBaseType((type, _) =>
+                    {
+                        getResultMethod = type.GetMethod("GetResult", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, Type.EmptyTypes, null);
+                        return getResultMethod == null;
+                    });
+
+                    if (getResultMethod == null || getResultMethod.ReturnType == typeof(void))
+                    {
+                        return _ => null;
+                    }
+
+                    Accessor.GetDynamicMethodFlags(false, out MethodAttributes attr, out CallingConventions conv);
+                    DynamicMethod mtd = new DynamicMethod("GetTaskResult", attr, conv, typeof(object), [typeof(Task)], taskType, true);
+                    mtd.DefineParameter(1, ParameterAttributes.None, "this");
+
+                    IOpCodeEmitter il = mtd.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
+
+                    il.Emit(OpCodes.Ldarg_0);
+                    // no need to callvirt since this will be a declared, non-overridden method
+                    il.Emit(OpCodes.Call, getAwaiterMethod);
+                    if (getAwaiterMethod.ReturnType.IsValueType)
+                    {
+                        LocalBuilder lcl = il.DeclareLocal(getAwaiterMethod.ReturnType);
+                        il.Emit(OpCodes.Stloc, lcl);
+                        il.Emit(OpCodes.Ldloca, lcl);
+                        il.Emit(OpCodes.Call, getResultMethod);
+                    }
+                    else
+                    {
+                        // this, on the other hand, may not be
+                        il.Emit(OpCodes.Callvirt, getResultMethod);
+                    }
+                    if (getResultMethod.ReturnType.IsValueType)
+                    {
+                        il.Emit(OpCodes.Box, getResultMethod.ReturnType);
+                    }
+                    il.Emit(OpCodes.Ret);
+
+                    return (ConvVtToReturnValue)mtd.CreateDelegate(typeof(ConvVtToReturnValue));
+                }
+            )(task);
+        }
+        catch (Exception ex)
+        {
+            IReflectionToolsLogger? logger = Accessor.Logger;
+            if (logger != null)
             {
-                MethodInfo? getAwaiterMethod = null;
-                taskType.ForEachBaseType((type, _) =>
-                {
-                    getAwaiterMethod = type.GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, Type.EmptyTypes, null);
-                    return getAwaiterMethod == null;
-                });
-                
-                if (getAwaiterMethod == null || getAwaiterMethod.ReturnType == typeof(void))
-                {
-                    return _ => null;
-                }
-
-                Type awaiterType = getAwaiterMethod.ReturnType;
-                MethodInfo? getResultMethod = null;
-                awaiterType.ForEachBaseType((type, _) =>
-                {
-                    getResultMethod = type.GetMethod("GetResult", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, Type.EmptyTypes, null);
-                    return getResultMethod == null;
-                });
-
-                if (getResultMethod == null || getResultMethod.ReturnType == typeof(void))
-                {
-                    return _ => null;
-                }
-
-                Accessor.GetDynamicMethodFlags(false, out MethodAttributes attr, out CallingConventions conv);
-                DynamicMethod mtd = new DynamicMethod("GetTaskResult", attr, conv, typeof(object), [ typeof(Task) ], taskType, true);
-                mtd.DefineParameter(1, ParameterAttributes.None, "this");
-
-                IOpCodeEmitter il = mtd.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
-
-                il.Emit(OpCodes.Ldarg_0);
-                // no need to callvirt since this will be a declared, non-overridden method
-                il.Emit(OpCodes.Call, getAwaiterMethod);
-                if (getAwaiterMethod.ReturnType.IsValueType)
-                {
-                    LocalBuilder lcl = il.DeclareLocal(getAwaiterMethod.ReturnType);
-                    il.Emit(OpCodes.Stloc, lcl);
-                    il.Emit(OpCodes.Ldloca, lcl);
-                    il.Emit(OpCodes.Call, getResultMethod);
-                }
-                else
-                {
-                    // this, on the other hand, may not be
-                    il.Emit(OpCodes.Callvirt, getResultMethod);
-                }
-                if (getResultMethod.ReturnType.IsValueType)
-                {
-                    il.Emit(OpCodes.Box, getResultMethod.ReturnType);
-                }
-                il.Emit(OpCodes.Ret);
-
-                return (ConvVtToReturnValue)mtd.CreateDelegate(typeof(ConvVtToReturnValue));
+                if (Accessor.LogErrorMessages)
+                    logger.LogError(nameof(ConvertValueTaskToValue), ex, $"Unable to serialize return type: {Accessor.Formatter.Format(valueTask.ReturnType)} - {Accessor.Formatter.Format(taskType)}.");
             }
-        )(task);
+            else
+            {
+                Console.WriteLine($"ModularRPCs(ConvertValueTaskToValue) - Unable to serialize return type: {Accessor.Formatter.Format(valueTask.ReturnType)} - {Accessor.Formatter.Format(taskType)}.");
+                Console.WriteLine(ex);
+            }
+            return null;
+        }
     }
 
     /// <summary>

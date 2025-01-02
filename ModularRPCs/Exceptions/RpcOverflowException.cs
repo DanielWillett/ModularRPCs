@@ -13,7 +13,7 @@ public class RpcOverflowException : RpcException
     /// <summary>
     /// Generic error code used by <see cref="RpcOverhead"/> to identify error types.
     /// </summary>
-    public int ErrorCode { get; internal set; } = -1;
+    public int ErrorCode { get; set; } = -1;
 
     /// <inheritdoc />
     public RpcOverflowException() : base(Properties.Exceptions.RpcOverflowException) { }

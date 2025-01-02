@@ -12,7 +12,7 @@ public class RpcParseException : RpcException
     /// <summary>
     /// Generic error code used by <see cref="RpcParseException"/> to identify error types.
     /// </summary>
-    public int ErrorCode { get; internal set; } = -1;
+    public int ErrorCode { get; set; } = -1;
 
     /// <inheritdoc />
     public RpcParseException() : base(Properties.Exceptions.RpcParseException) { }
