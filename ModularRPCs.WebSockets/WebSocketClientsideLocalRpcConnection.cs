@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
@@ -37,4 +37,7 @@ public class WebSocketClientsideLocalRpcConnection : WebSocketLocalRpcConnection
         return Remote.CloseAsync(token);
     }
     IModularRpcRemoteConnection IModularRpcLocalConnection.Remote => Remote;
+
+    /// <inheritdoc />
+    public override string ToString() => "WebSocket (Local, Client)";
 }

@@ -211,7 +211,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
                 if (SignatureHash != paramHash)
                 {
-                    throw new RpcEndpointNotFoundException(this, Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash);
+                    throw new RpcEndpointNotFoundException(this, string.Format(Properties.Exceptions.RpcEndpointNotFoundExceptionMismatchHash, ToString()));
                 }
             }
 

@@ -1,7 +1,8 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using DanielWillett.ModularRpcs.Data;
 
 namespace DanielWillett.ModularRpcs.Async;
 public class RpcTask<T> : RpcTask
@@ -40,6 +41,7 @@ public class RpcTask<T> : RpcTask
     {
         if (value is not T convValue)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).IsEnum)
             {
@@ -116,6 +118,94 @@ public class RpcTask<T> : RpcTask
                     return true;
                 }
             }
+
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                {
+                    bool v = value is bool a ? a : Convert.ToBoolean(value);
+                    ResultIntl = Unsafe.As<bool, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.Char:
+                {
+                    char v = value is char a ? a : Convert.ToChar(value);
+                    ResultIntl = Unsafe.As<char, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.SByte:
+                {
+                    sbyte v = value is sbyte a ? a : Convert.ToSByte(value);
+                    ResultIntl = Unsafe.As<sbyte, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.Byte:
+                {
+                    byte v = value is byte a ? a : Convert.ToByte(value);
+                    ResultIntl = Unsafe.As<byte, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.Int16:
+                {
+                    short v = value is short a ? a : Convert.ToInt16(value);
+                    ResultIntl = Unsafe.As<short, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.UInt16:
+                {
+                    ushort v = value is ushort a ? a : Convert.ToUInt16(value);
+                    ResultIntl = Unsafe.As<ushort, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.Int32:
+                {
+                    int v = value is int a ? a : Convert.ToInt32(value);
+                    ResultIntl = Unsafe.As<int, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.UInt32:
+                {
+                    uint v = value is uint a ? a : Convert.ToUInt32(value);
+                    ResultIntl = Unsafe.As<uint, T>(ref v);
+                    return true;
+                }
+                case TypeCode.Int64:
+                {
+                    long v = value is long a ? a : Convert.ToInt64(value);
+                    ResultIntl = Unsafe.As<long, T>(ref v);
+                    return true;
+                }
+
+                case TypeCode.UInt64:
+                {
+                    ulong v = value is ulong a ? a : Convert.ToUInt64(value);
+                    ResultIntl = Unsafe.As<ulong, T>(ref v);
+                    return true;
+                }
+
+                case LegacyEnumCache<T>.NativeInt:
+                {
+                    nint v = value is nint a ? a : (nint)Convert.ToInt64(value);
+                    ResultIntl = Unsafe.As<nint, T>(ref v);
+                    return true;
+                }
+
+                case LegacyEnumCache<T>.NativeUInt:
+                {
+                    nuint v = value is nuint a ? a : (nuint)Convert.ToUInt64(value);
+                    ResultIntl = Unsafe.As<nuint, T>(ref v);
+                    return true;
+                }
+            }
+#endif
 
             try
             {

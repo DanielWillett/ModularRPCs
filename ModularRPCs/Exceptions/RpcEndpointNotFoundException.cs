@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using System;
 using System.Runtime.Serialization;
 
@@ -19,7 +19,7 @@ public class RpcEndpointNotFoundException : RpcException
     public RpcEndpointNotFoundException() { }
 
     /// <inheritdoc />
-    public RpcEndpointNotFoundException(IRpcInvocationPoint invocationPoint) : base(Properties.Exceptions.RpcEndpointNotFoundException)
+    public RpcEndpointNotFoundException(IRpcInvocationPoint invocationPoint) : base(string.Format(Properties.Exceptions.RpcEndpointNotFoundException, invocationPoint.ToString()))
     {
         InvocationPoint = invocationPoint;
     }

@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
@@ -69,4 +69,7 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
             await Lifetime.TryRemoveConnection(this, CancellationToken.None);
         }
     }
+
+    /// <inheritdoc />
+    public override string ToString() => "Loopback (Remote, Server)";
 }

@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
@@ -237,5 +237,7 @@ public class WebSocketEndpoint : IModularRpcRemoteEndpoint
 
     async Task<IModularRpcRemoteConnection> IModularRpcRemoteEndpoint.RequestConnectionAsync(IRpcRouter router, IRpcConnectionLifetime connectionLifetime, IRpcSerializer serializer, CancellationToken token)
         => await RequestConnectionAsync(router, connectionLifetime, serializer, token);
-    public override string ToString() => (IsClient ? "Client: \"" : "Server: \"") + Uri + "\"";
+
+    /// <inheritdoc />
+    public override string ToString() => (IsClient ? "Client: \"" : "Server: \"") + Uri.GetLeftPart(UriPartial.Path) + "\"";
 }

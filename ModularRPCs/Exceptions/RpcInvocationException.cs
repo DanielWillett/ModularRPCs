@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ReflectionTools;
 using System;
 using System.Globalization;
@@ -13,10 +13,17 @@ namespace DanielWillett.ModularRpcs.Exceptions;
 public class RpcInvocationException : Exception
 {
     private readonly bool _isRemote;
+    private string? _stackTrace;
+
     /// <summary>
     /// The RPC that was invoked.
     /// </summary>
     public IRpcInvocationPoint? InvocationPoint { get; }
+
+    /// <summary>
+    /// The remote connection where the exception was thrown.
+    /// </summary>
+    public IModularRpcRemoteConnection? Connection { get; }
 
     /// <summary>
     /// Assembly qualified type name of the exception from the remote side.
@@ -39,7 +46,23 @@ public class RpcInvocationException : Exception
     public string? RemoteMessage { get; }
 
     /// <inheritdoc />
-    public override string StackTrace => _isRemote || RemoteStackTrace == null ? base.StackTrace : RemoteStackTrace;
+    public override string? StackTrace
+    {
+        get
+        {
+            if (_stackTrace != null)
+                return _stackTrace;
+
+            if (!_isRemote || RemoteStackTrace == null)
+                return _stackTrace = base.StackTrace;
+
+            if (base.StackTrace != null)
+                return _stackTrace = base.StackTrace + Environment.NewLine + "<--- \\/ --- REMOTE --- \\/ --->" + Environment.NewLine + RemoteStackTrace;
+
+            return _stackTrace = RemoteStackTrace;
+
+        }
+    }
 
     /// <summary>
     /// Optional list of inner exceptions. This will only have a value if there's more than one, otherwise the inner exception will be in <see cref="Exception.InnerException"/>.
@@ -61,16 +84,18 @@ public class RpcInvocationException : Exception
     /// <summary>
     /// Create a new <see cref="RpcInvocationException"/> around the given <see cref="IRpcInvocationPoint"/>.
     /// </summary>
-    public RpcInvocationException(IRpcInvocationPoint? invocationPoint, object remoteExceptionType, string? remoteMessage, string? remoteStackTrace, RpcInvocationException? inner, RpcInvocationException[]? inners)
+    public RpcInvocationException(IModularRpcRemoteConnection connection, IRpcInvocationPoint? invocationPoint, object remoteExceptionType, string? remoteMessage, string? remoteStackTrace, RpcInvocationException? inner, RpcInvocationException[]? inners)
         : base(string.Format(
             Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
-            invocationPoint,
             remoteExceptionType is Type t
                 ? Accessor.ExceptionFormatter.Format(t)
                 : (remoteExceptionType?.ToString() ?? Accessor.ExceptionFormatter.Format(typeof(Exception))),
-            remoteMessage ?? string.Empty)
+            connection,
+            invocationPoint,
+            remoteMessage == null || remoteMessage.EndsWith(".") ? remoteMessage ?? string.Empty : remoteMessage + ".")
             , inner)
     {
+        Connection = connection;
         _isRemote = true;
         if (remoteExceptionType is Type exType)
         {

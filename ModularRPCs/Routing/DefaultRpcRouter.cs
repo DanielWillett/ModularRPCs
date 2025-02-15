@@ -501,7 +501,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     IRpcInvocationPoint? invPt = task?.Endpoint;
                     index = 0;
-                    ex = ReadException(invPt, ptr + primitiveOverhead.OverheadSize, (uint)len, ref index, serializer);
+                    ex = ReadException(sendingConnection, invPt, ptr + primitiveOverhead.OverheadSize, (uint)len, ref index, serializer);
                 }
 
                 task?.TriggerComplete(ex);
@@ -579,7 +579,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             case OvhCodeIdException:
                 _listeningTasks.TryRemove(primitiveOverhead.MessageId, out RpcTask? task);
                 IRpcInvocationPoint? invPt = task?.Endpoint;
-                Exception ex = ReadException(invPt, stream, serializer);
+                Exception ex = ReadException(sendingConnection, invPt, stream, serializer);
 
                 task?.TriggerComplete(ex);
                 FinishListening(task);
@@ -1606,7 +1606,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         size += serializer.CanFastReadPrimitives ? sizeof(int) : (uint)serializer.GetSize(exSz);
         return size;
     }
-    private static unsafe RpcInvocationException ReadException(IRpcInvocationPoint? rpc, byte* ptr, uint size, ref uint index, IRpcSerializer serializer)
+    private static unsafe RpcInvocationException ReadException(IModularRpcRemoteConnection connection, IRpcInvocationPoint? rpc, byte* ptr, uint size, ref uint index, IRpcSerializer serializer)
     {
         int exSz;
         int bytesRead;
@@ -1636,21 +1636,21 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         object exType = typeName != null ? (object?)Type.GetType(typeName, false, false) ?? typeName : string.Empty;
 
         if (exSz == 0)
-            return new RpcInvocationException(rpc, exType, message, stackTrace, null, null);
+            return new RpcInvocationException(connection, rpc, exType, message, stackTrace, null, null);
         
         if (exSz == 1)
         {
-            RpcInvocationException innerEx = ReadException(rpc, ptr + index, size - index, ref index, serializer);
-            return new RpcInvocationException(rpc, exType, message, stackTrace, innerEx, null);
+            RpcInvocationException innerEx = ReadException(connection, rpc, ptr + index, size - index, ref index, serializer);
+            return new RpcInvocationException(connection, rpc, exType, message, stackTrace, innerEx, null);
         }
 
         RpcInvocationException[] inners = new RpcInvocationException[exSz];
         for (int i = 0; i < exSz; ++i)
-            inners[i] = ReadException(rpc, ptr + index, size - index, ref index, serializer);
+            inners[i] = ReadException(connection, rpc, ptr + index, size - index, ref index, serializer);
 
-        return new RpcInvocationException(rpc, exType, message, stackTrace, null, inners);
+        return new RpcInvocationException(connection, rpc, exType, message, stackTrace, null, inners);
     }
-    private static RpcInvocationException ReadException(IRpcInvocationPoint? rpc, Stream stream, IRpcSerializer serializer)
+    private static RpcInvocationException ReadException(IModularRpcRemoteConnection connection, IRpcInvocationPoint? rpc, Stream stream, IRpcSerializer serializer)
     {
         int exSz = serializer.ReadObject<int>(stream, out _);
         string? typeName = serializer.ReadObject<string>(stream, out _);
@@ -1660,19 +1660,19 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         object exType = typeName != null ? (object?)Type.GetType(typeName, false, false) ?? typeName : string.Empty;
 
         if (exSz == 0)
-            return new RpcInvocationException(rpc, exType, message, stackTrace, null, null);
+            return new RpcInvocationException(connection, rpc, exType, message, stackTrace, null, null);
 
         if (exSz == 1)
         {
-            RpcInvocationException innerEx = ReadException(rpc, stream, serializer);
-            return new RpcInvocationException(rpc, exType, message, stackTrace, innerEx, null);
+            RpcInvocationException innerEx = ReadException(connection, rpc, stream, serializer);
+            return new RpcInvocationException(connection, rpc, exType, message, stackTrace, innerEx, null);
         }
 
         RpcInvocationException[] inners = new RpcInvocationException[exSz];
         for (int i = 0; i < exSz; ++i)
-            inners[i] = ReadException(rpc, stream, serializer);
+            inners[i] = ReadException(connection, rpc, stream, serializer);
 
-        return new RpcInvocationException(rpc, exType, message, stackTrace, null, inners);
+        return new RpcInvocationException(connection, rpc, exType, message, stackTrace, null, inners);
     }
     private static unsafe void WriteException(Exception ex, byte* ptr, uint size, ref uint index, IRpcSerializer serializer)
     {

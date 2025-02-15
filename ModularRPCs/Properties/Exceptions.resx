@@ -163,7 +163,7 @@
     <value>The RpcOverhead failed to parse a proper overhead, unknown RpcDescriptor: {0}.</value>
   </data>
   <data name="RpcEndpointNotFoundException" xml:space="preserve">
-    <value>The endpoint data from a message could not be linked to an invocation point.</value>
+    <value>The endpoint data from a message could not be linked to an invocation point: {0}.</value>
   </data>
   <data name="RpcOverheadParseExceptionStreamRunOut" xml:space="preserve">
     <value>The RpcOverhead failed to parse a proper overhead because the stream ended too early.</value>
@@ -247,7 +247,7 @@
     <value>Unable to find an available instance of {0} to invoke {1} with.</value>
   </data>
   <data name="RpcEndpointNotFoundExceptionMismatchHash" xml:space="preserve">
-    <value>The endpoint data from a message could not be linked to an invocation point. The signature hash was a mis-match, likely caused by a version mismatch between server and client.</value>
+    <value>The endpoint data from a message could not be linked to an invocation point: {0}. The signature hash was a mis-match, likely caused by a version mismatch between server and client.</value>
   </data>
   <data name="RpcParseException" xml:space="preserve">
     <value>The RpcOverhead failed to read a message, likely due to bad data.</value>
@@ -307,7 +307,7 @@
     <value>There was an error invoking the RPC.</value>
   </data>
   <data name="RpcInvocationExceptionWithInvocationPointMessage" xml:space="preserve">
-    <value>There was a {1} cancelling RPC '{0}'. {2}.</value>
+    <value>A {0} was thrown from the remote client "{1}" while invoking RPC '{2}' - {3}</value>
   </data>
   <data name="RpcCancellationExceptionWithInvocationPointMessage" xml:space="preserve">
     <value>There was a {0} caneclling RPC '{1}'. {2}.</value>

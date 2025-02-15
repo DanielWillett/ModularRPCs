@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.SpeedBytes;
 using JetBrains.Annotations;
@@ -67,7 +67,9 @@ public abstract class RpcTargetAttribute : Attribute
     /// * Any integer type -> Number of bytes in input data<br/>
     /// * <see cref="bool"/> -> Can take ownership (see above)<br/>
     /// </para><br/>
-    /// Example:
+    /// See example in XML docs.
+    /// </summary>
+    /// <example>
     /// <code> 
     /// [RpcSend(Raw = true)]
     /// // send maxSize bytes directly from a byte pointer. If canTakeOwnership is not included, it's assumed to be false.
@@ -104,7 +106,7 @@ public abstract class RpcTargetAttribute : Attribute
     ///     await CallRawMethod(buffer, size, false);
     /// }
     /// </code>
-    /// </summary>
+    /// </example>
     /// <remarks>Note: parameter names do not matter, they're just matched using their types.</remarks>
     public bool Raw { get; set; }
 

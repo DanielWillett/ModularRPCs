@@ -1,5 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
+using System;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -65,4 +66,7 @@ public class WebSocketServersideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         }
     }
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
+
+    /// <inheritdoc />
+    public override string ToString() => $"WebSocket (Remote, Server): \'{Endpoint.Uri.GetComponents(UriComponents.Host, UriFormat.Unescaped)}\'";
 }

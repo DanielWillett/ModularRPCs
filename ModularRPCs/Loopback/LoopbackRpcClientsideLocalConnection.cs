@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
@@ -28,4 +28,7 @@ public class LoopbackRpcClientsideLocalConnection : IModularRpcClientsideConnect
         Router.CleanupConnection(this);
         return default;
     }
+
+    /// <inheritdoc />
+    public override string ToString() => "Loopback (Local, Client)";
 }

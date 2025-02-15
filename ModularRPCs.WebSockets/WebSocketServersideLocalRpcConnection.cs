@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
@@ -151,4 +151,7 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
             bag.Add(oldCont2);
         }
     }
+
+    /// <inheritdoc />
+    public override string ToString() => "WebSocket (Local, Server)";
 }

@@ -421,7 +421,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point..
+        ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point: {0}..
         /// </summary>
         internal static string RpcEndpointNotFoundException {
             get {
@@ -430,7 +430,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point. The signature hash was a mis-match, likely caused by a version mismatch between server and client..
+        ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point: {0}. The signature hash was a mis-match, likely caused by a version mismatch between server and client..
         /// </summary>
         internal static string RpcEndpointNotFoundExceptionMismatchHash {
             get {
@@ -646,7 +646,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to There was a {1} cancelling RPC &apos;{0}&apos;. {2}..
+        ///   Looks up a localized string similar to A {0} was thrown from the remote client &quot;{1}&quot; while invoking RPC &apos;{2}&apos; - {3}.
         /// </summary>
         internal static string RpcInvocationExceptionWithInvocationPointMessage {
             get {

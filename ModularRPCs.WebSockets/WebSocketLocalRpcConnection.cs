@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Data;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
@@ -77,13 +77,17 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                         {
                             if (WebSocket is not { State: WebSocketState.Open })
                             {
-                                CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d));
-                                CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token);
+                                using CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d));
+                                using CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token);
                                 await Reconnect(cmbSrc.Token);
-                                newSrc.Dispose();
-                                cmbSrc.Dispose();
                                 _delayCalc.Reset();
                             }
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            this.LogDebug("Closing - WebSocket disposed.");
+                            await CloseAsync(CancellationToken.None);
+                            break;
                         }
                         catch (Exception ex)
                         {
@@ -119,6 +123,12 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                 }
 
                 Buffer.ProcessBuffer((uint)result.Count, Serializer, RpcBufferParseCallback);
+            }
+            catch (ObjectDisposedException)
+            {
+                this.LogDebug("Closing - WebSocket disposed.");
+                await CloseAsync(CancellationToken.None);
+                break;
             }
             catch (WebSocketException ex)
             {

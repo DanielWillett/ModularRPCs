@@ -1,11 +1,11 @@
-﻿using System;
-using DanielWillett.ModularRpcs.Async;
+using System;
+using System.Threading.Tasks;
 using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Annotations;
 
 /// <summary>
-/// Marks a virtual or abstract RPC method as an RPC caller. It should return either <see langword="void"/>, <see cref="RpcTask"/>, or <see cref="RpcTask{T}"/>. Returning <see langword="void"/> marks the RPC as fire-and-forget.
+/// Marks a virtual or abstract RPC method as an RPC caller. It should return either <see langword="void"/>, <see cref="Task"/>, <see cref="Task{T}"/>, <see cref="ValueTask"/>, <see cref="ValueTask{T}"/>, or a serializable value. Returning <see langword="void"/> marks the RPC as fire-and-forget.
 /// <code>
 /// [RpcReceive]
 /// internal async Task&lt;string&gt; ReceiveRpc(int numChars)
@@ -42,14 +42,14 @@ public sealed class RpcReceiveAttribute : RpcTargetAttribute
     /// <summary>
     /// Reference a receive method in the given type with the given name.
     /// </summary>
-    /// <param name="methodName">The case-sensitive assembly qualified name of a type.</param>
+    /// <param name="declaringType">The case-sensitive assembly qualified name of the type where the target is declared.</param>
     /// <param name="methodName">The case-sensitive name of another method within the same type as <paramref name="declaringType"/>.</param>
     public RpcReceiveAttribute(string declaringType, string methodName) : base(declaringType, methodName) { }
 
     /// <summary>
     /// Reference a receive method in the given type with the given name.
     /// </summary>
-    /// <param name="methodName">The case-sensitive assembly qualified name of a type.</param>
+    /// <param name="declaringType">The type where the target is declared.</param>
     /// <param name="methodName">The case-sensitive name of another method within the same type as <paramref name="declaringType"/>.</param>
     public RpcReceiveAttribute(Type declaringType, string methodName) : base(declaringType, methodName) { }
 }

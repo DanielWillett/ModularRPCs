@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using System.IO;
@@ -84,4 +84,7 @@ public class LoopbackEndpoint(bool isServer, bool useStreams = false) : IModular
         await clientConnectionLifetime.TryAddNewConnection(clientConnection, token);
         return clientConnection;
     }
+
+    /// <inheritdoc />
+    public override string ToString() => IsServer ? "Loopback (Server)" : "Loopback (Client)";
 }

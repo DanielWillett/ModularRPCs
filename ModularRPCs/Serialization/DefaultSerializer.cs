@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Formatting;
@@ -19,6 +19,9 @@ using System.Diagnostics.CodeAnalysis;
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_0_OR_GREATER
 using System.Collections;
 #endif
+#if !NET8_0_OR_GREATER
+using DanielWillett.ModularRpcs.Data;
+#endif
 
 namespace DanielWillett.ModularRpcs.Serialization;
 public class DefaultSerializer : IRpcSerializer
@@ -30,7 +33,6 @@ public class DefaultSerializer : IRpcSerializer
     protected readonly ConcurrentDictionary<Type, uint> KnownTypeIds = new ConcurrentDictionary<Type, uint>();
 
     // nullable/enum caches
-    private readonly ConcurrentDictionary<Type, InstanceGetter<object, object>> _getNullableValueByBox = new ConcurrentDictionary<Type, InstanceGetter<object, object>>();
     private readonly ConcurrentDictionary<Type, NullableHasValueTypeRef> _getNullableHasValueByRefAny = new ConcurrentDictionary<Type, NullableHasValueTypeRef>();
     private readonly ConcurrentDictionary<Type, NullableValueTypeRef> _getNullableValueByRefAny = new ConcurrentDictionary<Type, NullableValueTypeRef>();
     private readonly ConcurrentDictionary<Type, ReadNullableBytes> _nullableReadBytes = new ConcurrentDictionary<Type, ReadNullableBytes>();
@@ -85,13 +87,6 @@ public class DefaultSerializer : IRpcSerializer
                                                                               .WithParameter(typeof(TypedReference), "byref")
                                                                               .WithParameter<object>("value")
                                                                               .ReturningVoid()
-                                                                          );
-    private static readonly MethodInfo MtdGetNullableValueBox = typeof(DefaultSerializer).GetMethod(nameof(GetNullableValueBox), BindingFlags.NonPublic | BindingFlags.Instance)
-                                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(GetNullableValueBox))
-                                                                              .DeclaredIn<DefaultSerializer>(isStatic: false)
-                                                                              .WithGenericParameterDefinition("T")
-                                                                              .WithParameter<object>("value")
-                                                                              .Returning<object>()
                                                                           );
     private static readonly MethodInfo MtdGetNullableHasValueRefAny = typeof(DefaultSerializer).GetMethod(nameof(GetNullableHasValueRefAny), BindingFlags.NonPublic | BindingFlags.Instance)
                                                                       ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(GetNullableHasValueRefAny))
@@ -150,7 +145,7 @@ public class DefaultSerializer : IRpcSerializer
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
         [MaybeNullWhen(false)]
 #endif
-            out Type knownType) => KnownTypes.TryGetValue(knownTypeId, out knownType);
+        out Type knownType) => KnownTypes.TryGetValue(knownTypeId, out knownType);
 
     /// <inheritdoc />
     public bool TryGetKnownTypeId(Type knownType, out uint knownTypeId) => KnownTypeIds.TryGetValue(knownType, out knownTypeId);
@@ -581,7 +576,7 @@ public class DefaultSerializer : IRpcSerializer
         Type? underlyingType = Nullable.GetUnderlyingType(type);
         if (underlyingType != null)
         {
-            return GetNullableSize(value!, underlyingType, type);
+            return GetNullableSize(value!, underlyingType);
         }
 
         parser = LookForParser(true, type);
@@ -625,7 +620,7 @@ public class DefaultSerializer : IRpcSerializer
         Type? nullableType = Nullable.GetUnderlyingType(valueType);
         if (nullableType != null)
         {
-            return GetNullableSize(value, nullableType, valueType);
+            return GetNullableSize(value, nullableType);
         }
 
         if (valueType.IsEnum)
@@ -680,14 +675,14 @@ public class DefaultSerializer : IRpcSerializer
         ThrowNoParserFound(type);
         return 0; // not reached
     }
-    private int GetNullableSize(object? value, Type underlyingType, Type type)
+    private int GetNullableSize(object? value, Type underlyingType)
     {
         if (value == null)
             return 1;
 
         if (_parsers.TryGetValue(underlyingType, out IBinaryTypeParser? parser))
         {
-            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value, type))) + 1;
+            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value)) + 1;
         }
 
         if (_primitiveSizes.TryGetValue(underlyingType, out int size))
@@ -695,12 +690,12 @@ public class DefaultSerializer : IRpcSerializer
 
         if (_primitiveParsers.TryGetValue(underlyingType, out parser))
         {
-            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(GetNullableValue(value, type))) + 1;
+            return (!parser.IsVariableSize ? parser.MinimumSize : parser.GetSize(value)) + 1;
         }
 
         if (underlyingType.IsEnum)
         {
-            return GetNullableSize(value, underlyingType.GetEnumUnderlyingType(), type);
+            return GetNullableSize(value, underlyingType.GetEnumUnderlyingType());
         }
 
         ThrowNoNullableParserFound(underlyingType);
@@ -778,6 +773,7 @@ public class DefaultSerializer : IRpcSerializer
         if (typeof(T).IsEnum)
         {
             T v = value.Value;
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -839,6 +835,58 @@ public class DefaultSerializer : IRpcSerializer
                 *bytes = 1;
                 return WriteObject(Unsafe.As<T, bool>(ref v), bytes + 1, maxSize - 1) + 1;
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, bool>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.Char:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, char>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.SByte:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, sbyte>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.Byte:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, byte>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.Int16:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, short>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.UInt16:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, ushort>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.Int32:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, int>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.UInt32:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, uint>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.Int64:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, long>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case TypeCode.UInt64:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, ulong>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case LegacyEnumCache<T>.NativeInt:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, nint>(ref v), bytes + 1, maxSize - 1) + 1;
+
+                case LegacyEnumCache<T>.NativeUInt:
+                    *bytes = 1;
+                    return WriteObject(Unsafe.As<T, nuint>(ref v), bytes + 1, maxSize - 1) + 1;
+            }
+#endif
         }
 
         ThrowNoParserFound(type);
@@ -876,6 +924,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -925,6 +974,46 @@ public class DefaultSerializer : IRpcSerializer
             {
                 return WriteObject(Unsafe.As<T, bool>(ref value!), bytes, maxSize);
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                    return WriteObject(Unsafe.As<T, bool>(ref value!), bytes, maxSize);
+
+                case TypeCode.Char:
+                    return WriteObject(Unsafe.As<T, char>(ref value!), bytes, maxSize);
+
+                case TypeCode.SByte:
+                    return WriteObject(Unsafe.As<T, sbyte>(ref value!), bytes, maxSize);
+
+                case TypeCode.Byte:
+                    return WriteObject(Unsafe.As<T, byte>(ref value!), bytes, maxSize);
+
+                case TypeCode.Int16:
+                    return WriteObject(Unsafe.As<T, short>(ref value!), bytes, maxSize);
+
+                case TypeCode.UInt16:
+                    return WriteObject(Unsafe.As<T, ushort>(ref value!), bytes, maxSize);
+
+                case TypeCode.Int32:
+                    return WriteObject(Unsafe.As<T, int>(ref value!), bytes, maxSize);
+
+                case TypeCode.UInt32:
+                    return WriteObject(Unsafe.As<T, uint>(ref value!), bytes, maxSize);
+
+                case TypeCode.Int64:
+                    return WriteObject(Unsafe.As<T, long>(ref value!), bytes, maxSize);
+
+                case TypeCode.UInt64:
+                    return WriteObject(Unsafe.As<T, ulong>(ref value!), bytes, maxSize);
+
+                case LegacyEnumCache<T>.NativeInt:
+                    return WriteObject(Unsafe.As<T, nint>(ref value!), bytes, maxSize);
+
+                case LegacyEnumCache<T>.NativeUInt:
+                    return WriteObject(Unsafe.As<T, nuint>(ref value!), bytes, maxSize);
+            }
+#endif
         }
 
         ThrowNoParserFound(type);
@@ -1145,6 +1234,7 @@ public class DefaultSerializer : IRpcSerializer
         if (typeof(T).IsEnum)
         {
             T v = value.Value;
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -1206,6 +1296,58 @@ public class DefaultSerializer : IRpcSerializer
                 stream.WriteByte(1);
                 return WriteObject(Unsafe.As<T, bool>(ref v), stream) + 1;
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, bool>(ref v), stream) + 1;
+
+                case TypeCode.Char:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, char>(ref v), stream) + 1;
+
+                case TypeCode.SByte:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, sbyte>(ref v), stream) + 1;
+
+                case TypeCode.Byte:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, byte>(ref v), stream) + 1;
+
+                case TypeCode.Int16:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, short>(ref v), stream) + 1;
+
+                case TypeCode.UInt16:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, ushort>(ref v), stream) + 1;
+
+                case TypeCode.Int32:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, int>(ref v), stream) + 1;
+
+                case TypeCode.UInt32:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, uint>(ref v), stream) + 1;
+
+                case TypeCode.Int64:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, long>(ref v), stream) + 1;
+
+                case TypeCode.UInt64:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, ulong>(ref v), stream) + 1;
+
+                case LegacyEnumCache<T>.NativeInt:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, nint>(ref v), stream) + 1;
+
+                case LegacyEnumCache<T>.NativeUInt:
+                    stream.WriteByte(1);
+                    return WriteObject(Unsafe.As<T, nuint>(ref v), stream) + 1;
+            }
+#endif
         }
 
         ThrowNoParserFound(type);
@@ -1234,6 +1376,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -1283,6 +1426,46 @@ public class DefaultSerializer : IRpcSerializer
             {
                 return WriteObject(Unsafe.As<T, bool>(ref value!), stream);
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                    return WriteObject(Unsafe.As<T, bool>(ref value!), stream);
+
+                case TypeCode.Char:
+                    return WriteObject(Unsafe.As<T, char>(ref value!), stream);
+
+                case TypeCode.SByte:
+                    return WriteObject(Unsafe.As<T, sbyte>(ref value!), stream);
+
+                case TypeCode.Byte:
+                    return WriteObject(Unsafe.As<T, byte>(ref value!), stream);
+
+                case TypeCode.Int16:
+                    return WriteObject(Unsafe.As<T, short>(ref value!), stream);
+
+                case TypeCode.UInt16:
+                    return WriteObject(Unsafe.As<T, ushort>(ref value!), stream);
+
+                case TypeCode.Int32:
+                    return WriteObject(Unsafe.As<T, int>(ref value!), stream);
+
+                case TypeCode.UInt32:
+                    return WriteObject(Unsafe.As<T, uint>(ref value!), stream);
+
+                case TypeCode.Int64:
+                    return WriteObject(Unsafe.As<T, long>(ref value!), stream);
+
+                case TypeCode.UInt64:
+                    return WriteObject(Unsafe.As<T, ulong>(ref value!), stream);
+
+                case LegacyEnumCache<T>.NativeInt:
+                    return WriteObject(Unsafe.As<T, nint>(ref value!), stream);
+
+                case LegacyEnumCache<T>.NativeUInt:
+                    return WriteObject(Unsafe.As<T, nuint>(ref value!), stream);
+            }
+#endif
         }
 
         Type? underlyingType = Nullable.GetUnderlyingType(type);
@@ -1894,6 +2077,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -1967,6 +2151,94 @@ public class DefaultSerializer : IRpcSerializer
                 ++bytesRead;
                 return Unsafe.As<bool, T>(ref val);
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                {
+                    bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<bool, T>(ref val);
+                }
+
+                case TypeCode.Char:
+                {
+                    char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<char, T>(ref val);
+                }
+
+                case TypeCode.SByte:
+                {
+                    sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<sbyte, T>(ref val);
+                }
+
+                case TypeCode.Byte:
+                {
+                    byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<byte, T>(ref val);
+                }
+
+                case TypeCode.Int16:
+                {
+                    short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<short, T>(ref val);
+                }
+
+                case TypeCode.UInt16:
+                {
+                    ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<ushort, T>(ref val);
+                }
+
+                case TypeCode.Int32:
+                {
+                    int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<int, T>(ref val);
+                }
+
+                case TypeCode.UInt32:
+                {
+                    uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<uint, T>(ref val);
+                }
+
+                case TypeCode.Int64:
+                {
+                    long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<long, T>(ref val);
+                }
+
+                case TypeCode.UInt64:
+                {
+                    ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<ulong, T>(ref val);
+                }
+
+                case LegacyEnumCache<T>.NativeInt:
+                {
+                    nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<nint, T>(ref val);
+                }
+
+                case LegacyEnumCache<T>.NativeUInt:
+                {
+                    nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<nuint, T>(ref val);
+                }
+            }
+#endif
         }
 
         bytesRead = 1; // not reached
@@ -2035,6 +2307,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -2120,6 +2393,106 @@ public class DefaultSerializer : IRpcSerializer
                 __refvalue(refOut, T?) = Unsafe.As<bool, T>(ref val);
                 return;
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                {
+                    bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<bool, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Char:
+                {
+                    char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<char, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.SByte:
+                {
+                    sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<sbyte, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Byte:
+                {
+                    byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<byte, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Int16:
+                {
+                    short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<short, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.UInt16:
+                {
+                    ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<ushort, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Int32:
+                {
+                    int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<int, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.UInt32:
+                {
+                    uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<uint, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Int64:
+                {
+                    long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<long, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.UInt64:
+                {
+                    ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<ulong, T>(ref val);
+                    return;
+                }
+
+                case LegacyEnumCache<T>.NativeInt:
+                {
+                    nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<nint, T>(ref val);
+                    return;
+                }
+
+                case LegacyEnumCache<T>.NativeUInt:
+                {
+                    nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<nuint, T>(ref val);
+                    return;
+                }
+            }
+#endif
         }
 
         bytesRead = 1;
@@ -2154,6 +2527,7 @@ public class DefaultSerializer : IRpcSerializer
         {
             if (typeof(T).IsEnum)
             {
+#if NET8_0_OR_GREATER
                 // this gets optimized away
                 if (typeof(T).GetEnumUnderlyingType() == typeof(int))
                 {
@@ -2215,6 +2589,82 @@ public class DefaultSerializer : IRpcSerializer
                     bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
                     return Unsafe.As<bool, T>(ref val);
                 }
+#else
+                switch (LegacyEnumCache<T>.UnderlyingType)
+                {
+                    case TypeCode.Boolean:
+                    {
+                        bool val = ReadObject<bool>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<bool, T>(ref val);
+                    }
+
+                    case TypeCode.Char:
+                    {
+                        char val = ReadObject<char>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<char, T>(ref val);
+                    }
+
+                    case TypeCode.SByte:
+                    {
+                        sbyte val = ReadObject<sbyte>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<sbyte, T>(ref val);
+                    }
+
+                    case TypeCode.Byte:
+                    {
+                        byte val = ReadObject<byte>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<byte, T>(ref val);
+                    }
+
+                    case TypeCode.Int16:
+                    {
+                        short val = ReadObject<short>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<short, T>(ref val);
+                    }
+
+                    case TypeCode.UInt16:
+                    {
+                        ushort val = ReadObject<ushort>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<ushort, T>(ref val);
+                    }
+
+                    case TypeCode.Int32:
+                    {
+                        int val = ReadObject<int>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<int, T>(ref val);
+                    }
+
+                    case TypeCode.UInt32:
+                    {
+                        uint val = ReadObject<uint>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<uint, T>(ref val);
+                    }
+
+                    case TypeCode.Int64:
+                    {
+                        long val = ReadObject<long>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<long, T>(ref val);
+                    }
+
+                    case TypeCode.UInt64:
+                    {
+                        ulong val = ReadObject<ulong>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<ulong, T>(ref val);
+                    }
+
+                    case LegacyEnumCache<T>.NativeInt:
+                    {
+                        nint val = ReadObject<nint>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<nint, T>(ref val);
+                    }
+
+                    case LegacyEnumCache<T>.NativeUInt:
+                    {
+                        nuint val = ReadObject<nuint>(bytes, maxSize, out bytesRead);
+                        return Unsafe.As<nuint, T>(ref val);
+                    }
+                }
+#endif
             }
 
             Type? underlyingType = Nullable.GetUnderlyingType(type);
@@ -2505,6 +2955,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -2578,6 +3029,94 @@ public class DefaultSerializer : IRpcSerializer
                 ++bytesRead;
                 return Unsafe.As<bool, T>(ref val);
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                {
+                    bool val = ReadObject<bool>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<bool, T>(ref val);
+                }
+
+                case TypeCode.Char:
+                {
+                    char val = ReadObject<char>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<char, T>(ref val);
+                }
+
+                case TypeCode.SByte:
+                {
+                    sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<sbyte, T>(ref val);
+                }
+
+                case TypeCode.Byte:
+                {
+                    byte val = ReadObject<byte>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<byte, T>(ref val);
+                }
+
+                case TypeCode.Int16:
+                {
+                    short val = ReadObject<short>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<short, T>(ref val);
+                }
+
+                case TypeCode.UInt16:
+                {
+                    ushort val = ReadObject<ushort>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<ushort, T>(ref val);
+                }
+
+                case TypeCode.Int32:
+                {
+                    int val = ReadObject<int>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<int, T>(ref val);
+                }
+
+                case TypeCode.UInt32:
+                {
+                    uint val = ReadObject<uint>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<uint, T>(ref val);
+                }
+
+                case TypeCode.Int64:
+                {
+                    long val = ReadObject<long>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<long, T>(ref val);
+                }
+
+                case TypeCode.UInt64:
+                {
+                    ulong val = ReadObject<ulong>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<ulong, T>(ref val);
+                }
+
+                case LegacyEnumCache<T>.NativeInt:
+                {
+                    nint val = ReadObject<nint>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<nint, T>(ref val);
+                }
+
+                case LegacyEnumCache<T>.NativeUInt:
+                {
+                    nuint val = ReadObject<nuint>(stream, out bytesRead);
+                    ++bytesRead;
+                    return Unsafe.As<nuint, T>(ref val);
+                }
+            }
+#endif
         }
 
         ThrowNoParserFound(type);
@@ -2638,6 +3177,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -2723,6 +3263,106 @@ public class DefaultSerializer : IRpcSerializer
                 __refvalue(refOut, T?) = Unsafe.As<bool, T>(ref val);
                 return;
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                {
+                    bool val = ReadObject<bool>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<bool, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Char:
+                {
+                    char val = ReadObject<char>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<char, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.SByte:
+                {
+                    sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<sbyte, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Byte:
+                {
+                    byte val = ReadObject<byte>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<byte, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Int16:
+                {
+                    short val = ReadObject<short>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<short, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.UInt16:
+                {
+                    ushort val = ReadObject<ushort>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<ushort, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Int32:
+                {
+                    int val = ReadObject<int>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<int, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.UInt32:
+                {
+                    uint val = ReadObject<uint>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<uint, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.Int64:
+                {
+                    long val = ReadObject<long>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<long, T>(ref val);
+                    return;
+                }
+
+                case TypeCode.UInt64:
+                {
+                    ulong val = ReadObject<ulong>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<ulong, T>(ref val);
+                    return;
+                }
+
+                case LegacyEnumCache<T>.NativeInt:
+                {
+                    nint val = ReadObject<nint>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<nint, T>(ref val);
+                    return;
+                }
+
+                case LegacyEnumCache<T>.NativeUInt:
+                {
+                    nuint val = ReadObject<nuint>(stream, out bytesRead);
+                    ++bytesRead;
+                    __refvalue(refOut, T?) = Unsafe.As<nuint, T>(ref val);
+                    return;
+                }
+            }
+#endif
         }
 
         ThrowNoParserFound(type);
@@ -2755,6 +3395,7 @@ public class DefaultSerializer : IRpcSerializer
 
         if (typeof(T).IsEnum)
         {
+#if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).GetEnumUnderlyingType() == typeof(int))
             {
@@ -2816,6 +3457,82 @@ public class DefaultSerializer : IRpcSerializer
                 bool val = ReadObject<bool>(stream, out bytesRead);
                 return Unsafe.As<bool, T>(ref val);
             }
+#else
+            switch (LegacyEnumCache<T>.UnderlyingType)
+            {
+                case TypeCode.Boolean:
+                {
+                    bool val = ReadObject<bool>(stream, out bytesRead);
+                    return Unsafe.As<bool, T>(ref val);
+                }
+
+                case TypeCode.Char:
+                {
+                    char val = ReadObject<char>(stream, out bytesRead);
+                    return Unsafe.As<char, T>(ref val);
+                }
+
+                case TypeCode.SByte:
+                {
+                    sbyte val = ReadObject<sbyte>(stream, out bytesRead);
+                    return Unsafe.As<sbyte, T>(ref val);
+                }
+
+                case TypeCode.Byte:
+                {
+                    byte val = ReadObject<byte>(stream, out bytesRead);
+                    return Unsafe.As<byte, T>(ref val);
+                }
+
+                case TypeCode.Int16:
+                {
+                    short val = ReadObject<short>(stream, out bytesRead);
+                    return Unsafe.As<short, T>(ref val);
+                }
+
+                case TypeCode.UInt16:
+                {
+                    ushort val = ReadObject<ushort>(stream, out bytesRead);
+                    return Unsafe.As<ushort, T>(ref val);
+                }
+
+                case TypeCode.Int32:
+                {
+                    int val = ReadObject<int>(stream, out bytesRead);
+                    return Unsafe.As<int, T>(ref val);
+                }
+
+                case TypeCode.UInt32:
+                {
+                    uint val = ReadObject<uint>(stream, out bytesRead);
+                    return Unsafe.As<uint, T>(ref val);
+                }
+
+                case TypeCode.Int64:
+                {
+                    long val = ReadObject<long>(stream, out bytesRead);
+                    return Unsafe.As<long, T>(ref val);
+                }
+
+                case TypeCode.UInt64:
+                {
+                    ulong val = ReadObject<ulong>(stream, out bytesRead);
+                    return Unsafe.As<ulong, T>(ref val);
+                }
+
+                case LegacyEnumCache<T>.NativeInt:
+                {
+                    nint val = ReadObject<nint>(stream, out bytesRead);
+                    return Unsafe.As<nint, T>(ref val);
+                }
+
+                case LegacyEnumCache<T>.NativeUInt:
+                {
+                    nuint val = ReadObject<nuint>(stream, out bytesRead);
+                    return Unsafe.As<nuint, T>(ref val);
+                }
+            }
+#endif
         }
 
         Type? underlyingType = Nullable.GetUnderlyingType(type);
@@ -3098,21 +3815,6 @@ public class DefaultSerializer : IRpcSerializer
         )(value, stream, out bytesRead);
 #endif
     }
-    protected object GetNullableValue(object value, Type nullableType)
-    {
-#if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-        InstanceGetter<object, object> getter = _getNullableValueByBox.GetOrAdd(nullableType,
-            static (nullableType, serializer) => (InstanceGetter<object, object>)MtdGetNullableValueBox.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(InstanceGetter<object, object>), serializer)
-            , this
-        );
-#else
-        InstanceGetter<object, object> getter = _getNullableValueByBox.GetOrAdd(nullableType,
-            nullableType => (InstanceGetter<object, object>)MtdGetNullableValueBox.MakeGenericMethod([ Nullable.GetUnderlyingType(nullableType) ]).CreateDelegate(typeof(InstanceGetter<object, object>), this)
-        );
-#endif
-        return getter(value);
-    }
-
     protected bool GetNullableHasValue(TypedReference value)
     {
 #if NET472_OR_GREATER || NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
@@ -3156,12 +3858,6 @@ public class DefaultSerializer : IRpcSerializer
             enumType => (AssignEnumByRefAny)MtdAssignEnumRefAny.MakeGenericMethod([ enumType, enumType.GetEnumUnderlyingType() ]).CreateDelegate(typeof(AssignEnumByRefAny), this)
         )(byref, value);
 #endif
-    }
-
-    [UsedImplicitly]
-    private object GetNullableValueBox<T>(object value) where T : struct
-    {
-        return (T)value;
     }
 
     [UsedImplicitly]
