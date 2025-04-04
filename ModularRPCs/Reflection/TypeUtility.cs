@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
@@ -10,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using MethodInfo = System.Reflection.MethodInfo;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -18,50 +19,308 @@ namespace DanielWillett.ModularRpcs.Reflection;
 internal static class TypeUtility
 {
     private static readonly ConcurrentDictionary<Type, Type[]> ServiceInterfaces = new ConcurrentDictionary<Type, Type[]>();
+    private static readonly ConcurrentDictionary<Type, Type?> SerializableEnumerableTypes = new ConcurrentDictionary<Type, Type?>();
+    private static readonly ConcurrentDictionary<Type, Type?> EnumerableTypes = new ConcurrentDictionary<Type, Type?>();
     public const TypeCode MaxUsedTypeCode = (TypeCode)20;
     public const TypeCode TypeCodeTimeSpan = (TypeCode)17;
     public const TypeCode TypeCodeGuid = (TypeCode)19;
     public const TypeCode TypeCodeDateTimeOffset = (TypeCode)20;
+
+    // NOTE: Extension methods are not supported.
+    public static bool IsAwaitable(Type valueType,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]  
+#endif
+        out Type awaitReturnType, out MethodInfo? configureAwaitMethod,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]  
+#endif
+        out MethodInfo getAwaiterMethod,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]  
+#endif
+        out MethodInfo getResultMethod,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]  
+#endif
+        out MethodInfo onCompletedMethod,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]  
+#endif
+        out PropertyInfo getIsCompletedProperty)
+    {
+        awaitReturnType = null!;
+        getAwaiterMethod = null!;
+        getResultMethod = null!;
+        getIsCompletedProperty = null!;
+        onCompletedMethod = null!;
+
+        configureAwaitMethod = GetMostRelevantMethodByName("ConfigureAwait",
+            valueType,
+            [ typeof(bool) ],
+            x => !x.ContainsGenericParameters && x.GetParameters() is { Length: 1 } p && p[0].ParameterType == typeof(bool));
+        if (configureAwaitMethod != null && configureAwaitMethod.ReturnType != typeof(void))
+        {
+            valueType = configureAwaitMethod.ReturnType;
+        }
+
+        getAwaiterMethod = GetMostRelevantMethodByName("GetAwaiter", valueType, Type.EmptyTypes,
+            x => !x.ContainsGenericParameters && x.ReturnType != typeof(void));
+
+        if (getAwaiterMethod == null)
+            return false;
+
+        Type awaiterType = getAwaiterMethod.ReturnType;
+        if (!typeof(INotifyCompletion).IsAssignableFrom(awaiterType))
+            return false;
+
+        PropertyInfo? isCompleted = GetMostRelevantPropertyByName("IsCompleted", awaiterType, typeof(bool), x => x.GetGetMethod(false) != null);
+        
+        if (isCompleted == null)
+            return false;
+
+        if (typeof(ICriticalNotifyCompletion).IsAssignableFrom(awaiterType))
+        {
+            onCompletedMethod = Accessor.GetImplementedMethod(awaiterType, CommonReflectionCache.CriticalNotifyCompletionOnCompleted);
+        }
+
+        if (onCompletedMethod == null)
+        {
+            onCompletedMethod = Accessor.GetImplementedMethod(awaiterType, CommonReflectionCache.NotifyCompletionOnCompleted);
+        }
+
+        if (onCompletedMethod == null)
+            return false;
+
+        if (isCompleted.GetGetMethod(false) == null)
+            return false;
+
+        MethodInfo? getResult = GetMostRelevantMethodByName("GetResult", awaiterType, Type.EmptyTypes, x => !x.ContainsGenericParameters);
+        if (getResult == null)
+            return false;
+
+        awaitReturnType = getResult.ReturnType;
+        return true;
+    }
+
+    private static MethodInfo? GetMostRelevantMethodByName(string methodName, Type type, Type[] parameters, Func<MethodInfo, bool> verify, BindingFlags flags = BindingFlags.Public | BindingFlags.Instance)
+    {
+        if ((flags & BindingFlags.Instance) != 0)
+            flags |= BindingFlags.FlattenHierarchy;
+
+        MethodInfo? method = null;
+        try
+        {
+            method = type.GetMethod(methodName, flags, null, parameters, null);
+            if (!verify(method))
+                return null;
+        }
+        catch (AmbiguousMatchException)
+        {
+            MethodInfo[] allMethods = type.GetMethods(flags);
+            foreach (MethodInfo iter in allMethods)
+            {
+                // find matching method highest in the type hierarchy
+                if (!string.Equals(iter.Name, methodName, StringComparison.Ordinal))
+                    continue;
+
+                ParameterInfo[] checkParameters = iter.GetParameters();
+                if (parameters.Length != checkParameters.Length)
+                    continue;
+
+                bool bindSuccess = true;
+                for (int i = 0; i < checkParameters.Length; ++i)
+                {
+                    if (checkParameters[i].ParameterType == parameters[i])
+                        continue;
+
+                    bindSuccess = false;
+                    break;
+                }
+
+                if (!bindSuccess || !verify(iter))
+                    continue;
+
+                if (method == null || method.DeclaringType!.IsAssignableFrom(iter.DeclaringType))
+                    method = iter;
+            }
+        }
+
+        return method;
+    }
+    private static PropertyInfo? GetMostRelevantPropertyByName(string propertyName, Type type, Type returnType, Func<PropertyInfo, bool> verify, BindingFlags flags = BindingFlags.Public | BindingFlags.Instance)
+    {
+        if ((flags & BindingFlags.Instance) != 0)
+            flags |= BindingFlags.FlattenHierarchy;
+
+        PropertyInfo? property = null;
+        try
+        {
+            property = type.GetProperty(propertyName, flags, null, returnType, Type.EmptyTypes, null);
+            if (!verify(property))
+                return null;
+        }
+        catch (AmbiguousMatchException)
+        {
+            PropertyInfo[] allProperties = type.GetProperties(flags);
+            foreach (PropertyInfo iter in allProperties)
+            {
+                // find matching method highest in the type hierarchy
+                if (!string.Equals(iter.Name, propertyName, StringComparison.Ordinal))
+                    continue;
+
+                if (iter.GetIndexParameters().Length > 0 || iter.PropertyType != returnType || !verify(iter))
+                    continue;
+
+                if (property == null || property.DeclaringType!.IsAssignableFrom(iter.DeclaringType))
+                    property = iter;
+            }
+        }
+
+        return property;
+    }
+
+    public static Type? GetSerializableEnumerableType(Type type)
+    {
+        if (type.IsArray)
+            return type.GetElementType();
+
+        if (SerializableEnumerableTypes.TryGetValue(type, out Type? t))
+            return t;
+
+        foreach (Type intx in type.GetInterfaces())
+        {
+            if (!intx.IsConstructedGenericType)
+                continue;
+
+            if (intx.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+                continue;
+
+            Type elementType = intx.GetGenericArguments()[0];
+            if (!typeof(IRpcSerializable).IsAssignableFrom(elementType))
+                continue;
+
+            SerializableEnumerableTypes.TryAdd(type, elementType);
+            return elementType;
+        }
+
+        SerializableEnumerableTypes.TryAdd(type, null);
+        return null;
+    }
+    public static Type? GetEnumerableType(Type type)
+    {
+        if (type.IsArray)
+            return type.GetElementType();
+
+        if (EnumerableTypes.TryGetValue(type, out Type? t))
+            return t;
+
+        foreach (Type intx in type.GetInterfaces())
+        {
+            if (!intx.IsConstructedGenericType)
+                continue;
+
+            if (intx.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+                continue;
+
+            Type elementType = intx.GetGenericArguments()[0];
+            EnumerableTypes.TryAdd(type, elementType);
+            return elementType;
+        }
+
+        EnumerableTypes.TryAdd(type, null);
+        return null;
+    }
+
     public static TypeCode GetTypeCode(Type tc)
     {
-        if (tc == typeof(DBNull))
-            return TypeCode.DBNull;
-        if (tc == typeof(bool))
-            return TypeCode.Boolean;
-        if (tc == typeof(char))
-            return TypeCode.Char;
-        if (tc == typeof(sbyte))
-            return TypeCode.SByte;
-        if (tc == typeof(byte))
-            return TypeCode.Byte;
-        if (tc == typeof(short))
-            return TypeCode.Int16;
-        if (tc == typeof(ushort))
-            return TypeCode.UInt16;
-        if (tc == typeof(int))
-            return TypeCode.Int32;
-        if (tc == typeof(uint))
-            return TypeCode.UInt32;
-        if (tc == typeof(long))
-            return TypeCode.Int64;
-        if (tc == typeof(ulong))
-            return TypeCode.UInt64;
-        if (tc == typeof(float))
-            return TypeCode.Single;
-        if (tc == typeof(double))
-            return TypeCode.Double;
-        if (tc == typeof(decimal))
-            return TypeCode.Decimal;
-        if (tc == typeof(DateTime))
-            return TypeCode.DateTime;
-        if (tc == typeof(TimeSpan))
-            return TypeCodeTimeSpan;
-        if (tc == typeof(string))
+        if (tc.IsValueType)
+        {
+            if (tc == typeof(bool))
+                return TypeCode.Boolean;
+            if (tc == typeof(char))
+                return TypeCode.Char;
+            if (tc == typeof(sbyte))
+                return TypeCode.SByte;
+            if (tc == typeof(byte))
+                return TypeCode.Byte;
+            if (tc == typeof(short))
+                return TypeCode.Int16;
+            if (tc == typeof(ushort))
+                return TypeCode.UInt16;
+            if (tc == typeof(int))
+                return TypeCode.Int32;
+            if (tc == typeof(uint))
+                return TypeCode.UInt32;
+            if (tc == typeof(long))
+                return TypeCode.Int64;
+            if (tc == typeof(ulong))
+                return TypeCode.UInt64;
+            if (tc == typeof(float))
+                return TypeCode.Single;
+            if (tc == typeof(double))
+                return TypeCode.Double;
+            if (tc == typeof(decimal))
+                return TypeCode.Decimal;
+            if (tc == typeof(DateTime))
+                return TypeCode.DateTime;
+            if (tc == typeof(TimeSpan))
+                return TypeCodeTimeSpan;
+            if (tc == typeof(Guid))
+                return TypeCodeGuid;
+            if (tc == typeof(DateTimeOffset))
+                return TypeCodeDateTimeOffset;
+        }
+        else if (tc == typeof(string))
             return TypeCode.String;
-        if (tc == typeof(Guid))
-            return TypeCodeGuid;
-        if (tc == typeof(DateTimeOffset))
-            return TypeCodeDateTimeOffset;
+        else if (tc == typeof(DBNull))
+            return TypeCode.DBNull;
+
+        return TypeCode.Object;
+    }
+    public static TypeCode GetTypeCode<TValue>()
+    {
+        if (typeof(TValue).IsValueType)
+        {
+            if (typeof(TValue) == typeof(bool))
+                return TypeCode.Boolean;
+            if (typeof(TValue) == typeof(char))
+                return TypeCode.Char;
+            if (typeof(TValue) == typeof(sbyte))
+                return TypeCode.SByte;
+            if (typeof(TValue) == typeof(byte))
+                return TypeCode.Byte;
+            if (typeof(TValue) == typeof(short))
+                return TypeCode.Int16;
+            if (typeof(TValue) == typeof(ushort))
+                return TypeCode.UInt16;
+            if (typeof(TValue) == typeof(int))
+                return TypeCode.Int32;
+            if (typeof(TValue) == typeof(uint))
+                return TypeCode.UInt32;
+            if (typeof(TValue) == typeof(long))
+                return TypeCode.Int64;
+            if (typeof(TValue) == typeof(ulong))
+                return TypeCode.UInt64;
+            if (typeof(TValue) == typeof(float))
+                return TypeCode.Single;
+            if (typeof(TValue) == typeof(double))
+                return TypeCode.Double;
+            if (typeof(TValue) == typeof(decimal))
+                return TypeCode.Decimal;
+            if (typeof(TValue) == typeof(DateTime))
+                return TypeCode.DateTime;
+            if (typeof(TValue) == typeof(TimeSpan))
+                return TypeCodeTimeSpan;
+            if (typeof(TValue) == typeof(Guid))
+                return TypeCodeGuid;
+            if (typeof(TValue) == typeof(DateTimeOffset))
+                return TypeCodeDateTimeOffset;
+        }
+        else if (typeof(TValue) == typeof(string))
+            return TypeCode.String;
+        else if (typeof(TValue) == typeof(DBNull))
+            return TypeCode.DBNull;
 
         return TypeCode.Object;
     }
@@ -1278,37 +1537,40 @@ internal static class TypeUtility
         if (!checkInterfaces)
             return null;
 
-        // try to get service by it's interfaces (cached in ServiceInterfaces).
-        Type[] intx = ServiceInterfaces.GetOrAdd(declaringType, static declaringType =>
+        if (!ServiceInterfaces.TryGetValue(declaringType, out Type[] intx))
         {
-            RpcServiceTypeAttribute[] attributes = declaringType.GetAttributesSafe<RpcServiceTypeAttribute>();
-            if (attributes.Length == 0)
-                return declaringType.GetInterfaces();
-
-            int ct = attributes.Count(attribute =>
-                attribute.ServiceType != null
-                && attribute.ServiceType != declaringType
-                && attribute.ServiceType.IsAssignableFrom(declaringType)
-            );
-
-            if (ct == 0)
-                return Type.EmptyTypes;
-
-            Type[] attrArray = new Type[ct];
-            for (int i = attributes.Length - 1; i >= 0; --i)
+            // try to get service by it's interfaces (cached in ServiceInterfaces).
+            intx = ServiceInterfaces.GetOrAdd(declaringType, static declaringType =>
             {
-                RpcServiceTypeAttribute attribute = attributes[i];
+                RpcServiceTypeAttribute[] attributes = declaringType.GetAttributesSafe<RpcServiceTypeAttribute>();
+                if (attributes.Length == 0)
+                    return declaringType.GetInterfaces();
 
-                if (attribute.ServiceType != null
+                int ct = attributes.Count(attribute =>
+                    attribute.ServiceType != null
                     && attribute.ServiceType != declaringType
-                    && attribute.ServiceType.IsAssignableFrom(declaringType))
-                {
-                    attrArray[--ct] = attribute.ServiceType;
-                }
-            }
+                    && attribute.ServiceType.IsAssignableFrom(declaringType)
+                );
 
-            return attrArray;
-        });
+                if (ct == 0)
+                    return Type.EmptyTypes;
+
+                Type[] attrArray = new Type[ct];
+                for (int i = attributes.Length - 1; i >= 0; --i)
+                {
+                    RpcServiceTypeAttribute attribute = attributes[i];
+
+                    if (attribute.ServiceType != null
+                        && attribute.ServiceType != declaringType
+                        && attribute.ServiceType.IsAssignableFrom(declaringType))
+                    {
+                        attrArray[--ct] = attribute.ServiceType;
+                    }
+                }
+
+                return attrArray;
+            });
+        }
 
         for (int i = 0; i < intx.Length; ++i)
         {

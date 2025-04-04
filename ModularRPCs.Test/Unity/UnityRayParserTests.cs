@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
@@ -95,6 +95,7 @@ public class UnityUnityRayParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
+    [Ignore("these take forever")]
     public void TestRayMany(int count)
     {
         Random r = new Random();

@@ -61,6 +61,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Expected a type assignable to {0}..
+        /// </summary>
+        internal static string ArgumentExpectedBaseType {
+            get {
+                return ResourceManager.GetString("ArgumentExpectedBaseType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This endpoint is not a broadcast endpoint..
         /// </summary>
         internal static string ArgumentNotBroadcast {
@@ -169,6 +178,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Unity component {0} was not created using the extension methods defined in ModularRpcs.Unity..
+        /// </summary>
+        internal static string ExceptionUnityComponentNotCreatedWithRouter {
+            get {
+                return ResourceManager.GetString("ExceptionUnityComponentNotCreatedWithRouter", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The given identifier type is not valid. Expected: &apos;{0}&apos;, actual: &apos;{1}&apos;..
         /// </summary>
         internal static string GetObjectByIdentifierIdentityTypeNotCorrectType {
@@ -237,6 +255,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string InvalidOperationExceptionConfigLocked {
             get {
                 return ResourceManager.GetString("InvalidOperationExceptionConfigLocked", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Type {0}&apos;s enumerator was not consistant after being enumerated twice..
+        /// </summary>
+        internal static string InvalidOperationExceptionInconsistantEnumerator {
+            get {
+                return ResourceManager.GetString("InvalidOperationExceptionInconsistantEnumerator", resourceCulture);
             }
         }
         
@@ -592,11 +619,38 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Invalid or unsupported collection type: {0}..
+        /// </summary>
+        internal static string RpcInvalidParameterExceptionInvalidCollectionType {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterExceptionInvalidCollectionType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Unable to find an IBinaryTypeParser for the type.
         /// </summary>
         internal static string RpcInvalidParameterExceptionNoParserFound {
             get {
                 return ResourceManager.GetString("RpcInvalidParameterExceptionNoParserFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No parser found, this type might be missing an RpcSerializableAttribute or not be implementing IRpcSerializable.
+        /// </summary>
+        internal static string RpcInvalidParameterExceptionNoParserFoundSerializableComponentMissing {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterExceptionNoParserFoundSerializableComponentMissing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Collection {0} of {1} contains a null value that can&apos;t be serialized..
+        /// </summary>
+        internal static string RpcInvalidParameterExceptionNullValueFound {
+            get {
+                return ResourceManager.GetString("RpcInvalidParameterExceptionNullValueFound", resourceCulture);
             }
         }
         
@@ -853,6 +907,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Unable to parse a list of IRpcSerializable objects because one object&apos;s size was larger than the header-declared maximum size of the list..
+        /// </summary>
+        internal static string RpcParseExceptionBufferRunOutInvalidSize {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionBufferRunOutInvalidSize", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the native int value was too long for this system while reading from the binary type parser: &apos;{0}&apos;..
         /// </summary>
         internal static string RpcParseExceptionBufferRunOutNativeIntOverflow {
@@ -867,6 +930,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcParseExceptionInvalidReturnType {
             get {
                 return ResourceManager.GetString("RpcParseExceptionInvalidReturnType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to An IRpcSerializable was written with a negative size. This could be caused by bad data..
+        /// </summary>
+        internal static string RpcParseExceptionInvalidSerializableSize {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionInvalidSerializableSize", resourceCulture);
             }
         }
         

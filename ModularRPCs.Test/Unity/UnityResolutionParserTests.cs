@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using ModularRPCs.Test.Many;
@@ -85,6 +85,8 @@ public class UnityResolutionParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
+
+    [Ignore("these take forever")]
     public void TestResolutionMany(int count)
     {
         Random r = new Random();

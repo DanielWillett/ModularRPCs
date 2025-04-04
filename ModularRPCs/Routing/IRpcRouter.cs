@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
@@ -7,8 +7,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Annotations;
 
 namespace DanielWillett.ModularRpcs.Routing;
 
@@ -106,4 +108,19 @@ public interface IRpcRouter
     /// Invoke an RPC by it's invocation point with the overhead already read.
     /// </summary>
     ValueTask ReceiveData(in PrimitiveRpcOverhead overhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
+
+    /// <summary>
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a <see langword="void"/> return type.
+    /// </summary>
+    void HandleVoidReturn(RpcOverhead overhead, IRpcSerializer serializer);
+
+    /// <summary>
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a non-<see langword="void"/> return type.
+    /// </summary>
+    void HandleSerializableReturnValue<TSerializable>(TSerializable value, RpcOverhead overhead, IRpcSerializer serializer) where TSerializable : IRpcSerializable;
+
+    /// <summary>
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a non-<see langword="void"/> return type.
+    /// </summary>
+    void HandleReturnValue<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer);
 }

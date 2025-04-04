@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
@@ -60,24 +60,24 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         ServiceProviders = serviceProviders;
     }
 
-    private protected override unsafe object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerBytes handlerBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, byte* bytes, uint maxSize, CancellationToken token)
+    private protected override unsafe void InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerBytes handlerBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, byte* bytes, uint maxSize, CancellationToken token)
     {
-        return handlerBytes((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, bytes, maxSize, token);
+        handlerBytes((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, bytes, maxSize, token);
     }
 
-    private protected override object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    private protected override void InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
     {
-        return handlerStream((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, stream, token);
+        handlerStream((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, stream, token);
     }
     
-    private protected override object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerRawBytes handlerRawBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
+    private protected override void InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerRawBytes handlerRawBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
-        return handlerRawBytes((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, rawData, canTakeOwnership, token);
+        handlerRawBytes((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, rawData, canTakeOwnership, token);
     }
 
-    private protected override object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerRawStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    private protected override void InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerRawStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
     {
-        return handlerRawStream((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, stream, token);
+        handlerRawStream((object?)ServiceProviders ?? ServiceProvider, targetObject, overhead, router, serializer, stream, token);
     }
 
     protected override object? GetTargetObject(MethodInfo? knownMethod)

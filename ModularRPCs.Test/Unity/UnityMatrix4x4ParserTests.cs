@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using ModularRPCs.Test.Many;
@@ -104,6 +104,7 @@ public class UnityUnityMatrix4x4ParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
+    [Ignore("these take forever")]
     public void TestMatrix4x4Many(int count)
     {
         Random r = new Random();

@@ -1,5 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -112,7 +113,9 @@ public static class RpcTaskExtensions
         return new CombinedTokenSources(other, null);
     }
 }
-internal readonly struct CombinedTokenSources : IDisposable
+
+[EditorBrowsable(EditorBrowsableState.Never)]
+public readonly struct CombinedTokenSources : IDisposable
 {
     private readonly CancellationTokenSource? _tknSrc;
     public readonly CancellationToken Token;

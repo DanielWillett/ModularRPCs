@@ -1,13 +1,23 @@
 using DanielWillett.ModularRpcs.Exceptions;
+using JetBrains.Annotations;
 using System;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using DanielWillett.ModularRpcs.Data;
 
 namespace DanielWillett.ModularRpcs.Async;
+
+/// <summary>
+/// Represents a pending remote RPC invocation with a return value of type <typeparamref name="T"/>. Void-returning methods should use <see cref="RpcTask"/> instead.
+/// </summary>
+/// <typeparam name="T">The type of value to be returned.</typeparam>
 public class RpcTask<T> : RpcTask
 {
-    internal T? ResultIntl;
+    /// <summary>
+    /// The result value of this task.
+    /// </summary>
+    protected internal T? ResultIntl;
 
     /// <summary>
     /// This property will always throw a <see cref="NotImplementedException"/>.
@@ -30,7 +40,24 @@ public class RpcTask<T> : RpcTask
         Awaiter = new RpcTaskAwaiter<T>(this, true);
         ResultIntl = value;
     }
+
+    /// <summary>
+    /// Get the awaiter object for this task used by <see langword="async"/> method builders to queue continuations.
+    /// </summary>
+    [Pure]
     public new RpcTaskAwaiter<T> GetAwaiter() => (RpcTaskAwaiter<T>)Awaiter;
+
+    /// <summary>
+    /// Configures this task to not continue the current <see langword="async"/> method on the current <see cref="SynchronizationContext"/>, if supported by the runtime..
+    /// </summary>
+    /// <param name="continueOnCapturedContext">Whether or not the current <see langword="async"/> method will continue on the current <see cref="SynchronizationContext"/>, if supported by the runtime.</param>
+    /// <returns>A configured <see cref="RpcTask{T}"/>.</returns>
+    [Pure]
+    public new ConfiguredRpcTaskAwaitable<T> ConfigureAwait(bool continueOnCapturedContext)
+    {
+        return new ConfiguredRpcTaskAwaitable<T>((RpcTaskAwaiter<T>)Awaiter, continueOnCapturedContext);
+    }
+
     internal void TriggerComplete(Exception? exception, T value)
     {
         Exception = exception;

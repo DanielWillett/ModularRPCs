@@ -426,4 +426,28 @@
   <data name="RpcTaskCancelled" xml:space="preserve">
     <value>An RPC invocation was cancelled by a CancellationToken.</value>
   </data>
+  <data name="ExceptionUnityComponentNotCreatedWithRouter" xml:space="preserve">
+    <value>Unity component {0} was not created using the extension methods defined in ModularRpcs.Unity.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionNullValueFound" xml:space="preserve">
+    <value>Collection {0} of {1} contains a null value that can't be serialized.</value>
+  </data>
+  <data name="InvalidOperationExceptionInconsistantEnumerator" xml:space="preserve">
+    <value>Type {0}'s enumerator was not consistant after being enumerated twice.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionInvalidCollectionType" xml:space="preserve">
+    <value>Invalid or unsupported collection type: {0}.</value>
+  </data>
+  <data name="RpcParseExceptionBufferRunOutInvalidSize" xml:space="preserve">
+    <value>Unable to parse a list of IRpcSerializable objects because one object's size was larger than the header-declared maximum size of the list.</value>
+  </data>
+  <data name="RpcInvalidParameterExceptionNoParserFoundSerializableComponentMissing" xml:space="preserve">
+    <value>No parser found, this type might be missing an RpcSerializableAttribute or not be implementing IRpcSerializable</value>
+  </data>
+  <data name="RpcParseExceptionInvalidSerializableSize" xml:space="preserve">
+    <value>An IRpcSerializable was written with a negative size. This could be caused by bad data.</value>
+  </data>
+  <data name="ArgumentExpectedBaseType" xml:space="preserve">
+    <value>Expected a type assignable to {0}.</value>
+  </data>
 </root>

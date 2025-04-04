@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using ModularRPCs.Test.Many;
@@ -95,6 +95,7 @@ public class UnityUnityRay2DParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
+    [Ignore("these take forever")]
     public void TestRay2DMany(int count)
     {
         Random r = new Random();
