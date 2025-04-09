@@ -10,7 +10,7 @@ using NUnit.Framework;
 namespace ModularRPCs.Test.CodeGen;
 
 [NonParallelizable, TestFixture]
-internal class EnumArgumentSerializationTests
+public class EnumArgumentSerializationTests
 {
     private static bool _wasInvoked;
 
