@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ReflectionTools;
@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using DanielWillett.ModularRpcs.Serialization.Parsers;
 
 namespace DanielWillett.ModularRpcs.Serialization;
 
@@ -16,6 +17,16 @@ namespace DanielWillett.ModularRpcs.Serialization;
 /// </summary>
 public static class SerializationHelper
 {
+    /// <summary>
+    /// The minimum size of an array written with the standard array header format.
+    /// </summary>
+    public const int MinimumArraySize = 1;
+
+    /// <summary>
+    /// The minimum size of a string written with a <see cref="StringParser"/>.
+    /// </summary>
+    public const int MinimumStringSize = 1;
+
     /// <summary>
     /// Adds or updates a serializer in a dictionary for all the supported array/list types.
     /// <para>These collection types are <typeparamref name="TElementType"/>[], <see cref="IList{T}"/> of <typeparamref name="TElementType"/>, <see cref="IReadOnlyList{T}"/> of <typeparamref name="TElementType"/>, <see cref="Span{T}"/> of <typeparamref name="TElementType"/>, and <see cref="ReadOnlySpan{T}"/> of <typeparamref name="TElementType"/>. If <typeparamref name="TElementType"/> is <see cref="bool"/>, it also includes <see cref="BitArray"/>.</para>
@@ -274,9 +285,9 @@ public static class SerializationHelper
     /// <param name="parser">Used to display the parser type in errors when the buffer runs out. Can be <c>this</c>.</param>
     /// <returns>Number of bytes written to <paramref name="bytes"/>. <paramref name="index"/> will also be incremented by this value.</returns>
     /// <exception cref="RpcOverflowException">Error code 1, buffer overflowed.</exception>
-    public static unsafe int WriteStandardArrayHeader(byte* bytes, uint maxSize, ref uint index, int length, bool isNull, object parser)
+    public static unsafe int WriteStandardArrayHeader(byte* bytes, uint maxSize, ref uint index, int length, bool isNull, object parser, bool forceFull = false)
     {
-        byte lenFlag = GetLengthFlag(length, isNull);
+        byte lenFlag = GetLengthFlag(length, isNull, forceFull);
 
         int hdrSize = GetHeaderSize(lenFlag);
         if (maxSize - index < hdrSize)
@@ -335,9 +346,9 @@ public static class SerializationHelper
     /// <param name="length">Length of the array in elements.</param>
     /// <param name="isNull">If the array is <see langword="null"/>.</param>
     /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
-    public static int WriteStandardArrayHeader(Stream stream, int length, bool isNull)
+    public static int WriteStandardArrayHeader(Stream stream, int length, bool isNull, bool forceFull = false)
     {
-        byte lenFlag = GetLengthFlag(length, isNull);
+        byte lenFlag = GetLengthFlag(length, isNull, forceFull);
         int hdrSize = GetHeaderSize(lenFlag);
         
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
@@ -539,10 +550,13 @@ public static class SerializationHelper
         return true;
     }
 
-    internal static byte GetLengthFlag(int length, bool isNull)
+    internal static byte GetLengthFlag(int length, bool isNull, bool forceFull = false)
     {
         if (isNull)
             return 0b10000000;
+
+        if (forceFull)
+            return 3;
 
         byte f = length switch
         {
@@ -569,7 +583,7 @@ public static class SerializationHelper
     /// <param name="length">The number of elements in the array.</param>
     /// <param name="isNull">If the array is <see langword="null"/>.</param>
     /// <returns>Size of the header in bytes.</returns>
-    public static int GetHeaderSize(int length, bool isNull) => GetHeaderSize(GetLengthFlag(length, isNull));
+    public static int GetHeaderSize(int length, bool isNull, bool forceFull = false) => GetHeaderSize(GetLengthFlag(length, isNull, forceFull));
 
     /// <summary>
     /// Manually try to advance a stream a number of bytes to make sure a stream ends up where it should, even if a parser has to throw an error. It may not actually advance that much or at all, depending on how much data is left and what type of stream it is.

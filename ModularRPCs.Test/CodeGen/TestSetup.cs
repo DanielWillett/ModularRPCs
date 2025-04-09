@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.DependencyInjection;
+using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Loopback;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
@@ -16,6 +16,7 @@ internal static class TestSetup
     {
         ServiceCollection collection = new ServiceCollection();
 
+        Accessor.LogILTraceMessages = true;
         Accessor.LogDebugMessages = true;
         Accessor.LogInfoMessages = true;
         Accessor.LogWarningMessages = true;

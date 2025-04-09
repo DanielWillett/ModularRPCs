@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ModularRpcs.WebSockets;

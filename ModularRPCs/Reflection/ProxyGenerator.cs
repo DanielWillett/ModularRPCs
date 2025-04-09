@@ -60,7 +60,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 #if DEBUG
     internal const bool DebugPrint = false;
     internal const bool BreakpointPrint = false;
-#else
+#else 
     internal const bool DebugPrint = false;
     internal const bool BreakpointPrint = false;
 #endif
@@ -142,6 +142,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// </summary>
     /// <remarks>Defaults to 512.</remarks>
     public int MaxSizeForStackalloc { get; set; } = 512;
+
+    /// <summary>
+    /// If task-like-returning RPCs should be awaited using 'ConfigureAwait(false)' if available.
+    /// </summary>
+    /// <remarks>Defaults to <see langword="true"/>.</remarks>
+    public bool UseConfigureAwaitWhenAwaitingRpcInvocations { get; set; } = true;
 
     /// <summary>
     /// Default timeout for all RPCs unless otherwise specified with a <see cref="RpcTimeoutAttribute"/>.
@@ -477,6 +483,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             }
         }
 
+        if (_getObjectFunctions.TryGetValue(instanceType, out Func<object, WeakReference?>? weakRefGetter))
+        {
+            return weakRefGetter(identifier);
+        }
+
         return _getObjectFunctions.GetOrAdd(
             instanceType,
             type =>
@@ -517,11 +528,13 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (instanceType.Assembly.FullName == null || !instanceType.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             instanceType = GetProxyType(instanceType);
 
-        if (!_releaseObjectFunctions.ContainsKey(instanceType))
+        if (_releaseObjectFunctions.TryGetValue(instanceType, out Func<object, bool>? releaser))
         {
-            if (!instanceType.GetInterfaces().Any(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRpcObject<>)))
-                throw new ArgumentException(Properties.Exceptions.ObjectNotIdentifyableType, nameof(instanceType));
+            return releaser(obj);
         }
+
+        if (!instanceType.GetInterfaces().Any(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IRpcObject<>)))
+            throw new ArgumentException(Properties.Exceptions.ObjectNotIdentifyableType, nameof(instanceType));
 
         return _releaseObjectFunctions.GetOrAdd(
             instanceType,
@@ -684,6 +697,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
     private WriteIdentifierHandler? GetWriteIdentifierMethod(Type type)
     {
+        if (_writeIdentifierFunctions.TryGetValue(type, out WriteIdentifierHandler? h))
+        {
+            return h;
+        }
+
         return _writeIdentifierFunctions.GetOrAdd(
             type,
             type =>
@@ -698,6 +716,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
     private GetOverheadSize? GetOverheadSizeMethod(Type type)
     {
+        if (_getOverheadSizeFunctions.TryGetValue(type, out GetOverheadSize? h))
+        {
+            return h;
+        }
+
         return _getOverheadSizeFunctions.GetOrAdd(
             type,
             type =>
@@ -714,6 +737,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private static bool _supportsByRefRtn = true;
     private Delegate? GetCallInfoGetter(RuntimeMethodHandle methodHandle)
     {
+        if (_getCallInfoFunctions.TryGetValue(methodHandle, out Delegate? h))
+        {
+            return h;
+        }
+
         return _getCallInfoFunctions.GetOrAdd(
             methodHandle,
             methodHandle =>
@@ -1335,7 +1363,20 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         {
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldfld, unityRouterField);
+
+            il.Emit(OpCodes.Dup);
+            Label label = il.DefineLabel();
+            il.Emit(OpCodes.Brtrue_S, label);
+
+            // if rpc field is null (not created with unity extensions)
+            il.Emit(OpCodes.Pop);
+            il.Emit(OpCodes.Ldstr, string.Format(Properties.Exceptions.ExceptionUnityComponentNotCreatedWithRouter, Accessor.ExceptionFormatter.Format(type)));
+            il.Emit(OpCodes.Newobj, CommonReflectionCache.CtorInvalidOperationException);
+            il.Emit(OpCodes.Throw);
+
+            il.MarkLabel(label);
         }
+
         il.Emit(OpCodes.Ldtoken, type);
         il.Emit(OpCodes.Call, Accessor.GetMethod(Type.GetTypeFromHandle)!);
         il.Emit(OpCodes.Ldarg_0);
@@ -1639,23 +1680,27 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     {
         ProxyTypeInfo info = default;
 
-        string typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
-        string copiedTypeName = typeName;
-        int dupNum = 0;
-        while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+        string typeName = (type.FullName ?? type.Name) + "<RPC_Proxy>";
+        if (ModuleBuilder.GetType(typeName, false, false) != null)
         {
-            ++dupNum;
-            copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
-        }
+            typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
+            string copiedTypeName = typeName;
+            int dupNum = 0;
+            while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+            {
+                ++dupNum;
+                copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
+            }
 
-        typeName = copiedTypeName;
+            typeName = copiedTypeName;
+        }
 
         bool unity = false;
 
         // unity objects can not use constructors, so instead we add a Start() method.
         type.ForEachBaseType((bt, _) =>
         {
-            if (!TypeUtility.GetAssemblyQualifiedNameNoVersion(bt).Equals("UnityEngine.Object, UnityEngine.CoreModule", StringComparison.Ordinal))
+            if (!TypeUtility.GetAssemblyQualifiedNameNoVersion(bt).Equals("UnityEngine.MonoBehaviour, UnityEngine.CoreModule", StringComparison.Ordinal))
                 return true;
 
             unity = true;
@@ -3177,21 +3222,33 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
     internal RpcInvokeHandlerStream GetInvokeStreamMethod(MethodInfo method)
     {
+        if (_invokeMethodsStream.TryGetValue(method.MethodHandle, out Delegate? d))
+            return (RpcInvokeHandlerStream)d;
+
         RpcInvokeHandlerStream entry = (RpcInvokeHandlerStream)_invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodStream);
         return entry;
     }
     internal RpcInvokeHandlerBytes GetInvokeBytesMethod(MethodInfo method)
     {
+        if (_invokeMethodsBytes.TryGetValue(method.MethodHandle, out Delegate? d))
+            return (RpcInvokeHandlerBytes)d;
+
         RpcInvokeHandlerBytes entry = (RpcInvokeHandlerBytes)_invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodBytes);
         return entry;
     }
     internal RpcInvokeHandlerStream GetInvokeRawStreamMethod(MethodInfo method)
     {
+        if (_invokeMethodsStream.TryGetValue(method.MethodHandle, out Delegate? d))
+            return (RpcInvokeHandlerStream)d;
+
         RpcInvokeHandlerStream entry = (RpcInvokeHandlerStream)_invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodRawStream);
         return entry;
     }
     internal RpcInvokeHandlerRawBytes GetInvokeRawBytesMethod(MethodInfo method)
     {
+        if (_invokeMethodsBytes.TryGetValue(method.MethodHandle, out Delegate? d))
+            return (RpcInvokeHandlerRawBytes)d;
+
         RpcInvokeHandlerRawBytes entry = (RpcInvokeHandlerRawBytes)_invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodRawBytes);
         return entry;
     }
@@ -3201,7 +3258,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
 
-        DynamicMethod streamDynMethod = new DynamicMethod("Invoke<" + method.Name + ">", attr, conv, typeof(object), RpcInvokeHandlerStreamParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+        DynamicMethod streamDynMethod = new DynamicMethod("Invoke<" + method.Name + ">", attr, conv, typeof(void), RpcInvokeHandlerStreamParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
 
         streamDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
         streamDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
@@ -3220,7 +3277,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
 
-        DynamicMethod bytesDynMethod = new DynamicMethod("Invoke<" + method.Name + ">", attr, conv, typeof(object), RpcInvokeHandlerBytesParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+        DynamicMethod bytesDynMethod = new DynamicMethod("Invoke<" + method.Name + ">", attr, conv, typeof(void), RpcInvokeHandlerBytesParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
 
         bytesDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
         bytesDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
@@ -3240,7 +3297,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
 
-        DynamicMethod rawStreamDynMethod = new DynamicMethod("Invoke<" + method.Name + ">_Raw", attr, conv, typeof(object), RpcInvokeHandlerStreamParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+        DynamicMethod rawStreamDynMethod = new DynamicMethod("Invoke<" + method.Name + ">_Raw", attr, conv, typeof(void), RpcInvokeHandlerStreamParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
 
         rawStreamDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
         rawStreamDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
@@ -3259,7 +3316,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
 
-        DynamicMethod rawBytesDynMethod = new DynamicMethod("Invoke<" + method.Name + ">_Raw", attr, conv, typeof(object), RpcInvokeHandlerRawBytesParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
+        DynamicMethod rawBytesDynMethod = new DynamicMethod("Invoke<" + method.Name + ">_Raw", attr, conv, typeof(void), RpcInvokeHandlerRawBytesParams, method.DeclaringType ?? typeof(SerializerGenerator), true);
 
         rawBytesDynMethod.DefineParameter(1, ParameterAttributes.None, "serviceProvider");
         rawBytesDynMethod.DefineParameter(2, ParameterAttributes.None, "targetObject");
@@ -3272,147 +3329,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         SerializerGenerator.GenerateRawInvokeBytes(method, rawBytesDynMethod, rawBytesDynMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint));
         return (RpcInvokeHandlerRawBytes)rawBytesDynMethod.CreateDelegate(typeof(RpcInvokeHandlerRawBytes));
-    }
-
-    /// <summary>
-    /// Converts a completed <see cref="ValueTask"/> (usually created with <see cref="ConvertReturnedValueToValueTask"/>) back to a value.
-    /// </summary>
-    /// <returns>The value stored in <paramref name="valueTask"/>, or <see langword="null"/> if it returned void.</returns>
-    public object? ConvertValueTaskToValue(RpcInvocationResult valueTask)
-    {
-        Task task = valueTask.Task.AsTask();
-        if (task == Task.CompletedTask)
-            return null;
-
-        if (valueTask.ReturnType == typeof(Task) || valueTask.ReturnType == typeof(ValueTask))
-            return null;
-
-        Type taskType = task.GetType();
-        try
-        {
-            return _convToReturnFunctions.GetOrAdd(
-                taskType,
-                taskType =>
-                {
-                    MethodInfo? getAwaiterMethod = null;
-                    taskType.ForEachBaseType((type, _) =>
-                    {
-                        getAwaiterMethod = type.GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, Type.EmptyTypes, null);
-                        return getAwaiterMethod == null;
-                    });
-
-                    if (getAwaiterMethod == null || getAwaiterMethod.ReturnType == typeof(void))
-                    {
-                        return _ => null;
-                    }
-
-                    Type awaiterType = getAwaiterMethod.ReturnType;
-                    MethodInfo? getResultMethod = null;
-                    awaiterType.ForEachBaseType((type, _) =>
-                    {
-                        getResultMethod = type.GetMethod("GetResult", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly, null, CallingConventions.Any, Type.EmptyTypes, null);
-                        return getResultMethod == null;
-                    });
-
-                    if (getResultMethod == null || getResultMethod.ReturnType == typeof(void))
-                    {
-                        return _ => null;
-                    }
-
-                    Accessor.GetDynamicMethodFlags(false, out MethodAttributes attr, out CallingConventions conv);
-                    DynamicMethod mtd = new DynamicMethod("GetTaskResult", attr, conv, typeof(object), [typeof(Task)], taskType, true);
-                    mtd.DefineParameter(1, ParameterAttributes.None, "this");
-
-                    IOpCodeEmitter il = mtd.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
-
-                    il.Emit(OpCodes.Ldarg_0);
-                    // no need to callvirt since this will be a declared, non-overridden method
-                    il.Emit(OpCodes.Call, getAwaiterMethod);
-                    if (getAwaiterMethod.ReturnType.IsValueType)
-                    {
-                        LocalBuilder lcl = il.DeclareLocal(getAwaiterMethod.ReturnType);
-                        il.Emit(OpCodes.Stloc, lcl);
-                        il.Emit(OpCodes.Ldloca, lcl);
-                        il.Emit(OpCodes.Call, getResultMethod);
-                    }
-                    else
-                    {
-                        // this, on the other hand, may not be
-                        il.Emit(OpCodes.Callvirt, getResultMethod);
-                    }
-                    if (getResultMethod.ReturnType.IsValueType)
-                    {
-                        il.Emit(OpCodes.Box, getResultMethod.ReturnType);
-                    }
-                    il.Emit(OpCodes.Ret);
-
-                    return (ConvVtToReturnValue)mtd.CreateDelegate(typeof(ConvVtToReturnValue));
-                }
-            )(task);
-        }
-        catch (Exception ex)
-        {
-            IReflectionToolsLogger? logger = Accessor.Logger;
-            if (logger != null)
-            {
-                if (Accessor.LogErrorMessages)
-                    logger.LogError(nameof(ConvertValueTaskToValue), ex, $"Unable to serialize return type: {Accessor.Formatter.Format(valueTask.ReturnType)} - {Accessor.Formatter.Format(taskType)}.");
-            }
-            else
-            {
-                Console.WriteLine($"ModularRPCs(ConvertValueTaskToValue) - Unable to serialize return type: {Accessor.Formatter.Format(valueTask.ReturnType)} - {Accessor.Formatter.Format(taskType)}.");
-                Console.WriteLine(ex);
-            }
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Converts a return value from an RPC to a <see cref="ValueTask"/>, preserving the returned value in a <see cref="Task{T}"/> if there is one.
-    /// </summary>
-    public ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
-    {
-        switch (returnedValue)
-        {
-            case null:
-                return default;
-            case Task task:
-                return new ValueTask(task);
-            case ValueTask vt:
-                return vt;
-        }
-
-        Type returnedType = returnedValue.GetType();
-        return _convFromReturnFunctions.GetOrAdd(
-            returnedType,
-            returnedType =>
-            {
-                if (returnedType.IsGenericType && returnedType.GetGenericTypeDefinition() == typeof(ValueTask<>))
-                {
-                    return (ConvReturnValueToVt)ReturnValueTaskWithRtnVtAsVoidMethod
-                        .MakeGenericMethod(returnedType.GetGenericArguments()[0])
-                        .CreateDelegate(typeof(ConvReturnValueToVt), this);
-                }
-
-                return (ConvReturnValueToVt)ReturnValueTaskWithRtnAsVoidMethod
-                    .MakeGenericMethod(returnedType)
-                    .CreateDelegate(typeof(ConvReturnValueToVt), this);
-            }
-        )(returnedValue);
-    }
-
-    private static readonly MethodInfo ReturnValueTaskWithRtnVtAsVoidMethod =
-        typeof(ProxyGenerator).GetMethod(nameof(ReturnValueTaskWithRtnVtAsVoid), BindingFlags.NonPublic | BindingFlags.Instance)!;
-    private static readonly MethodInfo ReturnValueTaskWithRtnAsVoidMethod =
-        typeof(ProxyGenerator).GetMethod(nameof(ReturnValueTaskWithRtnAsVoid), BindingFlags.NonPublic | BindingFlags.Instance)!;
-    private ValueTask ReturnValueTaskWithRtnVtAsVoid<T>(object rtnValue)
-    {
-        Task<T> task = ((ValueTask<T>)rtnValue).AsTask();
-        return new ValueTask(task);
-    }
-    private ValueTask ReturnValueTaskWithRtnAsVoid<T>(object rtnValue)
-    {
-        return new ValueTask(Task.FromResult((T)rtnValue));
     }
 
     internal static readonly Type[] RpcInvokeHandlerBytesParams =
@@ -3430,7 +3346,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         typeof(object), typeof(object), typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), typeof(ReadOnlyMemory<byte>), typeof(bool), typeof(CancellationToken)
     ];
 
-    internal unsafe delegate object? RpcInvokeHandlerBytes(
+    internal unsafe delegate void RpcInvokeHandlerBytes(
         object? serviceProvider,
         object? targetObject,
         RpcOverhead overhead,
@@ -3441,7 +3357,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         CancellationToken token
     );
 
-    internal delegate object? RpcInvokeHandlerStream(
+    internal delegate void RpcInvokeHandlerStream(
         object? serviceProvider,
         object? targetObject,
         RpcOverhead overhead,
@@ -3451,7 +3367,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         CancellationToken token
     );
 
-    internal delegate object? RpcInvokeHandlerRawBytes(
+    internal delegate void RpcInvokeHandlerRawBytes(
         object? serviceProvider,
         object? targetObject,
         RpcOverhead overhead,

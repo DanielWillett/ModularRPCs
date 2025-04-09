@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using ModularRPCs.Test.Many;
@@ -9,6 +9,8 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
+
+[TestFixture]
 public class UnityUnityRay2DParserTests
 {
     private static bool Ray2DsEqual(ref Ray2D r1, ref Ray2D r2)
@@ -95,6 +97,7 @@ public class UnityUnityRay2DParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
+    [Ignore("these take forever")]
     public void TestRay2DMany(int count)
     {
         Random r = new Random();

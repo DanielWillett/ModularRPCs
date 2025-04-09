@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
@@ -11,7 +11,7 @@ using DanielWillett.ModularRpcs.Exceptions;
 
 namespace ModularRPCs.Test.CodeGen;
 
-[NonParallelizable]
+[NonParallelizable, TestFixture]
 public class TimeoutTests
 {
     private const int MsTimeout = 100;

@@ -1,13 +1,19 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Routing;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
-using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Async;
+
+/// <summary>
+/// Represents a pending remote RPC invocation with no return value (or a fire-and-forget task).
+/// </summary>
 public class RpcTask
 {
     private protected RpcTaskAwaiter Awaiter = null!;
@@ -20,6 +26,11 @@ public class RpcTask
     internal int CompleteCount = 1;
     internal bool IgnoreNoConnectionsIntl;
     internal CombinedTokenSources CombinedTokensToDisposeOnComplete;
+
+    /// <summary>
+    /// The type of value stored in this task, or <see langword="void"/>.
+    /// </summary>
+    public virtual Type ValueType => typeof(void);
 
     /// <summary>
     /// If the RPC has completed or errored.
@@ -67,17 +78,36 @@ public class RpcTask
     /// The connection this task was sent to. May not be available in cases where the task was already completed, such as <see cref="CompletedTask"/>.
     /// </summary>
     public IModularRpcRemoteConnection? Connection => ConnectionIntl;
+
     internal RpcTask(bool isFireAndForget)
     {
         if (GetType() == typeof(RpcTask))
             Awaiter = new RpcTaskAwaiter(this, isFireAndForget);
         IsFireAndForget = isFireAndForget;
     }
+
     private protected RpcTask()
     {
         Awaiter = new RpcTaskAwaiter(this, true);
     }
+
+    /// <summary>
+    /// Get the awaiter object for this task used by <see langword="async"/> method builders to queue continuations.
+    /// </summary>
+    [Pure]
     public RpcTaskAwaiter GetAwaiter() => Awaiter;
+
+    /// <summary>
+    /// Configures this task to not continue the current <see langword="async"/> method on the current <see cref="SynchronizationContext"/>, if supported by the runtime..
+    /// </summary>
+    /// <param name="continueOnCapturedContext">Whether or not the current <see langword="async"/> method will continue on the current <see cref="SynchronizationContext"/>, if supported by the runtime.</param>
+    /// <returns>A configured <see cref="RpcTask{T}"/>.</returns>
+    [Pure]
+    public ConfiguredRpcTaskAwaitable ConfigureAwait(bool continueOnCapturedContext)
+    {
+        return new ConfiguredRpcTaskAwaitable(Awaiter, continueOnCapturedContext);
+    }
+
     internal void SetToken(CancellationToken token, IRpcRouter router)
     {
         if (IsFireAndForget)
@@ -172,6 +202,7 @@ public class RpcTask
             _ => new AggregateException(newExceptions)
         };
     }
+
     protected internal virtual bool TrySetResult(object? value)
     {
         return false;

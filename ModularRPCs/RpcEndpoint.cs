@@ -15,6 +15,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -178,26 +179,24 @@ public class RpcEndpoint : IRpcInvocationPoint
         return (IsBroadcast ? "(Broadcast) " : string.Empty) + Accessor.ExceptionFormatter.Format(def);
     }
 
-    private protected virtual unsafe object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerBytes handlerBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, byte* bytes, uint maxSize, CancellationToken token)
+    private protected virtual unsafe void InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerBytes handlerBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, byte* bytes, uint maxSize, CancellationToken token)
     {
-        return handlerBytes(null, targetObject, overhead, router, serializer, bytes, maxSize, token);
+        handlerBytes(null, targetObject, overhead, router, serializer, bytes, maxSize, token);
     }
-    private protected virtual object? InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    private protected virtual void InvokeInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
     {
-        return handlerStream(null, targetObject, overhead, router, serializer, stream, token);
+        handlerStream(null, targetObject, overhead, router, serializer, stream, token);
     }
-    private protected virtual object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerRawBytes handlerRawBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
+    private protected virtual void InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerRawBytes handlerRawBytes, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
-        return handlerRawBytes(null, targetObject, overhead, router, serializer, rawData, canTakeOwnership, token);
+        handlerRawBytes(null, targetObject, overhead, router, serializer, rawData, canTakeOwnership, token);
     }
-    private protected virtual object? InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerRawStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
+    private protected virtual void InvokeRawInvokeMethod(ProxyGenerator.RpcInvokeHandlerStream handlerRawStream, object? targetObject, RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token)
     {
-        return handlerRawStream(null, targetObject, overhead, router, serializer, stream, token);
+        handlerRawStream(null, targetObject, overhead, router, serializer, stream, token);
     }
-    public virtual unsafe RpcInvocationResult Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
+    public virtual unsafe void Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
-        RpcInvocationResult result = default;
-
         if (!IsBroadcast)
         {
             MethodInfo? toInvoke = Method;
@@ -221,11 +220,10 @@ public class RpcEndpoint : IRpcInvocationPoint
                 targetObject = GetTargetObject(toInvoke);
             }
 
-            object? returnedValue;
             if (targetAttribute.Raw)
             {
                 ProxyGenerator.RpcInvokeHandlerRawBytes invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawBytesMethod(toInvoke);
-                returnedValue = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
+                InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
             }
             else
             {
@@ -233,18 +231,15 @@ public class RpcEndpoint : IRpcInvocationPoint
 
                 fixed (byte* ptr = rawData.Span)
                 {
-                    returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
+                    InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
                 }
             }
 
-            result.ReturnType = toInvoke.ReturnType;
-            result.Task = ConvertReturnedValueToValueTask(returnedValue);
-            return result;
+            return;
         }
 
         bool any = false;
         List<Exception>? exceptions = null;
-        object? firstRtnValue = null;
         Type? firstRtnType = null;
         fixed (byte* ptr = rawData.Span)
         {
@@ -279,14 +274,12 @@ public class RpcEndpoint : IRpcInvocationPoint
                     if (targetAttribute.Raw)
                     {
                         ProxyGenerator.RpcInvokeHandlerRawBytes invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawBytesMethod(method);
-                        object? rtn = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
-                        firstRtnValue ??= rtn;
+                        InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, rawData, canTakeOwnership, token);
                     }
                     else
                     {
                         ProxyGenerator.RpcInvokeHandlerBytes invokeMethod = ProxyGenerator.Instance.GetInvokeBytesMethod(method);
-                        object? rtn = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
-                        firstRtnValue ??= rtn;
+                        InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, ptr, (uint)rawData.Length, token);
                     }
 
                 }
@@ -303,20 +296,13 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (exceptions != null)
         {
             if (exceptions.Count == 1)
-                throw exceptions[0];
+                ExceptionDispatchInfo.Capture(exceptions[0]).Throw();
 
             throw new AggregateException(exceptions);
         }
-
-        if (firstRtnValue != null)
-            result.Task = ConvertReturnedValueToValueTask(firstRtnValue);
-        result.ReturnType = firstRtnType!;
-        return result;
     }
-    public virtual RpcInvocationResult Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
+    public virtual void Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default)
     {
-        RpcInvocationResult result = default;
-
         if (!IsBroadcast)
         {
             MethodInfo? toInvoke = Method;
@@ -339,28 +325,23 @@ public class RpcEndpoint : IRpcInvocationPoint
                 targetObject = GetTargetObject(toInvoke);
             }
 
-            object? returnedValue;
             if (targetAttribute.Raw)
             {
                 ProxyGenerator.RpcInvokeHandlerStream invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawStreamMethod(toInvoke);
-                returnedValue = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
             }
             else
             {
                 ProxyGenerator.RpcInvokeHandlerStream invokeMethod = ProxyGenerator.Instance.GetInvokeStreamMethod(toInvoke);
-                returnedValue = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
+                InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
             }
 
-            result.ReturnType = toInvoke.ReturnType;
-            result.Task = ConvertReturnedValueToValueTask(returnedValue);
-            return result;
+            return;
         }
 
 
         bool any = false;
         List<Exception>? exceptions = null;
-        Type? firstRtnType = null;
-        object? firstRtnValue = null;
         foreach (MethodInfo method in FindBroadcastListeners(router))
         {
             if (!method.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
@@ -391,14 +372,12 @@ public class RpcEndpoint : IRpcInvocationPoint
                 if (targetAttribute.Raw)
                 {
                     ProxyGenerator.RpcInvokeHandlerStream invokeRawMethod = ProxyGenerator.Instance.GetInvokeRawStreamMethod(method);
-                    object? rtn = InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
-                    firstRtnValue ??= rtn;
+                    InvokeRawInvokeMethod(invokeRawMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
                 }
                 else
                 {
                     ProxyGenerator.RpcInvokeHandlerStream invokeMethod = ProxyGenerator.Instance.GetInvokeStreamMethod(method);
-                    object? rtn = InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
-                    firstRtnValue ??= rtn;
+                    InvokeInvokeMethod(invokeMethod, targetObject, overhead, overhead.ReceivingConnection.Router, serializer, stream, token);
                 }
 
             }
@@ -412,17 +391,14 @@ public class RpcEndpoint : IRpcInvocationPoint
             throw new RpcEndpointNotFoundException(this);
 
         if (exceptions != null)
-            throw new AggregateException(exceptions);
+        {
+            if (exceptions.Count == 1)
+                ExceptionDispatchInfo.Capture(exceptions[0]).Throw();
 
-        if (firstRtnValue != null)
-            result.Task = ConvertReturnedValueToValueTask(firstRtnValue);
-        result.ReturnType = firstRtnType!;
-        return result;
+            throw new AggregateException(exceptions);
+        }
     }
-    protected virtual ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
-    {
-        return ProxyGenerator.Instance.ConvertReturnedValueToValueTask(returnedValue);
-    }
+
     protected virtual object? GetTargetObject(MethodInfo? knownMethod)
     {
         Type? declType = knownMethod?.DeclaringType ?? DeclaringType;
@@ -1252,7 +1228,9 @@ public class RpcEndpoint : IRpcInvocationPoint
     protected internal enum IdentifierFlags : byte
     {
         IsKnownTypeOnly = 1,
-        IsTypeNameOnly = 1 << 1
+        IsTypeNameOnly = 1 << 1,
+        IsSerializableType = 1 << 2,
+        IsSerializableCollectionType = (1 << 3) | IsSerializableType
     }
 
     [Flags]

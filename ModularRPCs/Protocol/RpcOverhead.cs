@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
@@ -6,6 +6,7 @@ using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using DanielWillett.ModularRpcs.Async;
 
 namespace DanielWillett.ModularRpcs.Protocol;
 public class RpcOverhead
@@ -13,6 +14,8 @@ public class RpcOverhead
     internal const byte OvhCodeId = 1;
     private readonly uint _size2Check;
     internal const int MinimumSize = 23;
+
+    protected internal InvocingRpcState State;
 
     /// <summary>
     /// The size in bytes of the message this <see cref="RpcOverhead"/> represents, not including the overhead itself.
@@ -284,4 +287,11 @@ public class RpcOverhead
         //bytes += 4;
         return size + 4;
     }
+}
+
+public struct InvocingRpcState
+{
+    public CombinedTokenSources CancelToken;
+    public bool HasCancelToken;
+    public DefaultRpcRouter.UniqueMessageKey Key;
 }

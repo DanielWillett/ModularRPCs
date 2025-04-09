@@ -1,12 +1,43 @@
-﻿using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace DanielWillett.ModularRpcs.Async;
+public readonly struct ConfiguredRpcTaskAwaitable : ICriticalNotifyCompletion
+{
+    private readonly RpcTaskAwaiter _awaiter;
+    private readonly bool _continueOnCapturedContext;
+
+    public ConfiguredRpcTaskAwaitable(RpcTaskAwaiter awaiter, bool continueOnCapturedContext)
+    {
+        _awaiter = awaiter;
+        _continueOnCapturedContext = continueOnCapturedContext;
+    }
+
+    public bool IsCompleted => _awaiter.IsCompleted;
+
+    public void UnsafeOnCompleted(Action continuation)
+    {
+        _awaiter.OnCompletedIntl(continuation, continueOnCapturedContext: _continueOnCapturedContext, flowExecutionContext: false);
+    }
+
+    public void OnCompleted(Action continuation)
+    {
+        _awaiter.OnCompletedIntl(continuation, continueOnCapturedContext: _continueOnCapturedContext, flowExecutionContext: true);
+    }
+
+    public void GetResult()
+    {
+        _awaiter.GetResult();
+    }
+}
+
 public class RpcTaskAwaiter : ICriticalNotifyCompletion
 {
     private Action? _continuation;
+    private ExecutionContext? _executionContext;
+    private SynchronizationContext? _synchronizationContext;
     public RpcTask Task { get; }
 
     /// <summary>
@@ -23,15 +54,61 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
         if (Interlocked.Decrement(ref Task.CompleteCount) != 0)
             return;
 
-        IsCompleted = true;
-        _continuation?.Invoke();
-        Task.CombinedTokensToDisposeOnComplete.Dispose();
+        if (_synchronizationContext != null)
+        {
+            _synchronizationContext.Post(static s =>
+            {
+                ((RpcTaskAwaiter)s!).Complete();
+            }, this);
+            _synchronizationContext = null;
+        }
+        else
+        {
+            Complete();
+        }
     }
 
-    void ICriticalNotifyCompletion.UnsafeOnCompleted(Action continuation) => ((ICriticalNotifyCompletion)this).OnCompleted(continuation);
-    void INotifyCompletion.OnCompleted(Action continuation)
+    private void Complete()
+    {
+        if (_executionContext != null)
+        {
+            ExecutionContext.Run(_executionContext, static s =>
+            {
+                CompleteIntl((RpcTaskAwaiter)s!);
+            }, this);
+            _executionContext = null;
+        }
+        else
+        {
+            CompleteIntl(this);
+        }
+
+        return;
+        static void CompleteIntl(RpcTaskAwaiter me)
+        {
+            me.IsCompleted = true;
+            me._continuation?.Invoke();
+            me.Task.CombinedTokensToDisposeOnComplete.Dispose();
+        }
+    }
+
+    public void UnsafeOnCompleted(Action continuation)
+    {
+        OnCompletedIntl(continuation, continueOnCapturedContext: true, flowExecutionContext: false);
+    }
+
+    public void OnCompleted(Action continuation)
+    {
+        OnCompletedIntl(continuation, continueOnCapturedContext: true, flowExecutionContext: true);
+    }
+
+    internal void OnCompletedIntl(Action continuation, bool continueOnCapturedContext, bool flowExecutionContext)
     {
         _continuation = continuation;
+        if (flowExecutionContext)
+            _executionContext = ExecutionContext.Capture();
+        if (continueOnCapturedContext)
+            _synchronizationContext = SynchronizationContext.Current;
     }
 
     /// <summary>

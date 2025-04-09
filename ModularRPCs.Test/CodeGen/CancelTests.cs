@@ -1,19 +1,18 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Reflection;
-using NUnit.Framework.Constraints;
 
 namespace ModularRPCs.Test.CodeGen;
 
-[NonParallelizable]
+[NonParallelizable, TestFixture]
 public class CancelTests
 {
     private const int DelayMs = 100;

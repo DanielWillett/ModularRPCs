@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ReflectionTools;
 using System;
@@ -40,6 +40,23 @@ public static class ProxyGeneratorUnityExtensions
         Component comp = parentObject.AddComponent(componentType);
         typeInfo.SetUnityRouterField(comp, router);
         return comp;
+    }
+
+    /// <summary>
+    /// Create an instance of the RPC proxy of <typeparamref name="TComponentType"/> by adding it as a <see cref="Component"/> to a <paramref name="parentObject"/>.
+    /// </summary>
+    public static TComponentType AddRpcComponent<TComponentType>(this GameObject gameObject, IRpcRouter router) where TComponentType : Component
+    {
+        return ProxyGenerator.Instance.CreateProxyComponent<TComponentType>(gameObject, router);
+    }
+
+    /// <summary>
+    /// Create an instance of the RPC proxy of <paramref name="componentType"/> by adding it as a <see cref="Component"/> to a <paramref name="parentObject"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="componentType"/> is not a subclass of <see cref="Component"/>.</exception>
+    public static Component AddRpcComponent(this GameObject gameObject, Type componentType, IRpcRouter router)
+    {
+        return ProxyGenerator.Instance.CreateProxyComponent(gameObject, componentType, router);
     }
 
     /// <summary>

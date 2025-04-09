@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
 
-[NonParallelizable]
+[NonParallelizable, TestFixture]
 public class ParameterlessVoidInvocationTests
 {
     private static bool _wasInvoked;

@@ -8,9 +8,11 @@ using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -18,7 +20,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using RpcEndpointTarget = DanielWillett.ModularRpcs.Reflection.RpcEndpointTarget;
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Runtime.InteropServices;
 #endif
@@ -34,7 +35,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     private readonly ConcurrentDictionary<UniqueMessageKey, CancellationTokenSource> _pendingCancellableMessages = new ConcurrentDictionary<UniqueMessageKey, CancellationTokenSource>();
     private readonly Dictionary<string, IReadOnlyList<RpcEndpointTarget>> _broadcastListeners = new Dictionary<string, IReadOnlyList<RpcEndpointTarget>>(StringComparer.Ordinal);
 
-    private readonly struct UniqueMessageKey : IEquatable<UniqueMessageKey>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public readonly struct UniqueMessageKey : IEquatable<UniqueMessageKey>
     {
         public readonly ulong MessageId;
         public readonly IModularRpcRemoteConnection Sender;
@@ -272,32 +274,17 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 src = token.CombineTokensIfNeeded(newTokenSource.Token);
                 didAddTokenSrc = true;
             }
+
+            overhead.State.CancelToken = src;
+            overhead.State.HasCancelToken = didAddTokenSrc;
+            overhead.State.Key = key;
             
-            RpcInvocationResult result = rpc.Invoke(overhead, this, serializer, stream, token);
-            ValueTask vt = result.Task;
-            await vt;
-
-            if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
-                return;
-
-            if (didAddTokenSrc && _pendingCancellableMessages.TryRemove(key, out CancellationTokenSource? cancellable))
-            {
-                cancellable.Dispose();
-                src.Dispose();
-                didAddTokenSrc = false;
-            }
-
-            try
-            {
-                await HandleValueTaskReply(result, overhead);
-            }
-            catch (Exception ex2)
-            {
-                HandleInvokeException(overhead, ex2);
-            }
+            rpc.Invoke(overhead, this, serializer, stream, token);
         }
         catch (Exception ex)
         {
+            HandleInvokeException(overhead, ex);
+
             if (overhead.SendingConnection != null)
             {
                 try
@@ -309,11 +296,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     HandleInvokeException(overhead, ex2);
                 }
             }
-
-            HandleInvokeException(overhead, ex);
-        }
-        finally
-        {
             if (didAddTokenSrc)
             {
                 if (_pendingCancellableMessages.TryRemove(key, out CancellationTokenSource? cancellable))
@@ -325,6 +307,165 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
     }
+
+    /// <inheritdoc />
+    public void HandleInvokeVoidReturn(RpcOverhead overhead, IRpcSerializer serializer)
+    {
+        if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
+            return;
+
+        ref InvocingRpcState state = ref overhead.State;
+
+        if (state.HasCancelToken && _pendingCancellableMessages.TryRemove(state.Key, out CancellationTokenSource? cancellable))
+        {
+            cancellable.Dispose();
+            state.CancelToken.Dispose();
+            state.HasCancelToken = false;
+        }
+
+        InvokeHandleVoidReturnAsync(overhead, serializer);
+    }
+
+    private async void InvokeHandleVoidReturnAsync(RpcOverhead overhead, IRpcSerializer serializer)
+    {
+        try
+        {
+            await ReplyRpcVoidSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, serializer);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(overhead, ex);
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
+        }
+    }
+
+    /// <inheritdoc />
+    public void HandleInvokeException(Exception exception, RpcOverhead overhead, IRpcSerializer serializer)
+    {
+        HandleInvokeException(overhead, exception);
+        if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
+            return;
+
+        ref InvocingRpcState state = ref overhead.State;
+
+        if (state.HasCancelToken && _pendingCancellableMessages.TryRemove(state.Key, out CancellationTokenSource? cancellable))
+        {
+            cancellable.Dispose();
+            state.CancelToken.Dispose();
+            state.HasCancelToken = false;
+        }
+
+        InvokeHandleExceptionAsync(exception, overhead, serializer);
+    }
+
+    private async void InvokeHandleExceptionAsync(Exception exception, RpcOverhead overhead, IRpcSerializer serializer)
+    {
+        try
+        {
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, exception, serializer);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(overhead, ex);
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
+        }
+    }
+
+    /// <inheritdoc />
+    public void HandleInvokeReturnValue<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer)
+    {
+        if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
+            return;
+
+        ref InvocingRpcState state = ref overhead.State;
+
+        if (state.HasCancelToken && _pendingCancellableMessages.TryRemove(state.Key, out CancellationTokenSource? cancellable))
+        {
+            cancellable.Dispose();
+            state.CancelToken.Dispose();
+            state.HasCancelToken = false;
+        }
+
+        InvokeHandleReturnValueAsync(value, overhead, serializer);
+    }
+
+    private async void InvokeHandleReturnValueAsync<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer)
+    {
+        try
+        {
+            await ReplyRpcValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, value, serializer);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(overhead, ex);
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
+        }
+    }
+
+    /// <inheritdoc />
+    public void HandleInvokeSerializableReturnValue<TSerializable>(TSerializable value, object? collection, RpcOverhead overhead, IRpcSerializer serializer) where TSerializable : IRpcSerializable
+    {
+        if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
+            return;
+
+        ref InvocingRpcState state = ref overhead.State;
+
+        if (state.HasCancelToken)
+        {
+            if (_pendingCancellableMessages.TryRemove(state.Key, out CancellationTokenSource? cancellable))
+                cancellable.Dispose();
+            state.CancelToken.Dispose();
+            state.HasCancelToken = false;
+        }
+
+        if (collection == null)
+        {
+            InvokeHandleSerializableReturnValueAsync(value, overhead, serializer);
+        }
+        else if (collection == DBNull.Value)
+        {
+            InvokeHandleSerializableCollectionReturnValueAsync<TSerializable>(null, overhead, serializer);
+        }
+        else if (collection is IEnumerable<TSerializable> enumerable)
+        {
+            InvokeHandleSerializableCollectionReturnValueAsync(enumerable, overhead, serializer);
+        }
+        else
+        {
+            throw new RpcInvalidParameterException(
+                string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInfoNoParamInfo,
+                    Accessor.ExceptionFormatter.Format(collection.GetType()),
+                    Properties.Exceptions.RpcInvalidParameterExceptionNoParserFound)
+            );
+        }
+    }
+
+    private async void InvokeHandleSerializableReturnValueAsync<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : IRpcSerializable
+    {
+        try
+        {
+            await ReplyRpcSerializableValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, value, serializer);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(overhead, ex);
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
+        }
+    }
+
+    private async void InvokeHandleSerializableCollectionReturnValueAsync<TReturnType>(IEnumerable<TReturnType>? collection, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : IRpcSerializable
+    {
+        try
+        {
+            await ReplyRpcSerializableCollectionValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, collection, serializer);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(overhead, ex);
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
+        }
+    }
+
     protected virtual ValueTask InvokeInvocationPoint(IRpcInvocationPoint rpc, RpcOverhead overhead, IRpcSerializer serializer, ReadOnlyMemory<byte> bytes, bool canTakeOwnership, CancellationToken token = default)
     {
         CombinedTokenSources src = default;
@@ -345,30 +486,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 didAddTokenSrc = true;
             }
 
-            RpcInvocationResult result = rpc.Invoke(overhead, this, serializer, bytes, canTakeOwnership, token);
-            ValueTask vt = result.Task;
-            if (!vt.IsCompleted)
-                return new ValueTask(FinishVtTask(this, result, overhead, serializer, didAddTokenSrc, key, src));
-
-            if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
-                return default;
-
-            if (didAddTokenSrc && _pendingCancellableMessages.TryRemove(key, out CancellationTokenSource? cancellable))
-            {
-                cancellable.Dispose();
-                src.Dispose();
-                didAddTokenSrc = false;
-            }
-
-            try
-            {
-                return HandleValueTaskReply(result, overhead);
-            }
-            catch (Exception ex2)
-            {
-                HandleInvokeException(overhead, ex2);
-            }
-
+            rpc.Invoke(overhead, this, serializer, bytes, canTakeOwnership, token);
             return default;
         }
         catch (Exception ex)
@@ -397,56 +515,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             HandleInvokeException(overhead, ex);
             return default;
-        }
-
-        static async Task FinishVtTask(DefaultRpcRouter router, RpcInvocationResult result, RpcOverhead overhead, IRpcSerializer serializer, bool didAddTokenSrc, UniqueMessageKey key, CombinedTokenSources src)
-        {
-            try
-            {
-                ValueTask vt = result.Task;
-                await vt;
-
-                if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
-                    return;
-
-                try
-                {
-                    await router.HandleValueTaskReply(result, overhead);
-                }
-                catch (Exception ex2)
-                {
-                    router.HandleInvokeException(overhead, ex2);
-                }
-            }
-            catch (Exception ex)
-            {
-                if (overhead.SendingConnection != null)
-                {
-                    try
-                    {
-                        await ReplyRpcException(overhead.MessageId, checked((byte)(overhead.SubMessageId + 1)),
-                            overhead.SendingConnection, ex, serializer);
-                    }
-                    catch (Exception ex2)
-                    {
-                        router.HandleInvokeException(overhead, ex2);
-                    }
-                }
-
-                router.HandleInvokeException(overhead, ex);
-            }
-            finally
-            {
-                if (didAddTokenSrc)
-                {
-                    if (router._pendingCancellableMessages.TryRemove(key, out CancellationTokenSource? cancellable))
-                    {
-                        cancellable.Dispose();
-                    }
-
-                    src.Dispose();
-                }
-            }
         }
 
         static async Task FinishExVtTask(DefaultRpcRouter router, ValueTask vt, RpcOverhead overhead)
@@ -501,7 +569,17 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     IRpcInvocationPoint? invPt = task?.Endpoint;
                     index = 0;
-                    ex = ReadException(sendingConnection, invPt, ptr + primitiveOverhead.OverheadSize, (uint)len, ref index, serializer);
+                    try
+                    {
+                        ex = ReadException(sendingConnection, invPt, ptr + primitiveOverhead.OverheadSize, (uint)len, ref index, serializer);
+                    }
+                    catch (Exception ex2)
+                    {
+                        task?.TriggerComplete(ex2);
+                        FinishListening(task);
+                        HandleInvokeException(in primitiveOverhead, sendingConnection.Local, ex2);
+                        break;
+                    }
                 }
 
                 task?.TriggerComplete(ex);
@@ -515,10 +593,20 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 {
                     _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
                     index = 0;
-                    rtn = ReadReturnValue(serializer, task, ptr + primitiveOverhead.OverheadSize, len, ref index);
+                    try
+                    {
+                        rtn = ReadReturnValue(serializer, task, ptr + primitiveOverhead.OverheadSize, len, ref index);
+                    }
+                    catch (Exception ex2)
+                    {
+                        task?.TriggerComplete(ex2);
+                        FinishListening(task);
+                        HandleInvokeException(in primitiveOverhead, sendingConnection.Local, ex2);
+                        break;
+                    }
                 }
 
-                if (rtn == null || task == null)
+                if (task == null)
                     break;
 
                 if (task.TrySetResult(rtn))
@@ -529,7 +617,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
                     task.TriggerComplete(new RpcParseException(
                         string.Format(Properties.Exceptions.RpcParseExceptionInvalidReturnType,
-                        Accessor.ExceptionFormatter.Format(rtn.GetType()),
+                        rtn == null ? "null" : Accessor.ExceptionFormatter.Format(rtn.GetType()),
                         Accessor.ExceptionFormatter.Format(taskType))
                     ));
                 }
@@ -579,7 +667,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             case OvhCodeIdException:
                 _listeningTasks.TryRemove(primitiveOverhead.MessageId, out RpcTask? task);
                 IRpcInvocationPoint? invPt = task?.Endpoint;
-                Exception ex = ReadException(sendingConnection, invPt, stream, serializer);
+                Exception ex;
+                try
+                {
+                    ex = ReadException(sendingConnection, invPt, stream, serializer);
+                }
+                catch (Exception ex2)
+                {
+                    task?.TriggerComplete(ex2);
+                    FinishListening(task);
+                    HandleInvokeException(in primitiveOverhead, sendingConnection.Local, ex2);
+                    break;
+                }
 
                 task?.TriggerComplete(ex);
                 FinishListening(task);
@@ -587,9 +686,20 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             case OvhCodeIdValueRtnSuccess:
                 _listeningTasks.TryRemove(primitiveOverhead.MessageId, out task);
-                object? rtn = ReadReturnValue(serializer, task, stream);
+                object? rtn;
+                try
+                {
+                    rtn = ReadReturnValue(serializer, task, stream);
+                }
+                catch (Exception ex2)
+                {
+                    task?.TriggerComplete(ex2);
+                    FinishListening(task);
+                    HandleInvokeException(in primitiveOverhead, sendingConnection.Local, ex2);
+                    break;
+                }
 
-                if (rtn == null || task == null)
+                if (task == null)
                     break;
 
                 if (task.TrySetResult(rtn))
@@ -600,7 +710,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
                     task.TriggerComplete(new RpcParseException(
                         string.Format(Properties.Exceptions.RpcParseExceptionInvalidReturnType,
-                        Accessor.ExceptionFormatter.Format(rtn.GetType()),
+                        rtn == null ? "<null>" : Accessor.ExceptionFormatter.Format(rtn.GetType()),
                         Accessor.ExceptionFormatter.Format(taskType))
                     ));
                 }
@@ -625,12 +735,25 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         return default;
     }
-    public void HandleInvokeException(RpcOverhead overhead, Exception ex)
+
+    private void HandleInvokeException(RpcOverhead overhead, Exception ex)
     {
         this.LogError(ex,
             string.Format(Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
                 Accessor.Formatter.Format(ex.GetType()),
+                overhead.ReceivingConnection,
                 overhead.Rpc,
+                overhead.MessageId + "." + overhead.SubMessageId)
+        );
+    }
+
+    private void HandleInvokeException(in PrimitiveRpcOverhead overhead, IModularRpcLocalConnection connection, Exception ex)
+    {
+        this.LogError(ex,
+            string.Format(Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
+                Accessor.Formatter.Format(ex.GetType()),
+                connection,
+                overhead.ToString(),
                 overhead.MessageId + "." + overhead.SubMessageId)
         );
     }
@@ -1030,14 +1153,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 stream.Dispose();
         }
     }
-    private ValueTask HandleValueTaskReply(RpcInvocationResult result, RpcOverhead overhead)
-    {
-        object? returnValue = ProxyGenerator.Instance.ConvertValueTaskToValue(result);
 
-        return returnValue == null
-            ? ReplyRpcVoidSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, Serializer)
-            : ReplyRpcValueSuccessRtn(overhead.MessageId, checked( (byte)(overhead.SubMessageId + 1) ), overhead.SendingConnection!, returnValue, Serializer);
-    }
     private Func<Task> WrapInvokeTaskInTryBlock(RuntimeMethodHandle sourceMethodHandle, ValueTask vt, RpcTask? rpcTask, IDisposable? toDispose = null)
     {
         return async () =>
@@ -1173,33 +1289,34 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     {
         uint pfxSize = GetPrefixSize(serializer);
 
-        bool didStackAlloc = pfxSize <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)pfxSize] : new byte[pfxSize];
-
-        uint index;
-        fixed (byte* ptr = alloc)
+        if (pfxSize <= serializer.Configuration.MaximumStackAllocationSize)
         {
-            index = WritePrefix(ptr, 0, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
+            byte* ptr = stackalloc byte[(int)pfxSize];
+            uint index = WritePrefix(ptr, 0, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
+            return connection.SendDataAsync(serializer, new Span<byte>(ptr, (int)index), false, CancellationToken.None);
         }
+        else
+        {
+            byte[] memory = new byte[pfxSize];
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+            uint index;
+            fixed (byte* ptr = memory)
+            {
+                index = WritePrefix(ptr, 0, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
+            }
+
+            return connection.SendDataAsync(serializer, memory.AsSpan(0, (int)index), true, CancellationToken.None);
+        }
     }
-    private static unsafe ValueTask ReplyRpcValueSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, object? value, IRpcSerializer serializer)
+
+    private static unsafe ValueTask ReplyRpcValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer)
     {
         uint pfxSize = GetPrefixSize(serializer);
         uint size = pfxSize;
         uint knownTypeId = 0;
         bool hasKnownTypeId = false;
         string? typeName = null;
-        TypeCode tc = value switch
-        {
-            null => TypeCode.DBNull,
-            IConvertible c => c.GetTypeCode(),
-            DateTimeOffset => TypeUtility.TypeCodeDateTimeOffset,
-            TimeSpan => TypeUtility.TypeCodeTimeSpan,
-            Guid => TypeUtility.TypeCodeGuid,
-            _ => TypeCode.Object
-        };
+        TypeCode tc = TypeUtility.GetTypeCode<TValue>();
 
         if (tc is TypeCode.String or TypeCode.Object || !serializer.CanFastReadPrimitives)
         {
@@ -1207,6 +1324,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             {
                 Type type = value!.GetType();
                 size += 1u + (uint)serializer.GetSize(type, value);
+
                 // ReSharper disable once AssignmentInConditionalExpression
                 if (hasKnownTypeId = serializer.TryGetKnownTypeId(type, out knownTypeId))
                     size += 5u;
@@ -1215,7 +1333,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
             else if (tc == TypeCode.String)
             {
-                size += 1u + (uint)serializer.GetSize((string)value!);
+                size += 1u + (uint)serializer.GetSize((string)(object)value!);
             }
             else
             {
@@ -1233,7 +1351,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)tc;
             ++index;
@@ -1267,6 +1385,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 {
                     index += (uint)serializer.WriteObject(typeName!, ptr + index, size - index);
                 }
+
+                index += (uint)serializer.WriteObject(value!, ptr + index, size - index);
             }
             else
             {
@@ -1276,6 +1396,131 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
     }
+
+    private static unsafe ValueTask ReplyRpcSerializableValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer) where TValue : IRpcSerializable
+    {
+        uint pfxSize = GetPrefixSize(serializer);
+        uint size = pfxSize;
+        bool hasKnownTypeId;
+        string? typeName = null;
+        Type type = typeof(TValue);
+        size += 1u + (uint)serializer.GetSerializableSize(in value);
+
+        // ReSharper disable once AssignmentInConditionalExpression
+        if (hasKnownTypeId = serializer.TryGetKnownTypeId(type, out uint knownTypeId))
+            size += 5u;
+        else
+            size += 1u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
+
+        bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+
+        uint index;
+        fixed (byte* ptr = alloc)
+        {
+            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+
+            ptr[index] = (byte)TypeCode.Object;
+            ++index;
+
+            RpcEndpoint.IdentifierFlags f = hasKnownTypeId
+                ? RpcEndpoint.IdentifierFlags.IsKnownTypeOnly
+                : RpcEndpoint.IdentifierFlags.IsTypeNameOnly;
+
+            f |= RpcEndpoint.IdentifierFlags.IsSerializableType;
+
+            ptr[index] = (byte)f;
+            ++index;
+
+            if (hasKnownTypeId)
+            {
+                if (BitConverter.IsLittleEndian)
+                {
+                    Unsafe.WriteUnaligned(ptr + index, knownTypeId);
+                }
+                else
+                {
+                    ptr[index + 3] = unchecked( (byte) knownTypeId );
+                    ptr[index + 2] = unchecked( (byte)(knownTypeId >>> 8) );
+                    ptr[index + 1] = unchecked( (byte)(knownTypeId >>> 16) );
+                    ptr[index]     = unchecked( (byte)(knownTypeId >>> 24) );
+                }
+
+                index += 4;
+            }
+            else
+            {
+                index += (uint)serializer.WriteObject(typeName!, ptr + index, size - index);
+            }
+
+            index += (uint)serializer.WriteSerializableObject(value!, ptr + index, size - index);
+        }
+
+        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+    }
+
+    private static unsafe ValueTask ReplyRpcSerializableCollectionValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IEnumerable<TValue>? collection, IRpcSerializer serializer) where TValue : IRpcSerializable
+    {
+        uint pfxSize = GetPrefixSize(serializer);
+        uint size = pfxSize;
+        bool hasKnownTypeId;
+        string? typeName = null;
+        Type type = typeof(TValue);
+        size += 1u + (uint)serializer.GetSerializablesSize(collection);
+
+        // ReSharper disable once AssignmentInConditionalExpression
+        if (hasKnownTypeId = serializer.TryGetKnownTypeId(type, out uint knownTypeId))
+            size += 5u;
+        else
+            size += 1u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
+
+        bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+
+        uint index;
+        fixed (byte* ptr = alloc)
+        {
+            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+
+            ptr[index] = (byte)TypeCode.Object;
+            ++index;
+
+            RpcEndpoint.IdentifierFlags f = hasKnownTypeId
+                ? RpcEndpoint.IdentifierFlags.IsKnownTypeOnly
+                : RpcEndpoint.IdentifierFlags.IsTypeNameOnly;
+
+            f |= RpcEndpoint.IdentifierFlags.IsSerializableCollectionType;
+
+            ptr[index] = (byte)f;
+            ++index;
+
+            if (hasKnownTypeId)
+            {
+                if (BitConverter.IsLittleEndian)
+                {
+                    Unsafe.WriteUnaligned(ptr + index, knownTypeId);
+                }
+                else
+                {
+                    ptr[index + 3] = unchecked( (byte) knownTypeId );
+                    ptr[index + 2] = unchecked( (byte)(knownTypeId >>> 8) );
+                    ptr[index + 1] = unchecked( (byte)(knownTypeId >>> 16) );
+                    ptr[index]     = unchecked( (byte)(knownTypeId >>> 24) );
+                }
+
+                index += 4;
+            }
+            else
+            {
+                index += (uint)serializer.WriteObject(typeName!, ptr + index, size - index);
+            }
+
+            index += (uint)serializer.WriteSerializableObjects(collection, ptr + index, size - index);
+        }
+
+        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+    }
+
     private static unsafe object? ReadReturnValue(IRpcSerializer serializer, RpcTask? task, byte* data, int maxSize, ref uint index)
     {
         if (maxSize - index < 1)
@@ -1312,7 +1557,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             if (hasName)
             {
-                typeName = serializer.ReadObject<string>(data, (uint)maxSize - index, out bytesRead);
+                typeName = serializer.ReadObject<string>(data + index, (uint)maxSize - index, out bytesRead);
                 index += (uint)bytesRead;
             }
 
@@ -1325,12 +1570,10 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             if (type == null && task != null)
             {
-                Type taskType = task.GetType();
-                taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
                 task.TriggerComplete(new RpcParseException(
                     string.Format(Properties.Exceptions.RpcParseExceptionUnknownReturnType,
                         !hasName ? hasId ? typeId.ToString(CultureInfo.InvariantCulture) : "unknown type" : typeName,
-                        Accessor.ExceptionFormatter.Format(taskType)))
+                        Accessor.ExceptionFormatter.Format(task.ValueType)))
                 );
                 FinishListening(task);
             }
@@ -1338,7 +1581,19 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             if (type == null)
                 return null;
 
-            rtnValue = serializer.ReadObject(type, data + index, (uint)maxSize - index, out bytesRead);
+            if ((f & RpcEndpoint.IdentifierFlags.IsSerializableCollectionType) == RpcEndpoint.IdentifierFlags.IsSerializableCollectionType)
+            {
+                rtnValue = serializer.ReadSerializableObjects(type, task?.ValueType ?? type.MakeArrayType(), data + index, (uint)maxSize - index, out bytesRead);
+            }
+            else if ((f & RpcEndpoint.IdentifierFlags.IsSerializableType) != 0)
+            {
+                rtnValue = serializer.ReadSerializableObject(type, data + index, (uint)maxSize - index, out bytesRead);
+            }
+            else
+            {
+                rtnValue = serializer.ReadObject(type, data + index, (uint)maxSize - index, out bytesRead);
+            }
+
             index += (uint)bytesRead;
             return rtnValue;
         }
@@ -1426,12 +1681,10 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             if (type == null && task != null)
             {
-                taskType = task.GetType();
-                taskType = taskType.IsGenericType ? taskType.GetGenericArguments()[0] : typeof(void);
                 task.TriggerComplete(new RpcParseException(
                     string.Format(Properties.Exceptions.RpcParseExceptionUnknownReturnType,
                         !hasName ? hasId ? typeId.ToString(CultureInfo.InvariantCulture) : "unknown type" : typeName,
-                        Accessor.ExceptionFormatter.Format(taskType)))
+                        Accessor.ExceptionFormatter.Format(task.ValueType)))
                 );
                 FinishListening(task);
             }
@@ -1439,7 +1692,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             if (type == null)
                 return null;
 
-            rtnValue = serializer.ReadObject(type, stream, out _);
+            if ((f & RpcEndpoint.IdentifierFlags.IsSerializableCollectionType) == RpcEndpoint.IdentifierFlags.IsSerializableCollectionType)
+            {
+                rtnValue = serializer.ReadSerializableObjects(type, task?.ValueType ?? type.MakeArrayType(), stream, out _);
+            }
+            else if ((f & RpcEndpoint.IdentifierFlags.IsSerializableType) != 0)
+            {
+                rtnValue = serializer.ReadSerializableObject(type, stream, out _);
+            }
+            else
+            {
+                rtnValue = serializer.ReadObject(type, stream, out _);
+            }
             return rtnValue;
         }
 
@@ -1500,9 +1764,15 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// <inheritdoc />
     public virtual IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier)
     {
-        IRpcInvocationPoint cachedEndpoint = knownRpcShortcutId == 0u
-            ? CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
-            : CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation));
+        IRpcInvocationPoint cachedEndpoint;
+        if (knownRpcShortcutId == 0u)
+        {
+            cachedEndpoint = CreateEndpoint(0u, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation);
+        }
+        else if (!CachedDescriptors.TryGetValue(knownRpcShortcutId, out cachedEndpoint))
+        {
+            cachedEndpoint = CachedDescriptors.GetOrAdd(knownRpcShortcutId, key => CreateEndpoint(key, typeName, methodName, args, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation));
+        }
 
         return ReferenceEquals(cachedEndpoint.Identifier, identifier)
             ? cachedEndpoint

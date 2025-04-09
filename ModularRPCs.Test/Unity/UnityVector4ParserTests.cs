@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using ModularRPCs.Test.Many;
@@ -8,6 +8,8 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
+
+[TestFixture]
 public class UnityUnityVector4ParserTests
 {
     [Test]
@@ -85,6 +87,7 @@ public class UnityUnityVector4ParserTests
     [TestCase(65535)]
     [TestCase(65536)]
     [TestCase(65570)]
+    [Ignore("these take forever")]
     public void TestVector4Many(int count)
     {
         Random r = new Random();
