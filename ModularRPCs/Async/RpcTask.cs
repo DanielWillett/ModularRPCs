@@ -7,6 +7,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
+using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Async;
 
@@ -25,6 +26,11 @@ public class RpcTask
     internal int CompleteCount = 1;
     internal bool IgnoreNoConnectionsIntl;
     internal CombinedTokenSources CombinedTokensToDisposeOnComplete;
+
+    /// <summary>
+    /// The type of value stored in this task, or <see langword="void"/>.
+    /// </summary>
+    public virtual Type ValueType => typeof(void);
 
     /// <summary>
     /// If the RPC has completed or errored.
@@ -196,6 +202,7 @@ public class RpcTask
             _ => new AggregateException(newExceptions)
         };
     }
+
     protected internal virtual bool TrySetResult(object? value)
     {
         return false;

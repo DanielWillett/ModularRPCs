@@ -15,6 +15,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -53,6 +54,9 @@ internal sealed class SerializerGenerator
     private readonly ConcurrentDictionary<int, Type> _argBuilders = new ConcurrentDictionary<int, Type>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, int> _methodSigHashCache = new ConcurrentDictionary<RuntimeMethodHandle, int>();
     private readonly ProxyGenerator _proxyGenerator;
+
+    private static readonly Dictionary<Type, Type> _closureTypes = new Dictionary<Type, Type>(16);
+
     internal const string GetSizeMethodField = "GetSizeMethod";
     internal const string WriteToStreamMethodField = "WriteStreamMethod";
     internal const string WriteToBytesMethodField = "WriteBytesMethod";
@@ -216,6 +220,22 @@ internal sealed class SerializerGenerator
         return type.IsDefinedSafe<RpcSerializableAttribute>() && typeof(IRpcSerializable).IsAssignableFrom(type);
     }
 
+    internal static bool IsRpcSerializableCollectionType(Type type,
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+        [MaybeNullWhen(false)]
+#endif
+        out Type serializableType)
+    {
+        if (!typeof(IEnumerable).IsAssignableFrom(type))
+        {
+            serializableType = null!;
+            return false;
+        }
+
+        serializableType = TypeUtility.GetSerializableEnumerableType(type);
+        return serializableType != null && serializableType.IsDefinedSafe<RpcSerializableAttribute>();
+    }
+
     internal static bool IsSerializableArray(Type type, out Type? elementType)
     {
         if (!type.IsArray)
@@ -228,26 +248,6 @@ internal sealed class SerializerGenerator
         return typeof(IRpcSerializable).IsAssignableFrom(elementType)
                && elementType.IsDefinedSafe<RpcSerializableAttribute>()
                && elementType.MakeArrayType() == type;
-    }
-
-    internal static bool IsSerializableAny(Type type, out Type? elementType)
-    {
-        foreach (Type intx in type.GetInterfaces())
-        {
-            if (!intx.IsConstructedGenericType)
-                continue;
-
-            Type genericArg = intx.GetGenericArguments()[0];
-            if (!IsRpcSerializableType(genericArg))
-                continue;
-
-            elementType = genericArg;
-            if (intx.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                return true;
-        }
-
-        elementType = null;
-        return false;
     }
 
     internal static bool IsPrimitiveLikeType(Type type)
@@ -463,17 +463,12 @@ internal sealed class SerializerGenerator
             {
                 writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectBytes.MakeGenericMethod(genType);
             }
-            else if (isSerializableArray)
-            {
-                LoadFromRef(genType, il);
-                writeMtd = CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayBytes.MakeGenericMethod(elementType!);
-            }
-            else if (isSerializableAny)
+            else if (isSerializableArray || isSerializableAny)
             {
                 LoadFromRef(genType, il);
                 if (genType.IsValueType)
                     il.Emit(OpCodes.Box, genType);
-                writeMtd = CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyBytes.MakeGenericMethod(elementType!);
+                writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsBytes.MakeGenericMethod(elementType!);
             }
             else if (isByRef)
             {
@@ -582,17 +577,12 @@ internal sealed class SerializerGenerator
             {
                 writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectStream.MakeGenericMethod(genType);
             }
-            else if (isSerializableArray)
-            {
-                LoadFromRef(genType, il);
-                writeMtd = CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayStream.MakeGenericMethod(elementType!);
-            }
-            else if (isSerializableAny)
+            else if (isSerializableArray || isSerializableAny)
             {
                 LoadFromRef(genType, il);
                 if (genType.IsValueType)
                     il.Emit(OpCodes.Box, genType);
-                writeMtd = CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyStream.MakeGenericMethod(elementType!);
+                writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsStream.MakeGenericMethod(elementType!);
             }
             else if (isByRef)
             {
@@ -634,7 +624,7 @@ internal sealed class SerializerGenerator
         elementType = null;
         isSerializable = IsRpcSerializableType(genType);
         isSerializableArray = !isSerializable && IsSerializableArray(genType, out elementType);
-        isSerializableAny = !isSerializable && !isSerializableArray && IsSerializableAny(genType, out elementType);
+        isSerializableAny = !isSerializable && !isSerializableArray && IsRpcSerializableCollectionType(genType, out elementType);
         isByRef = !isSerializable && !isSerializableAny && !isSerializableArray && underlyingNullableType == null && ShouldBePassedByReference(genType);
     }
 
@@ -1239,7 +1229,7 @@ internal sealed class SerializerGenerator
 
         return unchecked ( (int)(h1 + ((h2 >> 6) | (h2 << 26)) + ((h3 >> 12) | (h3 << 20)) + ((h4 >> 18) | (h4 << 14)) + ((h5 >> 24) | (h5 << 8))) );
     }
-    private static void HandleInvocation(MethodInfo method, ParameterInfo[] parameters, LocalBuilder[] injectionLcls, LocalBuilder[] bindLcls, IOpCodeEmitter il, ArraySegment<ParameterInfo> toInject, ArraySegment<ParameterInfo> toBind, Type[] methodParameters)
+    private void HandleInvocation(MethodInfo method, ParameterInfo[] parameters, LocalBuilder[] injectionLcls, LocalBuilder[] bindLcls, IOpCodeEmitter il, ArraySegment<ParameterInfo> toInject, ArraySegment<ParameterInfo> toBind, Type[] methodParameters)
     {
         if (!method.IsStatic)
         {
@@ -1248,6 +1238,7 @@ internal sealed class SerializerGenerator
             {
                 if (method.DeclaringType.IsClass)
                 {
+                    il.CommentIfDebug("if (targetObject == null) throw new RpcInjectionException(..)");
                     il.Emit(OpCodes.Castclass, method.DeclaringType);
                     il.Emit(OpCodes.Dup);
                     Label lblDontThrowNullRef = il.DefineLabel();
@@ -1263,11 +1254,12 @@ internal sealed class SerializerGenerator
                 }
                 else
                 {
+                    il.CommentIfDebug($"targetObject = ({Accessor.Formatter.Format(method.DeclaringType)})targetObejct");
                     il.Emit(OpCodes.Unbox, method.DeclaringType);
                 }
             }
         }
-
+        
         for (int i = 0; i < parameters.Length; ++i)
         {
             LocalBuilder? lcl = null;
@@ -1288,38 +1280,65 @@ internal sealed class SerializerGenerator
             il.Emit(param.ParameterType.IsByRef ? OpCodes.Ldloca : OpCodes.Ldloc, lcl);
         }
         
-        il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));
         il.Emit(method.GetCallRuntime(), method);
 
         Label? lblReturnType = null;
 
+        Label lblRtn = il.DefineLabel();
         Type rtnType = method.ReturnType;
         bool isAwaitable = TypeUtility.IsAwaitable(rtnType,
+            _proxyGenerator.UseConfigureAwaitWhenAwaitingRpcInvocations,
             out Type? awaitReturnType,
             out MethodInfo? configureAwaitMethod,
             out MethodInfo? getAwaiterMethod,
             out MethodInfo? getResultMethod,
             out MethodInfo? onCompletedMethod,
             out PropertyInfo? getIsCompletedProperty);
+        LocalBuilder? lclResult;
         if (isAwaitable)
         {
+            LocalBuilder? lclAwaitable = null;
+            if (rtnType.IsValueType)
+            {
+                lclAwaitable = il.DeclareLocal(rtnType);
+                il.Emit(OpCodes.Stloc, lclAwaitable);
+                il.Emit(OpCodes.Ldloca, lclAwaitable);
+            }
             lblReturnType = il.DefineLabel();
             LocalBuilder lclAwaiter = il.DeclareLocal(getAwaiterMethod!.ReturnType);
             if (configureAwaitMethod != null)
             {
                 if (configureAwaitMethod.ReturnType == typeof(void))
                 {
-                    il.CommentIfDebug("task.ConfigureAwait(false)");
-                    il.Emit(OpCodes.Dup);
+                    il.CommentIfDebug("task.ConfigureAwait(false)  // outputs nothing");
+                    if (lclAwaitable == null)
+                    {
+                        il.Emit(OpCodes.Dup);
+                    }
                     il.Emit(OpCodes.Ldc_I4_0);
                     il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
                     il.CommentIfDebug("awaiter = task.GetResult()");
+                    if (lclAwaitable != null)
+                    {
+                        il.Emit(OpCodes.Ldloca, lclAwaitable);
+                    }
                     il.Emit(getAwaiterMethod.GetCallRuntime(), getAwaiterMethod);
+                }
+                else if (configureAwaitMethod.ReturnType.IsByRef
+                         && configureAwaitMethod.ReturnType.GetElementType()!.IsValueType)
+                {
+                    il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter() // outputs ref value type");
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
+                    il.Emit(OpCodes.Call, getAwaiterMethod);
                 }
                 else if (configureAwaitMethod.ReturnType.IsValueType)
                 {
-                    il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter()");
-                    LocalBuilder lclTask = il.DeclareLocal(configureAwaitMethod.ReturnType);
+                    il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter() // outputs value type");
+                    LocalBuilder lclTask = lclAwaitable != null
+                                           && lclAwaitable.LocalType == configureAwaitMethod.ReturnType
+                        ? lclAwaitable
+                        : il.DeclareLocal(configureAwaitMethod.ReturnType);
                     il.Emit(OpCodes.Ldc_I4_0);
                     il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
                     il.Emit(OpCodes.Stloc, lclTask);
@@ -1328,9 +1347,11 @@ internal sealed class SerializerGenerator
                 }
                 else
                 {
-                    il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter()");
+                    il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter() // outputs reference type");
                     il.Emit(OpCodes.Ldc_I4_0);
                     il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
+                    if (configureAwaitMethod.ReturnType.IsByRef)
+                        il.Emit(OpCodes.Ldind_Ref);
                     il.Emit(getAwaiterMethod.GetCallRuntime(), getAwaiterMethod);
                 }
             }
@@ -1354,149 +1375,278 @@ internal sealed class SerializerGenerator
 
             il.CommentIfDebug("if (isCompleted) {");
             il.Emit(OpCodes.Brfalse, lblQueueContinuation);
-            
-            il.CommentIfDebug($"  {Accessor.Formatter.Format(awaitReturnType!)} rtnValue = awaiter.GetResult()");
+
+
+            lclResult = getResultMethod!.ReturnType == typeof(void) ? null : il.DeclareLocal(getResultMethod.ReturnType);
+
+            // try {
+            il.BeginExceptionBlock();
+
+            il.CommentIfDebug($"    {Accessor.Formatter.Format(awaitReturnType!)} rtnValue = awaiter.GetResult()");
 
             if (lclAwaiter.LocalType!.IsValueType)
                 il.Emit(OpCodes.Ldloca, lclAwaiter);
             else
                 il.Emit(OpCodes.Ldloc, lclAwaiter);
 
-            il.Emit(getResultMethod!.GetCallRuntime(), getResultMethod!);
-            il.Emit(OpCodes.Br, lblReturnType.Value);
+            il.Emit(getResultMethod.GetCallRuntime(), getResultMethod);
+            if (lclResult != null)
+                il.Emit(OpCodes.Stloc, lclResult);
+            il.Emit(OpCodes.Leave, lblReturnType.Value);
+            // } catch (Exception ex) {
+            il.BeginCatchBlock(typeof(Exception));
+
+            LocalBuilder lclEx = il.DeclareLocal(typeof(Exception));
+
+            il.Emit(OpCodes.Stloc, lclEx);
+
+            il.CommentIfDebug("  router.HandleInvokeException(ex, overhead, serializer)");
+            il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));
+            il.Emit(OpCodes.Ldloc, lclEx);
+            il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
+            il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcSerializer)) ));
+            il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcRouterHandleInvokeException);
+
+            il.CommentIfDebug("  return");
+            il.Emit(OpCodes.Leave, lblRtn);
+            il.EndExceptionBlock();
+            // }
             
             il.CommentIfDebug("} else {");
             il.MarkLabel(lblQueueContinuation);
 
-            Accessor.GetDynamicMethodFlags(true, out MethodAttributes attr, out CallingConventions conv);
-            
-            // create a closure type to capture necessary information for continuation
-            TypeBuilder tb = ProxyGenerator.Instance.ModuleBuilder.DefineType($"Closure_{method.Name}_" + Guid.NewGuid().ToString("N"),
-                TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.SpecialName);
-
-            FieldBuilder overheadField   = tb.DefineField("_overhead", typeof(RpcOverhead), FieldAttributes.Public | FieldAttributes.InitOnly);
-            FieldBuilder routerField     = tb.DefineField("_router", typeof(IRpcRouter), FieldAttributes.Public | FieldAttributes.InitOnly);
-            FieldBuilder serializerField = tb.DefineField("_serializer", typeof(IRpcSerializer), FieldAttributes.Public | FieldAttributes.InitOnly);
-            FieldBuilder awaiterField    = tb.DefineField("_awaiter", getAwaiterMethod.ReturnType, FieldAttributes.Public | FieldAttributes.InitOnly);
-
             Type[] ctorArgs = [ typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), getAwaiterMethod.ReturnType ];
-            ConstructorBuilder ctor = tb.DefineConstructor(
-                MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
-                CallingConventions.Standard,
-                ctorArgs);
-
-            ctor.DefineParameter(1, ParameterAttributes.None, "overhead");
-            ctor.DefineParameter(2, ParameterAttributes.None, "router");
-            ctor.DefineParameter(3, ParameterAttributes.None, "serializer");
-            ctor.DefineParameter(4, ParameterAttributes.None, "awaiter");
-
-            IOpCodeEmitter ctorIl = ctor.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
-            ctorIl.CommentIfDebug("this._overhead = overhead;");
-            ctorIl.CommentIfDebug("this._router = router;");
-            ctorIl.CommentIfDebug("this._serializer = serializer;");
-            ctorIl.CommentIfDebug("this._awaiter = awaiter;");
-            ctorIl.Emit(OpCodes.Ldarg_0);
-            ctorIl.Emit(OpCodes.Dup);
-            ctorIl.Emit(OpCodes.Dup);
-            ctorIl.Emit(OpCodes.Dup);
-            ctorIl.Emit(OpCodes.Ldarg_1);
-            ctorIl.Emit(OpCodes.Stfld, overheadField);
-            ctorIl.Emit(OpCodes.Ldarg_2);
-            ctorIl.Emit(OpCodes.Stfld, routerField);
-            ctorIl.Emit(OpCodes.Ldarg_3);
-            ctorIl.Emit(OpCodes.Stfld, serializerField);
-            ctorIl.Emit(OpCodes.Ldarg_S, (byte)4);
-            ctorIl.Emit(OpCodes.Stfld, awaiterField);
-
-            MethodBuilder continuation = tb.DefineMethod(
-                "Continuation",
-                MethodAttributes.Public | MethodAttributes.HideBySig,
-                CallingConventions.Standard,
-                typeof(void),
-                Type.EmptyTypes
-            );
-
-            IOpCodeEmitter contIl = continuation.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
-            contIl.Emit(OpCodes.Ldarg_0);
-            contIl.Emit(OpCodes.Ldfld, routerField);
-            contIl.Emit(OpCodes.Ldarg_0);
-            contIl.Emit(OpCodes.Ldfld, awaiterField);
-            contIl.Emit(getResultMethod!.GetCallRuntime(), getResultMethod!);
-
-            MethodInfo processMethod;
-            if (awaitReturnType == typeof(void))
+            Type closureType;
+            lock (_closureTypes)
             {
-                contIl.CommentIfDebug("  awaiter.GetResult()");
-                contIl.CommentIfDebug("  router.HandleVoidReturn(overhead, serializer)");
-                processMethod = CommonReflectionCache.RpcRouterHandleVoidReturn;
-            }
-            else if (IsRpcSerializableType(awaitReturnType!))
-            {
-                il.CommentIfDebug($"  router.HandleSerializableReturnValue<{Accessor.Formatter.Format(awaitReturnType!)}>(awaiter.GetResult(), overhead, serializer)");
-                processMethod = CommonReflectionCache.RpcRouterHandleSerializableReturnValue.MakeGenericMethod(awaitReturnType);
-            }
-            else
-            {
-                contIl.CommentIfDebug($"  router.HandleReturnValue<{Accessor.Formatter.Format(awaitReturnType!)}>(awaiter.GetResult(), overhead, serializer)");
-                processMethod = CommonReflectionCache.RpcRouterHandleReturnValue.MakeGenericMethod(awaitReturnType);
-            }
+                if (!_closureTypes.TryGetValue(getAwaiterMethod.ReturnType, out closureType))
+                {
+                    // create a closure type to capture necessary information for continuation
+                    TypeBuilder tb = ProxyGenerator.Instance.ModuleBuilder.DefineType("Closure_"
+                        + (getAwaiterMethod.ReturnType.FullName ?? getAwaiterMethod.ReturnType.Name).Replace('+', '_').Replace('.', '_'),
+                        TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.SpecialName);
 
-            contIl.Emit(OpCodes.Ldarg_0);
-            contIl.Emit(OpCodes.Ldfld, overheadField);
-            contIl.Emit(OpCodes.Ldarg_0);
-            contIl.Emit(OpCodes.Ldfld, serializerField);
-            contIl.Emit(OpCodes.Callvirt, processMethod);
+                    FieldBuilder overheadField = tb.DefineField("_overhead", typeof(RpcOverhead), FieldAttributes.Public | FieldAttributes.InitOnly);
+                    FieldBuilder routerField = tb.DefineField("_router", typeof(IRpcRouter), FieldAttributes.Public | FieldAttributes.InitOnly);
+                    FieldBuilder serializerField = tb.DefineField("_serializer", typeof(IRpcSerializer), FieldAttributes.Public | FieldAttributes.InitOnly);
+                    FieldBuilder awaiterField = tb.DefineField("_awaiter", getAwaiterMethod.ReturnType, FieldAttributes.Public);
 
+                    // Continuation action
+                    MethodBuilder continuation = tb.DefineMethod(
+                        "Continuation",
+                        MethodAttributes.Public | MethodAttributes.HideBySig,
+                        CallingConventions.Standard,
+                        typeof(void),
+                        Type.EmptyTypes
+                    );
 
-            Type closureType = tb.CreateType();
+                    IOpCodeEmitter contIl = continuation.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
+
+                    LocalBuilder lclResult2 = getResultMethod.ReturnType == typeof(void) ? null : contIl.DeclareLocal(getResultMethod.ReturnType);
+
+                    Label lblContRtn = contIl.DefineLabel();
+                    Label lblExitTry = contIl.DefineLabel();
+
+                    // try {
+                    contIl.BeginExceptionBlock();
+
+                    contIl.CommentIfDebug("[var rtnValue = ]awaiter.GetResult()");
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    if (awaiterField.FieldType.IsValueType)
+                        contIl.Emit(OpCodes.Ldflda, awaiterField);
+                    else
+                        contIl.Emit(OpCodes.Ldfld, awaiterField);
+
+                    contIl.Emit(getResultMethod.GetCallRuntime(), getResultMethod);
+                    if (lclResult2 != null)
+                        contIl.Emit(OpCodes.Stloc, lclResult2);
+
+                    contIl.Emit(OpCodes.Leave, lblExitTry);
+
+                    // } catch (Exception ex) {
+                    contIl.BeginCatchBlock(typeof(Exception));
+
+                    lclEx = contIl.DeclareLocal(typeof(Exception));
+                    contIl.Emit(OpCodes.Stloc, lclEx);
+
+                    contIl.CommentIfDebug("  router.HandleInvokeException(ex, overhead, serializer)");
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, routerField);
+                    contIl.Emit(OpCodes.Ldloc, lclEx);
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, overheadField);
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, serializerField);
+                    contIl.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcRouterHandleInvokeException);
+
+                    contIl.CommentIfDebug("  return");
+                    contIl.Emit(OpCodes.Leave, lblContRtn);
+                    contIl.EndExceptionBlock();
+                    // }
+
+                    contIl.MarkLabel(lblExitTry);
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, routerField);
+                    if (lclResult2 != null)
+                    {
+                        contIl.Emit(OpCodes.Ldloc, lclResult2);
+                    }
+
+                    MethodInfo processMethod = ProcessReturnValue(il, awaitReturnType!);
+
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, overheadField);
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, serializerField);
+                    contIl.Emit(OpCodes.Callvirt, processMethod);
+
+                    contIl.MarkLabel(lblContRtn);
+                    contIl.Emit(OpCodes.Ret);
+
+                    // Constructor
+                    ConstructorBuilder ctor = tb.DefineConstructor(
+                        MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+                        CallingConventions.Standard,
+                        ctorArgs);
+
+                    ctor.DefineParameter(1, ParameterAttributes.None, "overhead");
+                    ctor.DefineParameter(2, ParameterAttributes.None, "router");
+                    ctor.DefineParameter(3, ParameterAttributes.None, "serializer");
+                    ctor.DefineParameter(4, ParameterAttributes.None, "awaiter");
+
+                    IOpCodeEmitter ctorIl = ctor.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
+                    ctorIl.CommentIfDebug("this._overhead = overhead;");
+                    ctorIl.CommentIfDebug("this._router = router;");
+                    ctorIl.CommentIfDebug("this._serializer = serializer;");
+                    ctorIl.CommentIfDebug("this._awaiter = awaiter;");
+                    ctorIl.Emit(OpCodes.Ldarg_0);
+                    ctorIl.Emit(OpCodes.Ldarg_1);
+                    ctorIl.Emit(OpCodes.Stfld, overheadField);
+                    ctorIl.Emit(OpCodes.Ldarg_0);
+                    ctorIl.Emit(OpCodes.Ldarg_2);
+                    ctorIl.Emit(OpCodes.Stfld, routerField);
+                    ctorIl.Emit(OpCodes.Ldarg_0);
+                    ctorIl.Emit(OpCodes.Ldarg_3);
+                    ctorIl.Emit(OpCodes.Stfld, serializerField);
+                    ctorIl.Emit(OpCodes.Ldarg_0);
+                    ctorIl.Emit(OpCodes.Ldarg_S, (byte)4);
+                    ctorIl.Emit(OpCodes.Stfld, awaiterField);
+
+                    if (lclAwaiter.LocalType.IsValueType)
+                    {
+                        ctorIl.Emit(OpCodes.Ldarg_0);
+                        ctorIl.Emit(OpCodes.Ldflda, awaiterField);
+                    }
+                    else
+                        ctorIl.Emit(OpCodes.Ldarg_S, (byte)4);
+                    
+                    ctorIl.Emit(OpCodes.Ldarg_0);
+
+                    ctorIl.Emit(OpCodes.Ldftn, continuation);
+
+                    ctorIl.Emit(OpCodes.Newobj, CommonReflectionCache.ActionConstructor);
+                    
+                    ctorIl.Emit(onCompletedMethod!.GetCallRuntime(), onCompletedMethod!);
+
+                    ctorIl.Emit(OpCodes.Ret);
+
+#if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER
+                    closureType = tb.CreateTypeInfo()!;
+#else
+                    closureType = tb.CreateType()!;
+#endif
+
+                    _closureTypes.Add(getAwaiterMethod.ReturnType, closureType);
+                }
+            }
 
             ConstructorInfo fullCtor = closureType.GetConstructor(ctorArgs)!;
-            MethodInfo fullContinuation = closureType.GetMethod("Continuation", BindingFlags.Public | BindingFlags.Instance)!;
 
-            il.Emit(OpCodes.Ldloc, lclAwaiter);
-
-            il.CommentIfDebug("  awaiter.UnsafeOnCompleted(new Closure(overhead, router, serializer, awaiter).Continuation)");
+            il.CommentIfDebug("  _ = new Closure(overhead, router, serializer, awaiter)");
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcSerializer)) ));
             il.Emit(OpCodes.Ldloc, lclAwaiter);
             il.Emit(OpCodes.Newobj, fullCtor);
-            il.Emit(OpCodes.Ldftn, fullContinuation);
-            il.Emit(OpCodes.Newobj, CommonReflectionCache.ActionConstructor);
-
-            il.Emit(onCompletedMethod!.GetCallRuntime(), onCompletedMethod!);
-            il.Emit(OpCodes.Pop); // pop router
+            il.Emit(OpCodes.Pop);
+            il.CommentIfDebug("  return");
+            il.Emit(OpCodes.Br, lblRtn);
         }
         else
         {
             awaitReturnType = rtnType;
+            lclResult = awaitReturnType == typeof(void) ? null : il.DeclareLocal(awaitReturnType);
+            if (lclResult != null)
+                il.Emit(OpCodes.Stloc, lclResult);
         }
+        
+        il.TryMarkLabel(lblReturnType);
 
+        il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));
+        if (lclResult != null)
+            il.Emit(OpCodes.Ldloc, lclResult);
+
+        MethodInfo processMethod2 = ProcessReturnValue(il, awaitReturnType!);
+        il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
+        il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcSerializer)) ));
+        il.Emit(OpCodes.Callvirt, processMethod2);
+        il.MarkLabel(lblRtn);
+    }
+
+    private static MethodInfo ProcessReturnValue(IOpCodeEmitter il, Type awaitReturnType)
+    {
+        if (awaitReturnType == typeof(void))
         {
-            MethodInfo processMethod;
-            if (awaitReturnType == typeof(void))
+            il.CommentIfDebug("  router.HandleVoidReturn(overhead, serializer)");
+            return CommonReflectionCache.RpcRouterHandleVoidReturn;
+        }
+        if (IsRpcSerializableType(awaitReturnType))
+        {
+            il.CommentIfDebug($"  router.HandleSerializableReturnValue<{Accessor.Formatter.Format(awaitReturnType)}>(rtnValue, null, overhead, serializer)");
+            il.Emit(OpCodes.Ldnull);
+            return CommonReflectionCache.RpcRouterHandleSerializableReturnValue.MakeGenericMethod(awaitReturnType);
+        }
+        if (IsRpcSerializableCollectionType(awaitReturnType, out Type? elementType))
+        {
+            il.CommentIfDebug("  rtnValue ??= DbNull.Value");
+            il.CommentIfDebug($"  router.HandleSerializableReturnValue<{Accessor.Formatter.Format(elementType)}>(default, rtnValue, overhead, serializer)");
+            LocalBuilder lclRtnValue = il.DeclareLocal(typeof(object));
+            if (awaitReturnType.IsValueType)
             {
-                il.CommentIfDebug("  router.HandleVoidReturn(overhead, serializer)");
-                processMethod = CommonReflectionCache.RpcRouterHandleVoidReturn;
-            }
-            else if (IsRpcSerializableType(awaitReturnType!))
-            {
-                il.CommentIfDebug($"  router.HandleSerializableReturnValue<{Accessor.Formatter.Format(awaitReturnType!)}>(rtnValue, overhead, serializer)");
-                processMethod = CommonReflectionCache.RpcRouterHandleSerializableReturnValue.MakeGenericMethod(awaitReturnType);
+                il.Emit(OpCodes.Box, awaitReturnType);
             }
             else
             {
-                il.CommentIfDebug($"  router.HandleReturnValue<{Accessor.Formatter.Format(awaitReturnType!)}>(rtnValue, overhead, serializer)");
-                processMethod = CommonReflectionCache.RpcRouterHandleReturnValue.MakeGenericMethod(awaitReturnType);
+                il.Emit(OpCodes.Dup);
+
+                Label lblNotNull = il.DefineLabel();
+                il.Emit(OpCodes.Brtrue, lblNotNull);
+                il.Emit(OpCodes.Pop);
+
+                il.Emit(OpCodes.Ldsfld, CommonReflectionCache.GetDbNullValue);
+
+                il.MarkLabel(lblNotNull);
             }
-
-            if (lblReturnType.HasValue)
-                il.MarkLabel(lblReturnType.Value);
-
-            il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead))));
-            il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(methodParameters, typeof(IRpcSerializer))));
-            il.Emit(OpCodes.Callvirt, processMethod);
+            il.Emit(OpCodes.Stloc, lclRtnValue);
+            if (elementType.IsValueType)
+            {
+                LocalBuilder lclDefault = il.DeclareLocal(elementType);
+                il.Emit(OpCodes.Ldloca, lclDefault);
+                il.Emit(OpCodes.Initobj, elementType);
+                il.Emit(OpCodes.Ldloc, lclDefault);
+            }
+            else
+            {
+                il.Emit(OpCodes.Ldnull);
+            }
+            il.Emit(OpCodes.Ldloc, lclRtnValue);
+            if (lclRtnValue.LocalType!.IsValueType)
+                il.Emit(OpCodes.Box, lclRtnValue.LocalType);
+            return CommonReflectionCache.RpcRouterHandleSerializableReturnValue.MakeGenericMethod(elementType);
         }
+        
+        il.CommentIfDebug($"  router.HandleReturnValue<{Accessor.Formatter.Format(awaitReturnType)}>(rtnValue, overhead, serializer)");
+        return CommonReflectionCache.RpcRouterHandleReturnValue.MakeGenericMethod(awaitReturnType);
     }
 
     internal void GenerateInvokeBytes(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
@@ -1600,7 +1750,7 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Ldloc, lclReadInd);
                 il.Emit(OpCodes.Sub);
                 il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayBytes.MakeGenericMethod(elementType, type));
+                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyBytes.MakeGenericMethod(elementType, type));
                 il.Emit(OpCodes.Stloc, bindLcls[i]);
             }
             else if (isByRef)
@@ -1697,11 +1847,6 @@ internal sealed class SerializerGenerator
             il.CommentIfDebug("lblDontPrimitiveRead:");
             il.MarkLabel(lblDontPrimitiveRead);
         }
-
-#if DEBUG
-        il.EmitWriteLine("Read bytes:");
-        il.EmitWriteLine(lclReadInd);
-#endif
 
         HandleInvocation(method, parameters, injectionLcls, bindLcls, il, toInject, toBind, ProxyGenerator.RpcInvokeHandlerBytesParams);
         il.Emit(OpCodes.Ret);

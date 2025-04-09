@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
 
-[NonParallelizable]
+[NonParallelizable, TestFixture]
 public class AssortedParameterInvocationTests
 {
     private static bool _wasInvoked;

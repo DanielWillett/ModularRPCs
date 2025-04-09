@@ -9,6 +9,8 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
+
+[TestFixture]
 public class UnityUnityRay2DParserTests
 {
     private static bool Ray2DsEqual(ref Ray2D r1, ref Ray2D r2)

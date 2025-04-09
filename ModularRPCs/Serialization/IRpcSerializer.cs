@@ -52,29 +52,13 @@ public interface IRpcSerializer
     /// Get the size of an object in bytes.
     /// </summary>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSerializableSize<TSerializable>(in TSerializable value) where TSerializable : IRpcSerializable;
+    int GetSerializableSize<TSerializable>(in TSerializable? value) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Get the size of an object in bytes.
     /// </summary>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSerializablesSize<TSerializable>(IEnumerable<TSerializable?> value) where TSerializable : IRpcSerializable;
-
-    /// <summary>
-    /// Get the size of an object in bytes.
-    /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="type"/> does not implement <see cref="IRpcSerializable"/>.</exception>
-    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSerializableSize(Type type, IRpcSerializable? value);
-
-    /// <summary>
-    /// Get the size of an object in bytes.
-    /// </summary>
-    /// <param name="type">The type of <see cref="IRpcSerializable"/> elements in <paramref name="value"/>.</param>
-    /// <param name="value">Set of values assignable to <paramref name="type"/>.</param>
-    /// <exception cref="ArgumentException"><paramref name="type"/> does not implement <see cref="IRpcSerializable"/>.</exception>
-    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int GetSerializablesSize(Type type, object? value);
+    int GetSerializablesSize<TSerializable>(IEnumerable<TSerializable?>? value) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Get the size of an object of type <paramref name="valueType"/> in bytes.
@@ -141,36 +125,14 @@ public interface IRpcSerializer
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    unsafe int WriteSerializableObject<TSerializable>(in TSerializable serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable;
+    unsafe int WriteSerializableObject<TSerializable>(in TSerializable? serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Write a list of serializable objects to a raw binary buffer. 
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    unsafe int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?> serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable;
-
-    /// <summary>
-    /// Write a serializable object to a raw binary buffer. 
-    /// </summary>
-    /// <param name="type">The type of <paramref name="value"/>.</param>
-    /// <param name="value">The <see cref="IRpcSerializable"/> to write.</param>
-    /// <param name="bytes"/>
-    /// <param name="maxSize"/>
-    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
-    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    unsafe int WriteSerializableObject(Type type, IRpcSerializable? value, byte* bytes, uint maxSize);
-
-    /// <summary>
-    /// Write a list of serializable objects to a raw binary buffer. 
-    /// </summary>
-    /// <param name="type">The type of <see cref="IRpcSerializable"/> elements in <paramref name="serializable"/>.</param>
-    /// <param name="serializable">Set of values assignable to <paramref name="type"/>.</param>
-    /// <param name="bytes"/>
-    /// <param name="maxSize"/>
-    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
-    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    unsafe int WriteSerializableObjects(Type type, object? serializable, byte* bytes, uint maxSize);
+    unsafe int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Write a nullable reference type or value type to a raw binary buffer via a <see cref="TypedReference"/>.
@@ -214,34 +176,14 @@ public interface IRpcSerializer
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int WriteSerializableObject<TSerializable>(in TSerializable serializable, Stream stream) where TSerializable : IRpcSerializable;
+    int WriteSerializableObject<TSerializable>(in TSerializable? serializable, Stream stream) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Write a list of serializable objects to a stream. 
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?> serializable, Stream stream) where TSerializable : IRpcSerializable;
-
-    /// <summary>
-    /// Write a serializable object to a stream. 
-    /// </summary>
-    /// <param name="type">The type of <paramref name="value"/>.</param>
-    /// <param name="value">The <see cref="IRpcSerializable"/> to write.</param>
-    /// <param name="stream"/>
-    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
-    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int WriteSerializableObject(Type type, IRpcSerializable? value, Stream stream);
-
-    /// <summary>
-    /// Write a list of serializable objects to a stream. 
-    /// </summary>
-    /// <param name="type">The type of <see cref="IRpcSerializable"/> elements in <paramref name="serializable"/>.</param>
-    /// <param name="serializable">Set of values assignable to <paramref name="type"/>.</param>
-    /// <param name="stream"/>
-    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
-    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    int WriteSerializableObjects(Type type, object? serializable, Stream stream);
+    int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, Stream stream) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Write a nullable reference type or value type to a stream via a <see cref="TypedReference"/>.
@@ -314,6 +256,22 @@ public interface IRpcSerializer
     unsafe TCollectionType? ReadSerializableObjects<TSerializable, TCollectionType>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Read a serializable object from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    unsafe IRpcSerializable? ReadSerializableObject(Type type, byte* bytes, uint maxSize, out int bytesRead);
+
+    /// <summary>
+    /// Read a list of serializable objects from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    unsafe object? ReadSerializableObjects(Type elementType, Type collectionType, byte* bytes, uint maxSize, out int bytesRead);
+
+    /// <summary>
     /// Read a nullable reference type or value type from a raw binary buffer to a <see cref="TypedReference"/>.
     /// </summary>
     /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
@@ -374,6 +332,22 @@ public interface IRpcSerializer
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
     TCollectionType? ReadSerializableObjects<TSerializable, TCollectionType>(Stream stream, out int bytesRead) where TSerializable : IRpcSerializable;
+
+    /// <summary>
+    /// Read a serializable object from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    IRpcSerializable? ReadSerializableObject(Type type, Stream stream, out int bytesRead);
+
+    /// <summary>
+    /// Read a list of serializable objects from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    object? ReadSerializableObjects(Type elementType, Type collectionType, Stream stream, out int bytesRead);
 
     /// <summary>
     /// Read a nullable reference type or value type from a stream to a <see cref="TypedReference"/>.

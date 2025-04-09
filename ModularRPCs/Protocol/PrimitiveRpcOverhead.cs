@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
@@ -22,8 +22,8 @@ public struct PrimitiveRpcOverhead
     public uint SizeCheck { get; }
     public ulong MessageId { get; }
     public byte SubMessageId { get; }
-    public uint OverheadSize => _len;
-    public RpcOverhead? FullOverhead => _overhead;
+    public readonly uint OverheadSize => _len;
+    public readonly RpcOverhead? FullOverhead => _overhead;
     public PrimitiveRpcOverhead(byte codeId, uint size, uint sizeCheck, ulong messageId, byte subMessageId)
     {
         CodeId = codeId;
@@ -116,7 +116,7 @@ public struct PrimitiveRpcOverhead
         return ovh;
     }
 
-    public override string ToString()
+    public readonly override string ToString()
     {
         if (_overhead != null)
             return _overhead.Rpc.ToString();

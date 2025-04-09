@@ -27,7 +27,7 @@ internal static class TypeUtility
     public const TypeCode TypeCodeDateTimeOffset = (TypeCode)20;
 
     // NOTE: Extension methods are not supported.
-    public static bool IsAwaitable(Type valueType,
+    public static bool IsAwaitable(Type valueType, bool useConfigureAwait,
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
         [MaybeNullWhen(false)]  
 #endif
@@ -55,30 +55,54 @@ internal static class TypeUtility
         getIsCompletedProperty = null!;
         onCompletedMethod = null!;
 
-        configureAwaitMethod = GetMostRelevantMethodByName("ConfigureAwait",
+        Type? originalAwaiterType = null;
+
+        configureAwaitMethod = useConfigureAwait ? GetMostRelevantMethodByName("ConfigureAwait",
             valueType,
             [ typeof(bool) ],
-            x => !x.ContainsGenericParameters && x.GetParameters() is { Length: 1 } p && p[0].ParameterType == typeof(bool));
+            x => !x.ContainsGenericParameters && x.GetParameters() is { Length: 1 } p && p[0].ParameterType == typeof(bool))
+                : null;
         if (configureAwaitMethod != null && configureAwaitMethod.ReturnType != typeof(void))
         {
+            originalAwaiterType = valueType;
             valueType = configureAwaitMethod.ReturnType;
         }
 
+        runWithoutConfigureAwait:
         getAwaiterMethod = GetMostRelevantMethodByName("GetAwaiter", valueType, Type.EmptyTypes,
             x => !x.ContainsGenericParameters && x.ReturnType != typeof(void));
 
         if (getAwaiterMethod == null)
-            return false;
+        {
+            if (originalAwaiterType == null)
+                return false;
+            valueType = originalAwaiterType;
+            originalAwaiterType = null;
+            goto runWithoutConfigureAwait;
+        }
 
         Type awaiterType = getAwaiterMethod.ReturnType;
         if (!typeof(INotifyCompletion).IsAssignableFrom(awaiterType))
-            return false;
+        {
+            if (originalAwaiterType == null)
+                return false;
+            valueType = originalAwaiterType;
+            originalAwaiterType = null;
+            goto runWithoutConfigureAwait;
+        }
 
-        PropertyInfo? isCompleted = GetMostRelevantPropertyByName("IsCompleted", awaiterType, typeof(bool), x => x.GetGetMethod(false) != null);
-        
-        if (isCompleted == null)
-            return false;
+        getIsCompletedProperty = GetMostRelevantPropertyByName("IsCompleted", awaiterType, typeof(bool), x => x.GetGetMethod(false) != null);
 
+        if (getIsCompletedProperty == null)
+        {
+            if (originalAwaiterType == null)
+                return false;
+            valueType = originalAwaiterType;
+            originalAwaiterType = null;
+            goto runWithoutConfigureAwait;
+        }
+
+        onCompletedMethod = null;
         if (typeof(ICriticalNotifyCompletion).IsAssignableFrom(awaiterType))
         {
             onCompletedMethod = Accessor.GetImplementedMethod(awaiterType, CommonReflectionCache.CriticalNotifyCompletionOnCompleted);
@@ -89,17 +113,26 @@ internal static class TypeUtility
             onCompletedMethod = Accessor.GetImplementedMethod(awaiterType, CommonReflectionCache.NotifyCompletionOnCompleted);
         }
 
-        if (onCompletedMethod == null)
-            return false;
+        if (onCompletedMethod == null || getIsCompletedProperty.GetGetMethod(false) == null)
+        {
+            if (originalAwaiterType == null)
+                return false;
+            valueType = originalAwaiterType;
+            originalAwaiterType = null;
+            goto runWithoutConfigureAwait;
+        }
 
-        if (isCompleted.GetGetMethod(false) == null)
-            return false;
+        getResultMethod = GetMostRelevantMethodByName("GetResult", awaiterType, Type.EmptyTypes, x => !x.ContainsGenericParameters);
+        if (getResultMethod == null)
+        {
+            if (originalAwaiterType == null)
+                return false;
+            valueType = originalAwaiterType;
+            originalAwaiterType = null;
+            goto runWithoutConfigureAwait;
+        }
 
-        MethodInfo? getResult = GetMostRelevantMethodByName("GetResult", awaiterType, Type.EmptyTypes, x => !x.ContainsGenericParameters);
-        if (getResult == null)
-            return false;
-
-        awaitReturnType = getResult.ReturnType;
+        awaitReturnType = getResultMethod.ReturnType;
         return true;
     }
 
@@ -112,7 +145,7 @@ internal static class TypeUtility
         try
         {
             method = type.GetMethod(methodName, flags, null, parameters, null);
-            if (!verify(method))
+            if (method == null || !verify(method))
                 return null;
         }
         catch (AmbiguousMatchException)
@@ -157,7 +190,7 @@ internal static class TypeUtility
         try
         {
             property = type.GetProperty(propertyName, flags, null, returnType, Type.EmptyTypes, null);
-            if (!verify(property))
+            if (property == null || !verify(property))
                 return null;
         }
         catch (AmbiguousMatchException)
@@ -187,6 +220,19 @@ internal static class TypeUtility
 
         if (SerializableEnumerableTypes.TryGetValue(type, out Type? t))
             return t;
+
+        if (type.IsInterface)
+        {
+            if (type.IsConstructedGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                Type elementType = type.GetGenericArguments()[0];
+                if (typeof(IRpcSerializable).IsAssignableFrom(elementType))
+                {
+                    SerializableEnumerableTypes.TryAdd(type, elementType);
+                    return elementType;
+                }
+            }
+        }
 
         foreach (Type intx in type.GetInterfaces())
         {
@@ -236,6 +282,11 @@ internal static class TypeUtility
     {
         if (tc.IsValueType)
         {
+            if (tc.IsEnum)
+            {
+                return GetTypeCode(tc.GetEnumUnderlyingType());
+            }
+
             if (tc == typeof(bool))
                 return TypeCode.Boolean;
             if (tc == typeof(char))
@@ -278,51 +329,10 @@ internal static class TypeUtility
 
         return TypeCode.Object;
     }
+
     public static TypeCode GetTypeCode<TValue>()
     {
-        if (typeof(TValue).IsValueType)
-        {
-            if (typeof(TValue) == typeof(bool))
-                return TypeCode.Boolean;
-            if (typeof(TValue) == typeof(char))
-                return TypeCode.Char;
-            if (typeof(TValue) == typeof(sbyte))
-                return TypeCode.SByte;
-            if (typeof(TValue) == typeof(byte))
-                return TypeCode.Byte;
-            if (typeof(TValue) == typeof(short))
-                return TypeCode.Int16;
-            if (typeof(TValue) == typeof(ushort))
-                return TypeCode.UInt16;
-            if (typeof(TValue) == typeof(int))
-                return TypeCode.Int32;
-            if (typeof(TValue) == typeof(uint))
-                return TypeCode.UInt32;
-            if (typeof(TValue) == typeof(long))
-                return TypeCode.Int64;
-            if (typeof(TValue) == typeof(ulong))
-                return TypeCode.UInt64;
-            if (typeof(TValue) == typeof(float))
-                return TypeCode.Single;
-            if (typeof(TValue) == typeof(double))
-                return TypeCode.Double;
-            if (typeof(TValue) == typeof(decimal))
-                return TypeCode.Decimal;
-            if (typeof(TValue) == typeof(DateTime))
-                return TypeCode.DateTime;
-            if (typeof(TValue) == typeof(TimeSpan))
-                return TypeCodeTimeSpan;
-            if (typeof(TValue) == typeof(Guid))
-                return TypeCodeGuid;
-            if (typeof(TValue) == typeof(DateTimeOffset))
-                return TypeCodeDateTimeOffset;
-        }
-        else if (typeof(TValue) == typeof(string))
-            return TypeCode.String;
-        else if (typeof(TValue) == typeof(DBNull))
-            return TypeCode.DBNull;
-
-        return TypeCode.Object;
+        return TypeCodeCache<TValue>.Value;
     }
 
     public static Type GetType(TypeCode tc)
@@ -1695,6 +1705,12 @@ internal static class TypeUtility
         }
 
         return true;
+    }
+
+
+    private static class TypeCodeCache<TValue>
+    {
+        public static readonly TypeCode Value = GetTypeCode(typeof(TValue));
     }
 }
 

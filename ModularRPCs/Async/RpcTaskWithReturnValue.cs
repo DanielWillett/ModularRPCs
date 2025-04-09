@@ -31,6 +31,10 @@ public class RpcTask<T> : RpcTask
     /// </summary>
     /// <exception cref="RpcGetResultUsageException">Task has yet to complete.</exception>
     public T Result => ((RpcTaskAwaiter<T>)Awaiter).GetResult();
+
+    /// <inheritdoc />
+    public override Type ValueType => typeof(T);
+
     internal RpcTask() : base(false)
     {
         Awaiter = new RpcTaskAwaiter<T>(this, false);
@@ -68,6 +72,12 @@ public class RpcTask<T> : RpcTask
     {
         if (value is not T convValue)
         {
+            if (value == null && !typeof(T).IsValueType)
+            {
+                ResultIntl = default;
+                return true;
+            }
+
 #if NET8_0_OR_GREATER
             // this gets optimized away
             if (typeof(T).IsEnum)

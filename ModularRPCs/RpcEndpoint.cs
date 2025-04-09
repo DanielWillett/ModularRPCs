@@ -398,10 +398,7 @@ public class RpcEndpoint : IRpcInvocationPoint
             throw new AggregateException(exceptions);
         }
     }
-    protected virtual ValueTask ConvertReturnedValueToValueTask(object? returnedValue)
-    {
-        return ProxyGenerator.Instance.ConvertReturnedValueToValueTask(returnedValue);
-    }
+
     protected virtual object? GetTargetObject(MethodInfo? knownMethod)
     {
         Type? declType = knownMethod?.DeclaringType ?? DeclaringType;
@@ -1231,7 +1228,9 @@ public class RpcEndpoint : IRpcInvocationPoint
     protected internal enum IdentifierFlags : byte
     {
         IsKnownTypeOnly = 1,
-        IsTypeNameOnly = 1 << 1
+        IsTypeNameOnly = 1 << 1,
+        IsSerializableType = 1 << 2,
+        IsSerializableCollectionType = (1 << 3) | IsSerializableType
     }
 
     [Flags]

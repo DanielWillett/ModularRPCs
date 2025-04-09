@@ -8,6 +8,8 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
+
+[TestFixture]
 public class UnityResolutionParserTests
 {
     [Test]

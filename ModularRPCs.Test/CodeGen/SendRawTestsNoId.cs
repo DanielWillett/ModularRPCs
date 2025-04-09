@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.SpeedBytes;
@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.CodeGen;
 
-[NonParallelizable]
+[NonParallelizable, TestFixture]
 public class SendRawTestsNoId
 {
     private static bool _wasInvoked;

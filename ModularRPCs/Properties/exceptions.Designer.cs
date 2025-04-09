@@ -637,7 +637,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to No parser found, this type might be missing an RpcSerializableAttribute or not be implementing IRpcSerializable.
+        ///   Looks up a localized string similar to No parser found, this type might be missing an RpcSerializableAttribute or not be implementing IRpcSerializable, or the serialize method called is not a serializable method..
         /// </summary>
         internal static string RpcInvalidParameterExceptionNoParserFoundSerializableComponentMissing {
             get {

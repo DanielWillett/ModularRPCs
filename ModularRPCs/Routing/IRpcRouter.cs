@@ -25,7 +25,7 @@ public interface IRpcRouter
     IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
 
     /// <summary>
-    /// Get a saved <see cref="RpcDescriptor"/> from it's Id.
+    /// Get a saved <see cref="IRpcInvocationPoint"/> from it's Id.
     /// </summary>
     /// <param name="endpointSharedId">Unique shared ID for the rpc endpoint.</param>
     [Pure]
@@ -109,18 +109,41 @@ public interface IRpcRouter
     /// </summary>
     ValueTask ReceiveData(in PrimitiveRpcOverhead overhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
 
+    /*
+     *  The following methods are invoked by SerializerGenerator after an RPC finishes running.
+     *
+     *  This can't be done internally because a continuation has to be used for methods returning awaitable objects
+     */
+    
     /// <summary>
     /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a <see langword="void"/> return type.
     /// </summary>
-    void HandleVoidReturn(RpcOverhead overhead, IRpcSerializer serializer);
+    /// <param name="overhead">Overhead of the RPC being invoked.</param>
+    /// <param name="serializer">The serializer being used by the RPC.</param>
+    void HandleInvokeVoidReturn(RpcOverhead overhead, IRpcSerializer serializer);
+
+    /// <summary>
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method throws an exception.
+    /// </summary>
+    /// <param name="exception">The exception that was thrown.</param>
+    /// <param name="overhead">Overhead of the RPC being invoked.</param>
+    /// <param name="serializer">The serializer being used by the RPC.</param>
+    void HandleInvokeException(Exception exception, RpcOverhead overhead, IRpcSerializer serializer);
 
     /// <summary>
     /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a non-<see langword="void"/> return type.
     /// </summary>
-    void HandleSerializableReturnValue<TSerializable>(TSerializable value, RpcOverhead overhead, IRpcSerializer serializer) where TSerializable : IRpcSerializable;
+    /// <param name="value">The value to be serialized. This is ignored if <paramref name="collection"/> is not null.</param>
+    /// <param name="collection">The collection to be serialized. To use a null collection, pass <see cref="DBNull.Value"/>.</param>
+    /// <param name="overhead">Overhead of the RPC being invoked.</param>
+    /// <param name="serializer">The serializer being used by the RPC.</param>
+    void HandleInvokeSerializableReturnValue<TSerializable>(TSerializable value, object? collection, RpcOverhead overhead, IRpcSerializer serializer) where TSerializable : IRpcSerializable;
 
     /// <summary>
     /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a non-<see langword="void"/> return type.
     /// </summary>
-    void HandleReturnValue<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer);
+    /// <param name="value">The value to be serialized.</param>
+    /// <param name="overhead">Overhead of the RPC being invoked.</param>
+    /// <param name="serializer">The serializer being used by the RPC.</param>
+    void HandleInvokeReturnValue<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer);
 }

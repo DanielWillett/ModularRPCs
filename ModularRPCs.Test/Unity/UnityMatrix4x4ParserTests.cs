@@ -8,6 +8,8 @@ using UnityEngine;
 using Random = System.Random;
 
 namespace ModularRPCs.Test.Unity;
+
+[TestFixture]
 public class UnityUnityMatrix4x4ParserTests
 {
     private static void MakeMatrix(Random r, out Matrix4x4 matrix)

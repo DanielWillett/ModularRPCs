@@ -20,13 +20,13 @@ public interface IRpcInvocationPoint
     /// <summary>
     /// Invoke the RPC from a byte buffer. If context switching is needed, the data MUST BE COPIED if <paramref name="canTakeOwnership"/> is <see langword="false"/>.
     /// </summary>
-    /// <remarks><see cref="IRpcRouter.HandleReturnValue{TReturnType}"/> should be invoked when completed.</remarks>
+    /// <remarks><see cref="IRpcRouter.HandleInvokeReturnValue{TReturnType}"/> should be invoked when completed.</remarks>
     void Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ReadOnlyMemory<byte> byteData, bool canTakeOwnership, CancellationToken token = default);
 
     /// <summary>
     /// Invoke the RPC from a stream.
     /// </summary>
-    /// <remarks><see cref="IRpcRouter.HandleReturnValue{TReturnType}"/> should be invoked when completed.</remarks>
+    /// <remarks><see cref="IRpcRouter.HandleInvokeReturnValue{TReturnType}"/> should be invoked when completed.</remarks>
     void Invoke(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
     IRpcInvocationPoint CloneWithIdentifier(IRpcSerializer serializer, object? identifier);
     string ToString();

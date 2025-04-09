@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ModularRPCs.Test.CodeGen;
 
-[NonParallelizable]
+[NonParallelizable, TestFixture]
 public class InjectionTests
 {
     [Test]
@@ -86,7 +86,6 @@ public class InjectionTests
             Assert.That(serializer, Is.Not.Null);
             Assert.That(overhead, Is.Not.Null);
             Assert.That(connections, Is.Not.Null);
-            Assert.That(flags, Is.Not.Null);
         }
     }
 }

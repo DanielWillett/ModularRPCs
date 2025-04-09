@@ -442,7 +442,7 @@
     <value>Unable to parse a list of IRpcSerializable objects because one object's size was larger than the header-declared maximum size of the list.</value>
   </data>
   <data name="RpcInvalidParameterExceptionNoParserFoundSerializableComponentMissing" xml:space="preserve">
-    <value>No parser found, this type might be missing an RpcSerializableAttribute or not be implementing IRpcSerializable</value>
+    <value>No parser found, this type might be missing an RpcSerializableAttribute or not be implementing IRpcSerializable, or the serialize method called is not a serializable method.</value>
   </data>
   <data name="RpcParseExceptionInvalidSerializableSize" xml:space="preserve">
     <value>An IRpcSerializable was written with a negative size. This could be caused by bad data.</value>

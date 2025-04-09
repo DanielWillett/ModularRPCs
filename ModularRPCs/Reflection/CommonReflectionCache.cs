@@ -58,7 +58,17 @@ internal static class CommonReflectionCache
                                                                           );
 
     /// <summary>
-    /// <see cref="IRpcRouter.HandleVoidReturn"/>.
+    /// <see cref="DBNull.Value"/>.
+    /// </summary>
+    internal static readonly FieldInfo GetDbNullValue = typeof(DBNull).GetField(nameof(DBNull.Value), BindingFlags.Public | BindingFlags.Static)
+                                                        ?? throw new UnexpectedMemberAccessException(new FieldDefinition(nameof(DBNull.Value))
+                                                            .DeclaredIn<DBNull>(isStatic: true)
+                                                            .AsReadOnly()
+                                                            .WithFieldType<DBNull>()
+                                                        );
+
+    /// <summary>
+    /// <see cref="Action(object?, IntPtr)"/>.
     /// </summary>
     internal static readonly ConstructorInfo ActionConstructor = typeof(Action).GetConstructors(BindingFlags.Instance | BindingFlags.Public)[0];
 
@@ -171,10 +181,10 @@ internal static class CommonReflectionCache
                                                                    );
 
     /// <summary>
-    /// <see cref="IRpcRouter.HandleVoidReturn"/>.
+    /// <see cref="IRpcRouter.HandleInvokeVoidReturn"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterHandleVoidReturn = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleVoidReturn), BindingFlags.Public | BindingFlags.Instance)
-                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleVoidReturn))
+    internal static readonly MethodInfo RpcRouterHandleVoidReturn = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeVoidReturn), BindingFlags.Public | BindingFlags.Instance)
+                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeVoidReturn))
                                                                         .DeclaredIn<IRpcRouter>(isStatic: false)
                                                                         .WithParameter<RpcOverhead>("overhead")
                                                                         .WithParameter<IRpcSerializer>("serializer")
@@ -182,10 +192,22 @@ internal static class CommonReflectionCache
                                                                     );
 
     /// <summary>
-    /// <see cref="IRpcRouter.HandleReturnValue{TReturnType}"/>.
+    /// <see cref="IRpcRouter.HandleInvokeException"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterHandleReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleReturnValue), BindingFlags.Public | BindingFlags.Instance)
-                                                                     ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleReturnValue))
+    internal static readonly MethodInfo RpcRouterHandleInvokeException = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeException), BindingFlags.Public | BindingFlags.Instance)
+                                                                         ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeException))
+                                                                             .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                             .WithParameter<Exception>("exception")
+                                                                             .WithParameter<RpcOverhead>("overhead")
+                                                                             .WithParameter<IRpcSerializer>("serializer")
+                                                                             .ReturningVoid()
+                                                                         );
+
+    /// <summary>
+    /// <see cref="IRpcRouter.HandleInvokeReturnValue{TReturnType}"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcRouterHandleReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeReturnValue), BindingFlags.Public | BindingFlags.Instance)
+                                                                     ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeReturnValue))
                                                                          .DeclaredIn<IRpcRouter>(isStatic: false)
                                                                          .WithGenericParameterDefinition("TReturnType")
                                                                          .WithParameterUsingGeneric(0, "value")
@@ -195,10 +217,10 @@ internal static class CommonReflectionCache
                                                                      );
 
     /// <summary>
-    /// <see cref="IRpcRouter.HandleSerializableReturnValue{TSerializable}"/>.
+    /// <see cref="IRpcRouter.HandleInvokeSerializableReturnValue{TSerializable}"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterHandleSerializableReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleSerializableReturnValue), BindingFlags.Public | BindingFlags.Instance)
-                                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleSerializableReturnValue))
+    internal static readonly MethodInfo RpcRouterHandleSerializableReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeSerializableReturnValue), BindingFlags.Public | BindingFlags.Instance)
+                                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeSerializableReturnValue))
                                                                                      .DeclaredIn<IRpcRouter>(isStatic: false)
                                                                                      .WithGenericParameterDefinition("TSerializable")
                                                                                      .WithParameterUsingGeneric(0, "value")

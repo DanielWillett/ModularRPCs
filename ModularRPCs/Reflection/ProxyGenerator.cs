@@ -58,7 +58,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private delegate ValueTask ConvReturnValueToVt(object returnValue);
     private delegate object? ConvVtToReturnValue(Task task);
 #if DEBUG
-    internal const bool DebugPrint = true;
+    internal const bool DebugPrint = false;
     internal const bool BreakpointPrint = false;
 #else 
     internal const bool DebugPrint = false;
@@ -142,6 +142,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// </summary>
     /// <remarks>Defaults to 512.</remarks>
     public int MaxSizeForStackalloc { get; set; } = 512;
+
+    /// <summary>
+    /// If task-like-returning RPCs should be awaited using 'ConfigureAwait(false)' if available.
+    /// </summary>
+    /// <remarks>Defaults to <see langword="true"/>.</remarks>
+    public bool UseConfigureAwaitWhenAwaitingRpcInvocations { get; set; } = true;
 
     /// <summary>
     /// Default timeout for all RPCs unless otherwise specified with a <see cref="RpcTimeoutAttribute"/>.
@@ -1674,23 +1680,27 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     {
         ProxyTypeInfo info = default;
 
-        string typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
-        string copiedTypeName = typeName;
-        int dupNum = 0;
-        while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+        string typeName = (type.FullName ?? type.Name) + "<RPC_Proxy>";
+        if (ModuleBuilder.GetType(typeName, false, false) != null)
         {
-            ++dupNum;
-            copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
-        }
+            typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
+            string copiedTypeName = typeName;
+            int dupNum = 0;
+            while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+            {
+                ++dupNum;
+                copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
+            }
 
-        typeName = copiedTypeName;
+            typeName = copiedTypeName;
+        }
 
         bool unity = false;
 
         // unity objects can not use constructors, so instead we add a Start() method.
         type.ForEachBaseType((bt, _) =>
         {
-            if (!TypeUtility.GetAssemblyQualifiedNameNoVersion(bt).Equals("UnityEngine.Object, UnityEngine.CoreModule", StringComparison.Ordinal))
+            if (!TypeUtility.GetAssemblyQualifiedNameNoVersion(bt).Equals("UnityEngine.MonoBehaviour, UnityEngine.CoreModule", StringComparison.Ordinal))
                 return true;
 
             unity = true;
