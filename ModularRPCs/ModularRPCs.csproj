@@ -60,6 +60,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
 
+	  <DefineConstants>$(DefineConstants);JETBRAINS_ANNOTATIONS</DefineConstants>
+
     <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
 

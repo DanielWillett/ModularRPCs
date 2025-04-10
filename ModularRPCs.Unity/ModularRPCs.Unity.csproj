@@ -40,6 +40,8 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <NeutralLanguage>en-US</NeutralLanguage>
+
+	  <DefineConstants>$(DefineConstants);JETBRAINS_ANNOTATIONS</DefineConstants>
   </PropertyGroup>
 
   <!-- Package Embedded Files -->

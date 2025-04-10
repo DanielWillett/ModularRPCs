@@ -178,6 +178,10 @@ public class DefaultSerializer : IRpcSerializer
 #if NET5_0_OR_GREATER
         _primitiveParsers.AddManySerializer(new HalfParser.Many(_config));
 #endif
+#if NET7_0_OR_GREATER
+        _primitiveParsers.AddManySerializer(new UInt128Parser.Many(_config));
+        _primitiveParsers.AddManySerializer(new Int128Parser.Many(_config));
+#endif
         _primitiveParsers.AddManySerializer(new GuidParser.Many(_config));
         _primitiveParsers.AddManySerializer(new TimeSpanParser.Many(_config));
         _primitiveParsers.AddManySerializer(new DateTimeParser.Many(_config));
@@ -204,6 +208,10 @@ public class DefaultSerializer : IRpcSerializer
         _primitiveParsers.Add(typeof(string), Encoding.UTF8.Equals(_config.StringEncoding) ? new Utf8Parser(_config) : new StringParser(_config, _config.StringEncoding));
 #if NET5_0_OR_GREATER
         _primitiveParsers.Add(typeof(Half), new HalfParser());
+#endif
+#if NET7_0_OR_GREATER
+        _primitiveParsers.Add(typeof(UInt128), new UInt128Parser());
+        _primitiveParsers.Add(typeof(Int128), new Int128Parser());
 #endif
         _primitiveParsers.Add(typeof(float), new SingleParser());
         _primitiveParsers.Add(typeof(double), new DoubleParser());

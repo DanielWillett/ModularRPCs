@@ -262,6 +262,10 @@ internal sealed class SerializerGenerator
 #if NET5_0_OR_GREATER
                || type == typeof(Half)
 #endif
+#if NET7_0_OR_GREATER
+               || type == typeof(UInt128)
+               || type == typeof(Int128)
+#endif
             ;
     }
     internal static Type[] GetTypeParams(Type[] genTypes, int countBefore, int countAfter, bool nonPrim, bool allTypesByRef = true)
@@ -310,7 +314,11 @@ internal sealed class SerializerGenerator
     internal static bool ShouldBePassedByReference(Type type)
     {
         return type.IsValueType
-               && (!IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal))
+               && (!IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal)
+#if NET7_0_OR_GREATER
+                   || type == typeof(UInt128) || type == typeof(Int128)
+#endif
+               )
                && Nullable.GetUnderlyingType(type) == null;
     }
     internal static int GetPrimitiveTypeSize(Type type)
@@ -359,6 +367,13 @@ internal sealed class SerializerGenerator
         if (type == typeof(Half))
         {
             return 2;
+        }
+#endif
+
+#if NET7_0_OR_GREATER
+        if (type == typeof(UInt128) || type == typeof(Int128))
+        {
+            return 16;
         }
 #endif
 

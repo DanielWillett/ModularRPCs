@@ -418,7 +418,7 @@ public static class RpcSerializerExtensions
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    public static unsafe int WriteSerializableObject<TSerializable>(this IRpcSerializer serializer, in TSerializable serializable, Span<byte> bytes) where TSerializable : IRpcSerializable
+    public static unsafe int WriteSerializableObject<TSerializable>(this IRpcSerializer serializer, in TSerializable? serializable, Span<byte> bytes) where TSerializable : IRpcSerializable
     {
         fixed (byte* ptr = bytes)
         {
@@ -431,7 +431,7 @@ public static class RpcSerializerExtensions
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
-    public static unsafe int WriteSerializableObjects<TSerializable>(this IRpcSerializer serializer, IEnumerable<TSerializable> serializable, Span<byte> bytes) where TSerializable : IRpcSerializable
+    public static unsafe int WriteSerializableObjects<TSerializable>(this IRpcSerializer serializer, IEnumerable<TSerializable?>? serializable, Span<byte> bytes) where TSerializable : IRpcSerializable
     {
         fixed (byte* ptr = bytes)
         {
