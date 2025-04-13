@@ -45,8 +45,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly ConcurrentDictionary<Type, WriteIdentifierHandler?> _writeIdentifierFunctions = new ConcurrentDictionary<Type, WriteIdentifierHandler?>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsStream = new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsBytes = new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
-    private readonly ConcurrentDictionary<Type, ConvReturnValueToVt> _convFromReturnFunctions = new ConcurrentDictionary<Type, ConvReturnValueToVt>();
-    private readonly ConcurrentDictionary<Type, ConvVtToReturnValue> _convToReturnFunctions = new ConcurrentDictionary<Type, ConvVtToReturnValue>();
 
 
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);

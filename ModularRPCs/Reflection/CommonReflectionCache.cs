@@ -18,6 +18,33 @@ using System.Threading;
 namespace DanielWillett.ModularRpcs.Reflection;
 internal static class CommonReflectionCache
 {
+    public static MethodInfo GetNullableHasValueGetter(Type nullableType)
+    {
+        return nullableType.GetProperty(nameof(Nullable<int>.HasValue)
+                   , BindingFlags.Instance | BindingFlags.Public)?.GetMethod
+               ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.HasValue))
+                   .DeclaredIn(nullableType, isStatic: false)
+                   .WithNoSetter()
+                   .WithPropertyType<bool>());
+    }
+
+    public static MethodInfo GetNullableValueGetter(Type nullableType)
+    {
+        return nullableType.GetProperty(nameof(Nullable<int>.Value)
+                   , BindingFlags.Instance | BindingFlags.Public)?.GetMethod
+               ?? throw new UnexpectedMemberAccessException(new PropertyDefinition(nameof(Nullable<int>.Value))
+                   .DeclaredIn(nullableType, isStatic: false)
+                   .WithNoSetter()
+                   .WithPropertyType(Nullable.GetUnderlyingType(nullableType) ?? typeof(object)));
+    }
+
+    public static ConstructorInfo GetNullableConstructor(Type nullableType)
+    {
+        return nullableType.GetConstructors(BindingFlags.Public | BindingFlags.Instance)[0]
+               ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nullableType, false)
+                   .WithParameter(Nullable.GetUnderlyingType(nullableType) ?? typeof(object), "value"));
+    }
+
     /// <summary>
     /// <see cref="ProxyContext.DefaultSerializer"/>.
     /// </summary>
@@ -183,13 +210,13 @@ internal static class CommonReflectionCache
     /// <summary>
     /// <see cref="IRpcRouter.HandleInvokeVoidReturn"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterHandleVoidReturn = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeVoidReturn), BindingFlags.Public | BindingFlags.Instance)
-                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeVoidReturn))
-                                                                        .DeclaredIn<IRpcRouter>(isStatic: false)
-                                                                        .WithParameter<RpcOverhead>("overhead")
-                                                                        .WithParameter<IRpcSerializer>("serializer")
-                                                                        .ReturningVoid()
-                                                                    );
+    internal static readonly MethodInfo RpcRouterHandleInvokeVoidReturn = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeVoidReturn), BindingFlags.Public | BindingFlags.Instance)
+                                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeVoidReturn))
+                                                                              .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                              .WithParameter<RpcOverhead>("overhead")
+                                                                              .WithParameter<IRpcSerializer>("serializer")
+                                                                              .ReturningVoid()
+                                                                          );
 
     /// <summary>
     /// <see cref="IRpcRouter.HandleInvokeException"/>.
@@ -206,28 +233,56 @@ internal static class CommonReflectionCache
     /// <summary>
     /// <see cref="IRpcRouter.HandleInvokeReturnValue{TReturnType}"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterHandleReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeReturnValue), BindingFlags.Public | BindingFlags.Instance)
-                                                                     ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeReturnValue))
-                                                                         .DeclaredIn<IRpcRouter>(isStatic: false)
-                                                                         .WithGenericParameterDefinition("TReturnType")
-                                                                         .WithParameterUsingGeneric(0, "value")
-                                                                         .WithParameter<RpcOverhead>("overhead")
-                                                                         .WithParameter<IRpcSerializer>("serializer")
-                                                                         .ReturningVoid()
-                                                                     );
+    internal static readonly MethodInfo RpcRouterHandleInvokeReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeReturnValue), BindingFlags.Public | BindingFlags.Instance)
+                                                                           ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeReturnValue))
+                                                                               .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                               .WithGenericParameterDefinition("TReturnType")
+                                                                               .WithParameterUsingGeneric(0, "value")
+                                                                               .WithParameter<RpcOverhead>("overhead")
+                                                                               .WithParameter<IRpcSerializer>("serializer")
+                                                                               .ReturningVoid()
+                                                                           );
+
+    /// <summary>
+    /// <see cref="IRpcRouter.HandleInvokeNullableReturnValue{TReturnType}"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcRouterHandleInvokeNullableReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeNullableReturnValue), BindingFlags.Public | BindingFlags.Instance)
+                                                                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeNullableReturnValue))
+                                                                                       .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                                       .WithGenericParameterDefinition("TReturnType")
+                                                                                       .WithParameterUsingGeneric(0, "value?")
+                                                                                       .WithParameter<RpcOverhead>("overhead")
+                                                                                       .WithParameter<IRpcSerializer>("serializer")
+                                                                                       .ReturningVoid()
+                                                                                   );
 
     /// <summary>
     /// <see cref="IRpcRouter.HandleInvokeSerializableReturnValue{TSerializable}"/>.
     /// </summary>
-    internal static readonly MethodInfo RpcRouterHandleSerializableReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeSerializableReturnValue), BindingFlags.Public | BindingFlags.Instance)
-                                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeSerializableReturnValue))
-                                                                                     .DeclaredIn<IRpcRouter>(isStatic: false)
-                                                                                     .WithGenericParameterDefinition("TSerializable")
-                                                                                     .WithParameterUsingGeneric(0, "value")
-                                                                                     .WithParameter<RpcOverhead>("overhead")
-                                                                                     .WithParameter<IRpcSerializer>("serializer")
-                                                                                     .ReturningVoid()
-                                                                                 );
+    internal static readonly MethodInfo RpcRouterHandleInvokeSerializableReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeSerializableReturnValue), BindingFlags.Public | BindingFlags.Instance)
+                                                                                       ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeSerializableReturnValue))
+                                                                                           .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                                           .WithGenericParameterDefinition("TSerializable")
+                                                                                           .WithParameterUsingGeneric(0, "value")
+                                                                                           .WithParameter<object>("collection")
+                                                                                           .WithParameter<RpcOverhead>("overhead")
+                                                                                           .WithParameter<IRpcSerializer>("serializer")
+                                                                                           .ReturningVoid()
+                                                                                       );
+
+    /// <summary>
+    /// <see cref="IRpcRouter.HandleInvokeNullableSerializableReturnValue{TSerializable}"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcRouterHandleInvokeNullableSerializableReturnValue = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.HandleInvokeNullableSerializableReturnValue), BindingFlags.Public | BindingFlags.Instance)
+                                                                                               ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.HandleInvokeNullableSerializableReturnValue))
+                                                                                                   .DeclaredIn<IRpcRouter>(isStatic: false)
+                                                                                                   .WithGenericParameterDefinition("TSerializable")
+                                                                                                   .WithParameterUsingGeneric(0, "value?")
+                                                                                                   .WithParameter<object>("collection")
+                                                                                                   .WithParameter<RpcOverhead>("overhead")
+                                                                                                   .WithParameter<IRpcSerializer>("serializer")
+                                                                                                   .ReturningVoid()
+                                                                                               );
 
     /// <summary>
     /// <see cref="IRpcSerializer.TryGetKnownTypeId"/>.
@@ -611,9 +666,19 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerGetSerializableObjectSize;
 
     /// <summary>
+    /// <see cref="IRpcSerializer.GetNullableSerializableSize{TSerializable}"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerGetNullableSerializableObjectSize;
+
+    /// <summary>
     /// <see cref="IRpcSerializer.GetSerializablesSize{TSerializable}(IEnumerable{TSerializable})"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerGetSerializableObjectsSize;
+
+    /// <summary>
+    /// <see cref="IRpcSerializer.GetNullableSerializablesSize{TSerializable}"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerGetNullableSerializableObjectsSize;
 
     /// <summary>
     /// <see cref="IRpcSerializer.GetSize(TypedReference)"/>.
@@ -627,7 +692,7 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerGetSizeByVal;
 
     /// <summary>
-    /// <see cref="IRpcSerializer.GetSize{T}(in T?)"/>.
+    /// <see cref="IRpcSerializer.GetSize{T}(in Nullable{T})"/>.
     /// </summary>
     /// <remarks>Generic method definition.</remarks>
     internal static readonly MethodInfo RpcSerializerGetSizeNullableByVal;
@@ -643,9 +708,19 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerWriteSerializableObjectBytes;
 
     /// <summary>
+    /// <see cref="IRpcSerializer.WriteNullableSerializableObject{TSerializable}(in Nullable{TSerializable},byte*,uint)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerWriteNullableSerializableObjectBytes;
+
+    /// <summary>
     /// <see cref="IRpcSerializer.WriteSerializableObjects{TSerializable}(IEnumerable{TSerializable},byte*,uint)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerWriteSerializableObjectsBytes;
+
+    /// <summary>
+    /// <see cref="IRpcSerializer.WriteNullableSerializableObjects{TSerializable}(IEnumerable{Nullable{TSerializable}},byte*,uint)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerWriteNullableSerializableObjectsBytes;
 
     /// <summary>
     /// <see cref="IRpcSerializer.WriteObject{T}(T,byte*,uint)"/>.
@@ -654,7 +729,7 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerWriteObjectByValBytes;
 
     /// <summary>
-    /// <see cref="IRpcSerializer.WriteObject{T}(in T?,byte*,uint)"/>.
+    /// <see cref="IRpcSerializer.WriteObject{T}(in Nullable{T},byte*,uint)"/>.
     /// </summary>
     /// <remarks>Generic method definition.</remarks>
     internal static readonly MethodInfo RpcSerializerWriteNullableObjectByValBytes;
@@ -676,12 +751,22 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerWriteSerializableObjectStream;
 
     /// <summary>
+    /// <see cref="IRpcSerializer.WriteSerializableObject{TSerializable}(in Nullable{TSerializable},Stream)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerWriteNullableSerializableObjectStream;
+
+    /// <summary>
     /// <see cref="IRpcSerializer.WriteSerializableObjects{TSerializable}(IEnumerable{TSerializable},Stream)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerWriteSerializableObjectsStream;
 
     /// <summary>
-    /// <see cref="IRpcSerializer.WriteObject{T}(in T?,Stream)"/>.
+    /// <see cref="IRpcSerializer.WriteNullableSerializableObjects{TSerializable}(IEnumerable{Nullable{TSerializable}},Stream)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerWriteNullableSerializableObjectsStream;
+
+    /// <summary>
+    /// <see cref="IRpcSerializer.WriteObject{T}(in Nullable{T},Stream)"/>.
     /// </summary>
     /// <remarks>Generic method definition.</remarks>
     internal static readonly MethodInfo RpcSerializerWriteNullableObjectByValStream;
@@ -703,6 +788,11 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerReadSerializableObjectBytes;
 
     /// <summary>
+    /// <see cref="IRpcSerializer.ReadNullableSerializableObject{TSerializable}(byte*,uint,out int)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerReadNullableSerializableObjectBytes;
+
+    /// <summary>
     /// <see cref="IRpcSerializer.ReadSerializableObjects{TSerializable}(byte*,uint,out int)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerReadSerializableObjectsArrayBytes;
@@ -711,6 +801,11 @@ internal static class CommonReflectionCache
     /// <see cref="IRpcSerializer.ReadSerializableObjects{TSerializable,TCollectionType}(byte*,uint,out int)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerReadSerializableObjectsAnyBytes;
+
+    /// <summary>
+    /// <see cref="IRpcSerializer.ReadNullableSerializableObjects{TSerializable,TCollectionType}(byte*,uint,out int)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerReadNullableSerializableObjectsAnyBytes;
 
     /// <summary>
     /// <see cref="IRpcSerializer.ReadNullable{T}(byte*,uint,out int)"/>.
@@ -741,6 +836,11 @@ internal static class CommonReflectionCache
     internal static readonly MethodInfo RpcSerializerReadSerializableObjectStream;
 
     /// <summary>
+    /// <see cref="IRpcSerializer.ReadNullableSerializableObject{TSerializable}(Stream,out int)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerReadNullableSerializableObjectStream;
+
+    /// <summary>
     /// <see cref="IRpcSerializer.ReadSerializableObjects{TSerializable}(Stream,out int)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerReadSerializableObjectsArrayStream;
@@ -749,6 +849,11 @@ internal static class CommonReflectionCache
     /// <see cref="IRpcSerializer.ReadSerializableObjects{TSerializable,TCollectionType}(Stream,out int)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcSerializerReadSerializableObjectsAnyStream;
+
+    /// <summary>
+    /// <see cref="IRpcSerializer.ReadNullableSerializableObjects{TSerializable,TCollectionType}(Stream,out int)"/>.
+    /// </summary>
+    internal static readonly MethodInfo RpcSerializerReadNullableSerializableObjectsAnyStream;
 
 
     /// <summary>
@@ -805,6 +910,19 @@ internal static class CommonReflectionCache
                                                      .Returning<int>()
                                                  );
 
+        RpcSerializerGetNullableSerializableObjectSize = iRpcSerializerMethods
+                                                             .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.GetNullableSerializableSize)
+                                                                 && x.IsGenericMethod
+                                                                 && x.GetParameters() is { Length: 1 } p
+                                                                 && !typeof(IEnumerable).IsAssignableFrom(p[0].ParameterType)
+                                                             )
+                                                         ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcSerializer.GetNullableSerializableSize))
+                                                             .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                             .WithGenericParameterDefinition("TSerializable")
+                                                             .WithParameterUsingGeneric(0, "value?", byRefMode: ByRefTypeMode.In)
+                                                             .Returning<int>()
+                                                         );
+
         RpcSerializerGetSerializableObjectsSize = iRpcSerializerMethods
                                                       .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.GetSerializablesSize)
                                                                            && x.IsGenericMethod
@@ -817,6 +935,19 @@ internal static class CommonReflectionCache
                                                       .WithParameterUsingGeneric(0, "IEnumerable<value>")
                                                       .Returning<int>()
                                                   );
+
+        RpcSerializerGetNullableSerializableObjectsSize = iRpcSerializerMethods
+                                                              .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.GetNullableSerializablesSize)
+                                                                  && x.IsGenericMethod
+                                                                  && x.GetParameters() is { Length: 1 } p
+                                                                  && typeof(IEnumerable).IsAssignableFrom(p[0].ParameterType)
+                                                              )
+                                                          ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcSerializer.GetNullableSerializablesSize))
+                                                              .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                              .WithGenericParameterDefinition("TSerializable")
+                                                              .WithParameterUsingGeneric(0, "IEnumerable<value?>")
+                                                              .Returning<int>()
+                                                          );
 
         RpcSerializerGetSizeNullableByVal = iRpcSerializerMethods
                                                 .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.GetSize)
@@ -875,6 +1006,20 @@ internal static class CommonReflectionCache
                                                         .Returning<int>()
                                                     );
 
+        RpcSerializerWriteNullableSerializableObjectBytes = iRpcSerializerMethods
+                                                                .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteNullableSerializableObject)
+                                                                    && x.IsGenericMethod
+                                                                    && x.GetParameters() is { Length: 3 }
+                                                                )
+                                                            ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcSerializer.WriteNullableSerializableObject))
+                                                                .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                .WithGenericParameterDefinition("TSerializable")
+                                                                .WithParameterUsingGeneric(0, "value?", byRefMode: ByRefTypeMode.In)
+                                                                .WithParameter(typeof(byte*), "bytes")
+                                                                .WithParameter<uint>("maxSize")
+                                                                .Returning<int>()
+                                                            );
+
         RpcSerializerWriteSerializableObjectsBytes = iRpcSerializerMethods
                                                         .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteSerializableObjects)
                                                                              && x.IsGenericMethod
@@ -888,6 +1033,20 @@ internal static class CommonReflectionCache
                                                         .WithParameter<uint>("maxSize")
                                                         .Returning<int>()
                                                     );
+
+        RpcSerializerWriteNullableSerializableObjectsBytes = iRpcSerializerMethods
+                                                                 .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteNullableSerializableObjects)
+                                                                                      && x.IsGenericMethod
+                                                                                      && x.GetParameters() is { Length: 3 }
+                                                                 )
+                                                             ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcSerializer.WriteNullableSerializableObjects))
+                                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                 .WithGenericParameterDefinition("TSerializable")
+                                                                 .WithParameterUsingGeneric(0, "IEnumerable<value?>")
+                                                                 .WithParameter(typeof(byte*), "bytes")
+                                                                 .WithParameter<uint>("maxSize")
+                                                                 .Returning<int>()
+                                                             );
 
         RpcSerializerWriteNullableObjectByValBytes = iRpcSerializerMethods
                                                          .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteObject)
@@ -941,10 +1100,22 @@ internal static class CommonReflectionCache
                                                          .DeclaredIn<IRpcSerializer>(isStatic: false)
                                                          .WithGenericParameterDefinition("TSerializable")
                                                          .WithParameterUsingGeneric(0, "value", byRefMode: ByRefTypeMode.In)
-                                                         .WithParameter(typeof(byte*), "bytes")
-                                                         .WithParameter<uint>("maxSize")
+                                                         .WithParameter<Stream>("stream")
                                                          .Returning<int>()
                                                      );
+
+        RpcSerializerWriteNullableSerializableObjectStream = iRpcSerializerMethods
+                                                                 .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteNullableSerializableObject)
+                                                                                      && x.IsGenericMethod
+                                                                                      && x.GetParameters() is { Length: 2 }
+                                                                 )
+                                                             ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcSerializer.WriteNullableSerializableObject))
+                                                                 .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                 .WithGenericParameterDefinition("TSerializable")
+                                                                 .WithParameterUsingGeneric(0, "value?", byRefMode: ByRefTypeMode.In)
+                                                                 .WithParameter<Stream>("stream")
+                                                                 .Returning<int>()
+                                                             );
 
         RpcSerializerWriteSerializableObjectsStream = iRpcSerializerMethods
                                                          .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteSerializableObjects)
@@ -955,10 +1126,22 @@ internal static class CommonReflectionCache
                                                          .DeclaredIn<IRpcSerializer>(isStatic: false)
                                                          .WithGenericParameterDefinition("TSerializable")
                                                          .WithParameterUsingGeneric(0, "IEnumerable<value>")
-                                                         .WithParameter(typeof(byte*), "bytes")
-                                                         .WithParameter<uint>("maxSize")
+                                                         .WithParameter<Stream>("stream")
                                                          .Returning<int>()
                                                      );
+        
+        RpcSerializerWriteNullableSerializableObjectsStream = iRpcSerializerMethods
+                                                                  .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteNullableSerializableObjects)
+                                                                                       && x.IsGenericMethod
+                                                                                       && x.GetParameters() is { Length: 2 }
+                                                                  )
+                                                              ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcSerializer.WriteNullableSerializableObjects))
+                                                                  .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                  .WithGenericParameterDefinition("TSerializable")
+                                                                  .WithParameterUsingGeneric(0, "IEnumerable<value?>")
+                                                                  .WithParameter<Stream>("stream")
+                                                                  .Returning<int>()
+                                                              );
         
         RpcSerializerWriteNullableObjectByValStream = iRpcSerializerMethods
                                                           .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.WriteObject)
@@ -1033,10 +1216,25 @@ internal static class CommonReflectionCache
                                                    ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadSerializableObject))
                                                        .DeclaredIn<IRpcSerializer>(isStatic: false)
                                                        .WithGenericParameterDefinition("TSerializable")
-                                                       .WithParameter<Stream>("stream")
+                                                       .WithParameter(typeof(byte*), "bytes")
+                                                       .WithParameter<uint>("maxSize")
                                                        .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
                                                        .ReturningUsingGeneric(0)
                                                    )}");
+
+        RpcSerializerReadNullableSerializableObjectBytes = iRpcSerializerMethods
+                                                               .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadNullableSerializableObject)
+                                                                   && x.IsGenericMethod
+                                                                   && x.GetParameters().Length == 3
+                                                               )
+                                                           ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadSerializableObject))
+                                                               .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                               .WithGenericParameterDefinition("TSerializable?")
+                                                               .WithParameter(typeof(byte*), "bytes")
+                                                               .WithParameter<uint>("maxSize")
+                                                               .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                               .ReturningUsingGeneric(0)
+                                                           )}");
 
         RpcSerializerReadSerializableObjectsArrayBytes = iRpcSerializerMethods
                                                              .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadSerializableObjects)
@@ -1047,7 +1245,8 @@ internal static class CommonReflectionCache
                                                          ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadSerializableObjects))
                                                              .DeclaredIn<IRpcSerializer>(isStatic: false)
                                                              .WithGenericParameterDefinition("TSerializable")
-                                                             .WithParameter<Stream>("stream")
+                                                             .WithParameter(typeof(byte*), "bytes")
+                                                             .WithParameter<uint>("maxSize")
                                                              .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
                                                              .ReturningUsingGeneric(0, elements: e => e.AddArray())
                                                          )}");
@@ -1062,10 +1261,27 @@ internal static class CommonReflectionCache
                                                            .DeclaredIn<IRpcSerializer>(isStatic: false)
                                                            .WithGenericParameterDefinition("TSerializable")
                                                            .WithGenericParameterDefinition("TCollectionType")
-                                                           .WithParameter<Stream>("stream")
+                                                           .WithParameter(typeof(byte*), "bytes")
+                                                           .WithParameter<uint>("maxSize")
                                                            .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
                                                            .ReturningUsingGeneric(1)
                                                        )}");
+
+        RpcSerializerReadNullableSerializableObjectsAnyBytes = iRpcSerializerMethods
+                                                                   .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadNullableSerializableObjects)
+                                                                       && x.IsGenericMethod
+                                                                       && x.GetParameters().Length == 3
+                                                                       && !x.ReturnType.IsArray
+                                                                   )
+                                                               ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadNullableSerializableObjects))
+                                                                   .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                   .WithGenericParameterDefinition("TSerializable")
+                                                                   .WithGenericParameterDefinition("TCollectionType")
+                                                                   .WithParameter(typeof(byte*), "bytes")
+                                                                   .WithParameter<uint>("maxSize")
+                                                                   .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                   .ReturningUsingGeneric(1)
+                                                               )}");
 
         RpcSerializerReadNullableObjectByValBytes = iRpcSerializerMethods
                                                         .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadNullable)
@@ -1124,6 +1340,19 @@ internal static class CommonReflectionCache
                                                         .ReturningUsingGeneric(0)
                                                     )}");
 
+        RpcSerializerReadNullableSerializableObjectStream = iRpcSerializerMethods
+                                                                .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadNullableSerializableObject)
+                                                                    && x.IsGenericMethod
+                                                                    && x.GetParameters().Length == 2
+                                                                )
+                                                            ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadNullableSerializableObject))
+                                                                .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                .WithGenericParameterDefinition("TSerializable")
+                                                                .WithParameter<Stream>("stream")
+                                                                .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                .ReturningUsingGeneric(0)
+                                                            )}");
+
         RpcSerializerReadSerializableObjectsArrayStream = iRpcSerializerMethods
                                                               .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadSerializableObjects)
                                                                   && x.IsGenericMethod
@@ -1152,6 +1381,21 @@ internal static class CommonReflectionCache
                                                             .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
                                                             .ReturningUsingGeneric(1)
                                                         )}");
+
+        RpcSerializerReadNullableSerializableObjectsAnyStream = iRpcSerializerMethods
+                                                                    .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadNullableSerializableObjects)
+                                                                        && x.IsGenericMethod
+                                                                        && x.GetParameters().Length == 2
+                                                                        && !x.ReturnType.IsArray
+                                                                    )
+                                                                ?? throw new MemberAccessException($"Failed to find {Accessor.ExceptionFormatter.Format(new MethodDefinition(nameof(IRpcSerializer.ReadNullableSerializableObjects))
+                                                                    .DeclaredIn<IRpcSerializer>(isStatic: false)
+                                                                    .WithGenericParameterDefinition("TSerializable")
+                                                                    .WithGenericParameterDefinition("TCollectionType")
+                                                                    .WithParameter<Stream>("stream")
+                                                                    .WithParameter<int>("bytesRead", ByRefTypeMode.Out)
+                                                                    .ReturningUsingGeneric(1)
+                                                                )}");
 
         RpcSerializerReadNullableObjectByValStream = iRpcSerializerMethods
                                                          .FirstOrDefault(x => x.Name == nameof(IRpcSerializer.ReadNullable)

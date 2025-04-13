@@ -402,6 +402,38 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
     }
 
+
+    /// <inheritdoc />
+    public void HandleInvokeNullableReturnValue<TReturnType>(TReturnType? value, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : struct
+    {
+        if ((overhead.Flags & RpcFlags.FireAndForget) != 0 || overhead.SendingConnection == null)
+            return;
+
+        ref InvocingRpcState state = ref overhead.State;
+
+        if (state.HasCancelToken && _pendingCancellableMessages.TryRemove(state.Key, out CancellationTokenSource? cancellable))
+        {
+            cancellable.Dispose();
+            state.CancelToken.Dispose();
+            state.HasCancelToken = false;
+        }
+
+        InvokeHandleNullableReturnValueAsync(value, overhead, serializer);
+    }
+
+    private async void InvokeHandleNullableReturnValueAsync<TReturnType>(TReturnType? value, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : struct
+    {
+        try
+        {
+            await ReplyRpcNullableValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, value, serializer);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(overhead, ex);
+            await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
+        }
+    }
+
     /// <inheritdoc />
     public void HandleInvokeSerializableReturnValue<TSerializable>(TSerializable value, object? collection, RpcOverhead overhead, IRpcSerializer serializer) where TSerializable : IRpcSerializable
     {
@@ -1397,6 +1429,101 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
     }
 
+    private static unsafe ValueTask ReplyRpcNullableValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer) where TValue : struct
+    {
+        uint pfxSize = GetPrefixSize(serializer);
+        uint size = pfxSize;
+        uint knownTypeId = 0;
+        bool hasKnownTypeId = false;
+        string? typeName = null;
+        TypeCode tc = TypeUtility.GetTypeCode<TValue>();
+
+        if (!value.HasValue)
+        {
+            size += 3u;
+        }
+        else if (tc == TypeCode.Object || !serializer.CanFastReadPrimitives)
+        {
+            if (tc == TypeCode.Object)
+            {
+                Type type = typeof(Nullable<>).MakeGenericType(typeof(TValue));
+                size += 1u + (uint)serializer.GetSize(in value);
+
+                // ReSharper disable once AssignmentInConditionalExpression
+                if (hasKnownTypeId = serializer.TryGetKnownTypeId(type, out knownTypeId))
+                    size += 7u;
+                else
+                    size += 3u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
+            }
+            else
+            {
+                size += 3u + (uint)serializer.GetSize(value!);
+            }
+        }
+        else
+        {
+            size += 3u + (uint)TypeUtility.GetTypeCodeSize(tc);
+        }
+
+        bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+
+        uint index;
+        fixed (byte* ptr = alloc)
+        {
+            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+
+            ptr[index] = (byte)TypeUtility.TypeCodeNullable;
+            ++index;
+            ptr[index] = (byte)tc;
+            ++index;
+            ptr[index] = value.HasValue ? (byte)1 : (byte)0;
+            ++index;
+
+            if (value.HasValue)
+            {
+                if (tc == TypeCode.Object)
+                {
+                    RpcEndpoint.IdentifierFlags f = hasKnownTypeId
+                        ? RpcEndpoint.IdentifierFlags.IsKnownTypeOnly
+                        : RpcEndpoint.IdentifierFlags.IsTypeNameOnly;
+
+                    ptr[index] = (byte)f;
+                    ++index;
+
+                    if (hasKnownTypeId)
+                    {
+                        if (BitConverter.IsLittleEndian)
+                        {
+                            Unsafe.WriteUnaligned(ptr + index, knownTypeId);
+                        }
+                        else
+                        {
+                            ptr[index + 3] = unchecked((byte)knownTypeId);
+                            ptr[index + 2] = unchecked((byte)(knownTypeId >>> 8));
+                            ptr[index + 1] = unchecked((byte)(knownTypeId >>> 16));
+                            ptr[index] = unchecked((byte)(knownTypeId >>> 24));
+                        }
+
+                        index += 4;
+                    }
+                    else
+                    {
+                        index += (uint)serializer.WriteObject(typeName!, ptr + index, size - index);
+                    }
+
+                    index += (uint)serializer.WriteObject(value, ptr + index, size - index);
+                }
+                else
+                {
+                    TypeUtility.WriteTypeCode(tc, serializer, value, ptr, ref index, size);
+                }
+            }
+        }
+
+        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+    }
+
     private static unsafe ValueTask ReplyRpcSerializableValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer) where TValue : IRpcSerializable
     {
         uint pfxSize = GetPrefixSize(serializer);
@@ -1529,6 +1656,22 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         TypeCode tc = (TypeCode)data[index];
         ++index;
 
+        if (tc == TypeUtility.TypeCodeNullable)
+        {
+            if (maxSize - index < 2)
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+            tc = (TypeCode)data[index];
+            ++index;
+
+            bool hasValue = data[index] > 0;
+            ++index;
+            if (!hasValue)
+            {
+                return null;
+            }
+        }
+
         object? rtnValue;
         int bytesRead;
         if (tc == TypeCode.Object)
@@ -1620,6 +1763,25 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
 
         TypeCode tc = (TypeCode)b;
+
+        if (tc == TypeUtility.TypeCodeNullable)
+        {
+            b = stream.ReadByte();
+            if (b == -1)
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+            tc = (TypeCode)b;
+
+            b = stream.ReadByte();
+            if (b == -1)
+                throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionStreamRunOut) { ErrorCode = 2 };
+
+            bool hasValue = b > 0;
+            if (!hasValue)
+            {
+                return null;
+            }
+        }
 
         object? rtnValue;
         Type taskType;

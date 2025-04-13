@@ -15,6 +15,16 @@ public interface IRpcConnectionLifetime : IDisposable
     bool IsSingleConnection { get; }
 
     /// <summary>
+    /// Invoked after a connection is added.
+    /// </summary>
+    event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionAdded;
+
+    /// <summary>
+    /// Invoked after a connection is removed.
+    /// </summary>
+    event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionRemoved;
+
+    /// <summary>
     /// Execute a callback for each remote connection, returning <see langword="false"/> to break.
     /// </summary>
     /// <param name="workOnCopy">Works on a copy of the list where applicable so connections can be terminated from within the callback.</param>

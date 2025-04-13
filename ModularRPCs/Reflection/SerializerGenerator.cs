@@ -220,22 +220,6 @@ internal sealed class SerializerGenerator
         return type.IsDefinedSafe<RpcSerializableAttribute>() && typeof(IRpcSerializable).IsAssignableFrom(type);
     }
 
-    internal static bool IsRpcSerializableCollectionType(Type type,
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
-        [MaybeNullWhen(false)]
-#endif
-        out Type serializableType)
-    {
-        if (!typeof(IEnumerable).IsAssignableFrom(type))
-        {
-            serializableType = null!;
-            return false;
-        }
-
-        serializableType = TypeUtility.GetSerializableEnumerableType(type);
-        return serializableType != null && serializableType.IsDefinedSafe<RpcSerializableAttribute>();
-    }
-
     internal static bool IsSerializableArray(Type type, out Type? elementType)
     {
         if (!type.IsArray)
@@ -445,7 +429,8 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
-            Type? underlyingNullableType = Nullable.GetUnderlyingType(genType);
+            ushort argIndex = checked ( (ushort)(i + 3) );
+            TypeSerializationInfo info = new TypeSerializationInfo(genType);
             il.CommentIfDebug($"== Write {Accessor.Formatter.Format(genType)} ==");
             if (lblNotPrimitive.HasValue)
             {
@@ -455,7 +440,7 @@ internal sealed class SerializerGenerator
             }
 
             Label? lblPrimitive;
-            if (underlyingNullableType == null && CanQuickSerializeType(genType))
+            if (info.Type == TypeSerializationInfoType.PrimitiveLike)
             {
                 il.CommentIfDebug("if (lclPreCalc) goto lblPrimitive;");
                 lblPrimitive = il.DefineLabel();
@@ -464,40 +449,94 @@ internal sealed class SerializerGenerator
             }
             else lblPrimitive = null;
 
-            GetTypeInfo(genType, underlyingNullableType, out bool isSerializable, out bool isSerializableArray, out bool isSerializableAny, out bool isByRef, out Type? elementType);
-            il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(underlyingNullableType ?? genType) + ">" : string.Empty)}(" + (underlyingNullableType != null ? "in " : string.Empty) +
-                              $"arg{i.ToString(CultureInfo.InvariantCulture)}, bytes + lclSize, maxSize - lclSize);");
-
             il.Emit(OpCodes.Ldarg_0);
 
             // the arg is by ref
-            il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 3) ));
+            il.Emit(OpCodes.Ldarg, argIndex);
 
             MethodInfo writeMtd;
-            if (isSerializable)
+            switch (info.Type)
             {
-                writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectBytes.MakeGenericMethod(genType);
-            }
-            else if (isSerializableArray || isSerializableAny)
-            {
-                LoadFromRef(genType, il);
-                if (genType.IsValueType)
-                    il.Emit(OpCodes.Box, genType);
-                writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsBytes.MakeGenericMethod(elementType!);
-            }
-            else if (isByRef)
-            {
-                il.Emit(OpCodes.Mkrefany, genType);
-                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByTRefBytes;
-            }
-            else if (underlyingNullableType == null)
-            {
-                LoadFromRef(genType, il);
-                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValBytes.MakeGenericMethod(genType);
-            }
-            else
-            {
-                writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValBytes.MakeGenericMethod(underlyingNullableType);
+                case TypeSerializationInfoType.PrimitiveLike:
+                case TypeSerializationInfoType.Value:
+                    il.CommentIfDebug($"size += serializer.WriteObject<{genType}>(arg{i}, bytes + index, maxSize - index);");
+                    LoadFromRef(genType, il);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValBytes.MakeGenericMethod(genType);
+                    break;
+
+                case TypeSerializationInfoType.NullableValue:
+                    il.CommentIfDebug($"size += serializer.WriteNullableObject<{genType}>(in arg{i}, bytes + index, maxSize - index);");
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValBytes.MakeGenericMethod(genType);
+                    break;
+
+                case TypeSerializationInfoType.SerializableValue:
+                    il.CommentIfDebug($"size += serializer.WriteSerializableObject<{info.SerializableType}>(in arg{i}, bytes + index, maxSize - index);");
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectBytes.MakeGenericMethod(info.SerializableType);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableValue:
+                    il.CommentIfDebug($"size += serializer.WriteNullableSerializableObject<{info.UnderlyingType}>(in arg{i}, bytes + index, maxSize - index);");
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableSerializableObjectBytes.MakeGenericMethod(info.UnderlyingType);
+                    break;
+
+                case TypeSerializationInfoType.SerializableCollection:
+                    il.CommentIfDebug($"size += serializer.WriteSerializableObjects<{info.SerializableType}>(in arg{i}, bytes + index, maxSize - index);");
+                    LoadFromRef(genType, il);
+                    if (genType.IsValueType)
+                        il.Emit(OpCodes.Box, genType);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsBytes.MakeGenericMethod(info.SerializableType);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableCollection:
+                    il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(in arg{i}, bytes + index, maxSize - index);");
+                    LoadFromRef(genType, il);
+                    if (genType.IsValueType)
+                        il.Emit(OpCodes.Box, genType);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableSerializableObjectsBytes.MakeGenericMethod(info.SerializableType);
+                    break;
+
+                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+
+                    MethodInfo callHasValue = CommonReflectionCache.GetNullableHasValueGetter(genType);
+
+                    MethodInfo callGetValue = CommonReflectionCache.GetNullableValueGetter(genType);
+
+                    if (info.Type == TypeSerializationInfoType.NullableSerializableCollection)
+                        il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(arg{i} ?? null, bytes + index, maxSize - index);");
+                    else
+                        il.CommentIfDebug($"size += serializer.WriteSerializableObjects<{info.SerializableType}>(arg{i} ?? null, bytes + index, maxSize - index);");
+
+                    il.Emit(OpCodes.Dup);
+
+                    il.Emit(OpCodes.Call, callHasValue);
+                    Label hasValue = il.DefineLabel();
+                    il.Emit(OpCodes.Brtrue_S, hasValue);
+
+                    // if (!arg{i}.HasValue) {
+                    il.Emit(OpCodes.Pop);
+                    il.Emit(OpCodes.Ldnull);
+
+                    // } else {
+                    il.MarkLabel(hasValue);
+                    il.Emit(OpCodes.Call, callGetValue);
+                    il.Emit(OpCodes.Box, info.UnderlyingType);
+                    // }
+                    if (info.Type == TypeSerializationInfoType.NullableCollectionSerializableCollection)
+                    {
+                        writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsBytes
+                            .MakeGenericMethod(info.UnderlyingType);
+                    }
+                    else
+                    {
+                        writeMtd = CommonReflectionCache.RpcSerializerWriteNullableSerializableObjectsBytes
+                            .MakeGenericMethod(info.SerializableType);
+                    }
+
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Invalid type: {info.Type}."); // shouldn't be reached
             }
 
             il.Emit(OpCodes.Ldarg_1);
@@ -577,43 +616,99 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < genTypes.Length; ++i)
         {
             Type genType = genTypes[i];
-            Type? underlyingNullableType = Nullable.GetUnderlyingType(genType);
             il.CommentIfDebug($"== Write {Accessor.Formatter.Format(genType)} ==");
 
-            GetTypeInfo(genType, underlyingNullableType, out bool isSerializable, out bool isSerializableArray, out bool isSerializableAny, out bool isByRef, out Type? elementType);
-            il.CommentIfDebug($"size += serializer.WriteObject{(!isByRef ? "<" + Accessor.Formatter.Format(underlyingNullableType ?? genType) + ">" : string.Empty)}(" + (underlyingNullableType != null ? "in " : string.Empty) +
-                              $"arg{i.ToString(CultureInfo.InvariantCulture)}, stream);");
+            TypeSerializationInfo info = new TypeSerializationInfo(genType);
 
             il.Emit(OpCodes.Ldarg_0);
             il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 2) ));
         
             MethodInfo writeMtd;
-            if (isSerializable)
+            switch (info.Type)
             {
-                writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectStream.MakeGenericMethod(genType);
+                case TypeSerializationInfoType.PrimitiveLike:
+                case TypeSerializationInfoType.Value:
+                    il.CommentIfDebug($"size += serializer.WriteObject<{genType}>(arg{i}, stream);");
+                    LoadFromRef(genType, il);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValStream.MakeGenericMethod(genType);
+                    break;
+
+                case TypeSerializationInfoType.NullableValue:
+                    il.CommentIfDebug($"size += serializer.WriteNullableObject<{genType}>(in arg{i}, stream);");
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValStream.MakeGenericMethod(genType);
+                    break;
+
+                case TypeSerializationInfoType.SerializableValue:
+                    il.CommentIfDebug($"size += serializer.WriteSerializableObject<{info.SerializableType}>(in arg{i}, stream);");
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectStream.MakeGenericMethod(info.SerializableType);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableValue:
+                    il.CommentIfDebug($"size += serializer.WriteNullableSerializableObject<{info.UnderlyingType}>(in arg{i}, stream);");
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableSerializableObjectStream.MakeGenericMethod(info.UnderlyingType);
+                    break;
+
+                case TypeSerializationInfoType.SerializableCollection:
+                    il.CommentIfDebug($"size += serializer.WriteSerializableObjects<{info.SerializableType}>(in arg{i}, stream);");
+                    LoadFromRef(genType, il);
+                    if (genType.IsValueType)
+                        il.Emit(OpCodes.Box, genType);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsStream.MakeGenericMethod(info.SerializableType);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableCollection:
+                    il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(in arg{i}, stream);");
+                    LoadFromRef(genType, il);
+                    if (genType.IsValueType)
+                        il.Emit(OpCodes.Box, genType);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableSerializableObjectsStream.MakeGenericMethod(info.SerializableType);
+                    break;
+
+                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+
+                    MethodInfo callHasValue = CommonReflectionCache.GetNullableHasValueGetter(genType);
+
+                    MethodInfo callGetValue = CommonReflectionCache.GetNullableValueGetter(genType);
+
+                    if (info.Type == TypeSerializationInfoType.NullableSerializableCollection)
+                        il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(arg{i} ?? null, stream);");
+                    else
+                        il.CommentIfDebug($"size += serializer.WriteSerializableObjects<{info.SerializableType}>(arg{i} ?? null, stream);");
+
+                    il.Emit(OpCodes.Dup);
+
+                    il.Emit(OpCodes.Call, callHasValue);
+                    Label hasValue = il.DefineLabel();
+                    il.Emit(OpCodes.Brtrue_S, hasValue);
+
+                    // if (!arg{i}.HasValue) {
+                    il.Emit(OpCodes.Pop);
+                    il.Emit(OpCodes.Ldnull);
+
+                    // } else {
+                    il.MarkLabel(hasValue);
+                    il.Emit(OpCodes.Call, callGetValue);
+                    il.Emit(OpCodes.Box, info.UnderlyingType);
+                    // }
+                    if (info.Type == TypeSerializationInfoType.NullableCollectionSerializableCollection)
+                    {
+                        writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsStream
+                            .MakeGenericMethod(info.UnderlyingType);
+                    }
+                    else
+                    {
+                        writeMtd = CommonReflectionCache.RpcSerializerWriteNullableSerializableObjectsStream
+                            .MakeGenericMethod(info.SerializableType);
+                    }
+
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Invalid type: {info.Type}."); // shouldn't be reached
             }
-            else if (isSerializableArray || isSerializableAny)
-            {
-                LoadFromRef(genType, il);
-                if (genType.IsValueType)
-                    il.Emit(OpCodes.Box, genType);
-                writeMtd = CommonReflectionCache.RpcSerializerWriteSerializableObjectsStream.MakeGenericMethod(elementType!);
-            }
-            else if (isByRef)
-            {
-                il.Emit(OpCodes.Mkrefany, genType);
-                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByTRefStream;
-            }
-            else if (underlyingNullableType == null)
-            {
-                LoadFromRef(genType, il);
-                writeMtd = CommonReflectionCache.RpcSerializerWriteObjectByValStream.MakeGenericMethod(genType);
-            }
-            else
-            {
-                writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValStream.MakeGenericMethod(underlyingNullableType);
-            }
-        
+
+
             il.Emit(OpCodes.Ldarg_1);
         
             il.Emit(OpCodes.Callvirt, writeMtd);
@@ -627,20 +722,6 @@ internal sealed class SerializerGenerator
         il.Emit(OpCodes.Ret);
 
         streamField.SetValue(null, writeStream.CreateDelegate(streamField.FieldType));
-    }
-
-    private static void GetTypeInfo(Type genType, Type? underlyingNullableType,
-        out bool isSerializable,
-        out bool isSerializableArray,
-        out bool isSerializableAny,
-        out bool isByRef,
-        out Type? elementType)
-    {
-        elementType = null;
-        isSerializable = IsRpcSerializableType(genType);
-        isSerializableArray = !isSerializable && IsSerializableArray(genType, out elementType);
-        isSerializableAny = !isSerializable && !isSerializableArray && IsRpcSerializableCollectionType(genType, out elementType);
-        isByRef = !isSerializable && !isSerializableAny && !isSerializableArray && underlyingNullableType == null && ShouldBePassedByReference(genType);
     }
 
     internal static void LoadFromRef(Type type, IOpCodeEmitter il)
@@ -723,6 +804,9 @@ internal sealed class SerializerGenerator
 
         LocalBuilder lclPreCalc = il.DeclareLocal(typeof(bool));
         LocalBuilder lclSize = il.DeclareLocal(typeof(int));
+#if DEBUG
+        LocalBuilder lclSizeSingle = il.DeclareLocal(typeof(int));
+#endif
 
         il.CommentIfDebug("bool lclPreCalc = serializer.PreCalculatePrimitiveSizes;");
         il.Emit(OpCodes.Ldarg_0);
@@ -744,15 +828,16 @@ internal sealed class SerializerGenerator
         Label? lblPrimitive = null;
         for (int i = 0; i < genTypes.Length; ++i)
         {
+            ushort argIndex = checked ( (ushort)(i + 1) );
             Type genType = genTypes[i];
-            Type? underlyingNullableType = Nullable.GetUnderlyingType(genType);
             il.CommentIfDebug($"== Get size of {Accessor.Formatter.Format(genType)} ==");
             if (lblPrimitive.HasValue)
             {
                 il.CommentIfDebug("lblPrimitive:");
                 il.MarkLabel(lblPrimitive.Value);
             }
-            if (IsPrimitiveLikeType(genType))
+            TypeSerializationInfo info = new TypeSerializationInfo(genType);
+            if (info.Type == TypeSerializationInfoType.PrimitiveLike)
             {
                 il.CommentIfDebug("if (lclPreCalc) goto lblPrimitive;");
                 lblPrimitive = il.DefineLabel();
@@ -761,42 +846,123 @@ internal sealed class SerializerGenerator
             }
             else lblPrimitive = null;
 
-            GetTypeInfo(genType, underlyingNullableType, out bool isSerializable, out bool isSerializableArray, out bool isSerializableAny, out bool isByRef, out Type? elementType);
-            il.CommentIfDebug($"size += serializer.GetSize{(!isByRef ? "<" + Accessor.Formatter.Format(underlyingNullableType ?? genType) + ">" : string.Empty)}(" + (underlyingNullableType != null ? "in " : string.Empty) +
-                              $"arg{i.ToString(CultureInfo.InvariantCulture)});");
-
             il.Emit(OpCodes.Ldloc, lclSize);
             il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldarg, checked ( (ushort)(i + 1) ));
+            il.Emit(OpCodes.Ldarg, argIndex);
 
-            if (isSerializable)
+            switch (info.Type)
             {
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSerializableObjectSize.MakeGenericMethod(genType));
+                case TypeSerializationInfoType.Value:
+                case TypeSerializationInfoType.PrimitiveLike:
+                    il.CommentIfDebug($"size += serializer.GetSize<{genType}>(arg{i});");
+
+                    LoadFromRef(genType, il);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByVal
+                        .MakeGenericMethod(genType));
+                    break;
+
+                case TypeSerializationInfoType.NullableValue:
+                    il.CommentIfDebug($"size += serializer.GetSize<{info.UnderlyingType}>(in arg{i});");
+
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeNullableByVal
+                        .MakeGenericMethod(info.UnderlyingType));
+                    break;
+
+                case TypeSerializationInfoType.SerializableValue:
+                    il.CommentIfDebug($"size += serializer.GetSerializableSize<{info.SerializableType}>(in arg{i});");
+
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSerializableObjectSize
+                        .MakeGenericMethod(info.SerializableType));
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableValue:
+                    il.CommentIfDebug($"size += serializer.GetNullableSerializableSize<{info.SerializableType}>(in arg{i});");
+
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetNullableSerializableObjectSize
+                        .MakeGenericMethod(info.SerializableType));
+                    break;
+
+                case TypeSerializationInfoType.SerializableCollection:
+                case TypeSerializationInfoType.NullableSerializableCollection:
+                    if (info.Type == TypeSerializationInfoType.NullableSerializableCollection)
+                        il.CommentIfDebug($"size += serializer.GetNullableSerializablesSize<{info.UnderlyingType}>(arg{i});");
+                    else
+                        il.CommentIfDebug($"size += serializer.GetSerializablesSize<{info.SerializableType}>(arg{i});");
+
+                    LoadFromRef(genType, il);
+                    if (genType.IsValueType)
+                        il.Emit(OpCodes.Box, genType);
+                    if (info.Type == TypeSerializationInfoType.NullableSerializableCollection)
+                    {
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetNullableSerializableObjectsSize
+                            .MakeGenericMethod(info.UnderlyingType));
+                    }
+                    else
+                    {
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSerializableObjectsSize
+                            .MakeGenericMethod(info.SerializableType));
+                    }
+                    break;
+
+                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+
+                    MethodInfo callHasValue = CommonReflectionCache.GetNullableHasValueGetter(genType);
+
+                    MethodInfo callGetValue = CommonReflectionCache.GetNullableValueGetter(genType);
+
+                    if (info.Type == TypeSerializationInfoType.NullableSerializableCollection)
+                        il.CommentIfDebug($"size += serializer.GetNullableSerializablesSize<{info.UnderlyingType}>(arg{i} ?? null);");
+                    else
+                        il.CommentIfDebug($"size += serializer.GetSerializablesSize<{info.SerializableType}>(arg{i} ?? null);");
+
+                    il.Emit(OpCodes.Dup);
+
+                    il.Emit(OpCodes.Call, callHasValue);
+                    Label hasValue = il.DefineLabel();
+                    il.Emit(OpCodes.Brtrue_S, hasValue);
+
+                    // if (!arg{i}.HasValue) {
+                    il.Emit(OpCodes.Pop);
+                    il.Emit(OpCodes.Ldnull);
+
+                    // } else {
+                    il.MarkLabel(hasValue);
+                    il.Emit(OpCodes.Call, callGetValue);
+                    il.Emit(OpCodes.Box, info.UnderlyingType);
+                    // }
+                    if (info.Type == TypeSerializationInfoType.NullableCollectionSerializableCollection)
+                    {
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSerializableObjectsSize
+                            .MakeGenericMethod(info.UnderlyingType));
+                    }
+                    else
+                    {
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetNullableSerializableObjectsSize
+                            .MakeGenericMethod(info.SerializableType));
+                    }
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Invalid type: {info.Type}."); // shouldn't be reached
             }
-            else if (isSerializableAny || isSerializableArray)
-            {
-                LoadFromRef(genType, il);
-                if (genType.IsValueType)
-                    il.Emit(OpCodes.Box, genType);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSerializableObjectsSize.MakeGenericMethod(elementType!));
-            }
-            else if (isByRef)
-            {
-                il.Emit(OpCodes.Mkrefany, genType);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByTRef);
-            }
-            else if (underlyingNullableType == null)
-            {
-                LoadFromRef(genType, il);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeByVal.MakeGenericMethod(genType));
-            }
-            else
-            {
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerGetSizeNullableByVal.MakeGenericMethod(underlyingNullableType));
-            }
+
+#if DEBUG
+            il.Emit(OpCodes.Dup);
+            il.Emit(OpCodes.Stloc, lclSizeSingle);
+#endif
 
             il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Stloc, lclSize);
+
+#if DEBUG
+            il.Emit(OpCodes.Ldstr, genType.Name);
+            il.Emit(OpCodes.Call, new Action<string>(Console.WriteLine).Method);
+            il.Emit(OpCodes.Ldloc, lclSize);
+            il.Emit(OpCodes.Call, new Action<int>(Console.WriteLine).Method);
+            il.Emit(OpCodes.Ldloc, lclSizeSingle);
+            il.Emit(OpCodes.Call, new Action<int>(Console.WriteLine).Method);
+#endif
         }
 
         if (lblPrimitive.HasValue)
@@ -1457,7 +1623,7 @@ internal sealed class SerializerGenerator
 
                     IOpCodeEmitter contIl = continuation.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
 
-                    LocalBuilder lclResult2 = getResultMethod.ReturnType == typeof(void) ? null : contIl.DeclareLocal(getResultMethod.ReturnType);
+                    LocalBuilder? lclResult2 = getResultMethod.ReturnType == typeof(void) ? null : contIl.DeclareLocal(getResultMethod.ReturnType);
 
                     Label lblContRtn = contIl.DefineLabel();
                     Label lblExitTry = contIl.DefineLabel();
@@ -1610,58 +1776,108 @@ internal sealed class SerializerGenerator
 
     private static MethodInfo ProcessReturnValue(IOpCodeEmitter il, Type awaitReturnType)
     {
-        if (awaitReturnType == typeof(void))
+        TypeSerializationInfo info = new TypeSerializationInfo(awaitReturnType);
+        switch (info.Type)
         {
-            il.CommentIfDebug("  router.HandleVoidReturn(overhead, serializer)");
-            return CommonReflectionCache.RpcRouterHandleVoidReturn;
-        }
-        if (IsRpcSerializableType(awaitReturnType))
-        {
-            il.CommentIfDebug($"  router.HandleSerializableReturnValue<{Accessor.Formatter.Format(awaitReturnType)}>(rtnValue, null, overhead, serializer)");
-            il.Emit(OpCodes.Ldnull);
-            return CommonReflectionCache.RpcRouterHandleSerializableReturnValue.MakeGenericMethod(awaitReturnType);
-        }
-        if (IsRpcSerializableCollectionType(awaitReturnType, out Type? elementType))
-        {
-            il.CommentIfDebug("  rtnValue ??= DbNull.Value");
-            il.CommentIfDebug($"  router.HandleSerializableReturnValue<{Accessor.Formatter.Format(elementType)}>(default, rtnValue, overhead, serializer)");
-            LocalBuilder lclRtnValue = il.DeclareLocal(typeof(object));
-            if (awaitReturnType.IsValueType)
-            {
-                il.Emit(OpCodes.Box, awaitReturnType);
-            }
-            else
-            {
+            case TypeSerializationInfoType.Void:
+                il.CommentIfDebug("  router.HandleInvokeVoidReturn(overhead, serializer)");
+                return CommonReflectionCache.RpcRouterHandleInvokeVoidReturn;
+
+            case TypeSerializationInfoType.PrimitiveLike:
+            case TypeSerializationInfoType.Value:
+                il.CommentIfDebug($"  router.HandleInvokeReturnValue<{awaitReturnType}>(rtnValue, overhead, serializer)");
+                return CommonReflectionCache.RpcRouterHandleInvokeReturnValue.MakeGenericMethod(awaitReturnType);
+
+            case TypeSerializationInfoType.NullableValue:
+                il.CommentIfDebug($"  router.HandleInvokeNullableReturnValue<{awaitReturnType}>(rtnValue, overhead, serializer)");
+                return CommonReflectionCache.RpcRouterHandleInvokeNullableReturnValue.MakeGenericMethod(awaitReturnType);
+
+            case TypeSerializationInfoType.SerializableValue:
+                il.CommentIfDebug($"  router.HandleInvokeSerializableReturnValue<{info.SerializableType}>(rtnValue, null, overhead, serializer)");
+                il.Emit(OpCodes.Ldnull);
+                return CommonReflectionCache.RpcRouterHandleInvokeSerializableReturnValue.MakeGenericMethod(info.SerializableType);
+
+            case TypeSerializationInfoType.NullableSerializableValue:
+                il.CommentIfDebug($"  router.HandleSerializableReturnValue<{info.UnderlyingType}>(rtnValue, null, overhead, serializer)");
+                il.Emit(OpCodes.Ldnull);
+                return CommonReflectionCache.RpcRouterHandleInvokeNullableSerializableReturnValue.MakeGenericMethod(info.UnderlyingType);
+
+            case TypeSerializationInfoType.SerializableCollection:
+            case TypeSerializationInfoType.NullableSerializableCollection:
+                bool nullable = info.Type is TypeSerializationInfoType.NullableSerializableCollection
+                    or TypeSerializationInfoType.NullableCollectionNullableSerializableCollection;
+                if (!nullable)
+                    il.CommentIfDebug($"  router.HandleSerializableReturnValue<{info.SerializableType}>(default, rtnValue ?? DBNull.Value, overhead, serializer)");
+                else
+                    il.CommentIfDebug($"  router.HandleNullableSerializableReturnValue<{info.UnderlyingType}>(null, rtnValue ?? DBNull.Value, overhead, serializer)");
+                LocalBuilder lclRtnValue = il.DeclareLocal(typeof(object));
+                if (awaitReturnType.IsValueType)
+                {
+                    il.Emit(OpCodes.Box, awaitReturnType);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Dup);
+
+                    Label lblNotNull = il.DefineLabel();
+                    il.Emit(OpCodes.Brtrue, lblNotNull);
+                    il.Emit(OpCodes.Pop);
+
+                    il.Emit(OpCodes.Ldsfld, CommonReflectionCache.GetDbNullValue);
+
+                    il.MarkLabel(lblNotNull);
+                }
+                il.Emit(OpCodes.Stloc, lclRtnValue);
+                if (nullable || info.SerializableType.IsValueType)
+                {
+                    LocalBuilder lclDefault = il.DeclareLocal(info.SerializableType);
+                    il.Emit(OpCodes.Ldloca, lclDefault);
+                    il.Emit(OpCodes.Initobj, info.SerializableType);
+                    il.Emit(OpCodes.Ldloc, lclDefault);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldnull);
+                }
+                il.Emit(OpCodes.Ldloc, lclRtnValue);
+                if (lclRtnValue.LocalType!.IsValueType)
+                    il.Emit(OpCodes.Box, lclRtnValue.LocalType);
+                return !nullable
+                    ? CommonReflectionCache.RpcRouterHandleInvokeSerializableReturnValue.MakeGenericMethod(info.SerializableType)
+                    : CommonReflectionCache.RpcRouterHandleInvokeNullableSerializableReturnValue.MakeGenericMethod(info.UnderlyingType);
+
+            case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+            case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+
+                MethodInfo callHasValue = CommonReflectionCache.GetNullableHasValueGetter(awaitReturnType);
+
+                MethodInfo callGetValue = CommonReflectionCache.GetNullableValueGetter(awaitReturnType);
+                lclRtnValue = il.DeclareLocal(awaitReturnType);
+                il.Emit(OpCodes.Stloc, lclRtnValue);
+                il.Emit(OpCodes.Ldloca, lclRtnValue);
+
+                il.CommentIfDebug("lclRtnValue = arg.HasValue ? arg.Value : null");
+
                 il.Emit(OpCodes.Dup);
 
-                Label lblNotNull = il.DefineLabel();
-                il.Emit(OpCodes.Brtrue, lblNotNull);
+                il.Emit(OpCodes.Call, callHasValue);
+                Label hasValue = il.DefineLabel();
+                il.Emit(OpCodes.Brtrue_S, hasValue);
+
+                // if (!arg{i}.HasValue) {
                 il.Emit(OpCodes.Pop);
-
-                il.Emit(OpCodes.Ldsfld, CommonReflectionCache.GetDbNullValue);
-
-                il.MarkLabel(lblNotNull);
-            }
-            il.Emit(OpCodes.Stloc, lclRtnValue);
-            if (elementType.IsValueType)
-            {
-                LocalBuilder lclDefault = il.DeclareLocal(elementType);
-                il.Emit(OpCodes.Ldloca, lclDefault);
-                il.Emit(OpCodes.Initobj, elementType);
-                il.Emit(OpCodes.Ldloc, lclDefault);
-            }
-            else
-            {
                 il.Emit(OpCodes.Ldnull);
-            }
-            il.Emit(OpCodes.Ldloc, lclRtnValue);
-            if (lclRtnValue.LocalType!.IsValueType)
-                il.Emit(OpCodes.Box, lclRtnValue.LocalType);
-            return CommonReflectionCache.RpcRouterHandleSerializableReturnValue.MakeGenericMethod(elementType);
+
+                // } else {
+                il.MarkLabel(hasValue);
+                il.Emit(OpCodes.Call, callGetValue);
+                awaitReturnType = Nullable.GetUnderlyingType(info.CollectionType)!;
+                // }
+                goto case TypeSerializationInfoType.SerializableCollection;
+
+            default:
+                throw new InvalidOperationException($"Invalid type: {info.Type}."); // shouldn't be reached
         }
-        
-        il.CommentIfDebug($"  router.HandleReturnValue<{Accessor.Formatter.Format(awaitReturnType)}>(rtnValue, overhead, serializer)");
-        return CommonReflectionCache.RpcRouterHandleReturnValue.MakeGenericMethod(awaitReturnType);
     }
 
     internal void GenerateInvokeBytes(MethodInfo method, DynamicMethod dynMethod, IOpCodeEmitter il)
@@ -1692,17 +1908,17 @@ internal sealed class SerializerGenerator
         {
             ParameterInfo parameter = toBind.Array![i + toBind.Offset];
             Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
+
+            TypeSerializationInfo info = new TypeSerializationInfo(type);
+
             Type? underlyingNullableType = Nullable.GetUnderlyingType(type);
             bindLcls[i] = il.DeclareLocal(type);
 
-            bool isPrimitive = CanQuickSerializeType(type);
-            GetTypeInfo(type, underlyingNullableType, out bool isSerializable, out bool isSerializableArray, out bool isSerializableAny, out bool isByRef, out Type? elementType);
-            
             Label lblDoPrimitiveRead = default;
             Label lblDontPrimitiveRead = default;
 
             il.CommentIfDebug($"== Read {Accessor.Formatter.Format(type)} ==");
-            if (isPrimitive)
+            if (info.Type == TypeSerializationInfoType.PrimitiveLike)
             {
                 lblDoPrimitiveRead = il.DefineLabel();
                 lblDontPrimitiveRead = il.DefineLabel();
@@ -1726,92 +1942,130 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Throw);
 
             il.MarkLabel(continueRead);
-            if (isSerializable)
+
+            switch (info.Type)
             {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObject<{Accessor.Formatter.Format(type!)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Sub);
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectBytes.MakeGenericMethod(type));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
+                case TypeSerializationInfoType.PrimitiveLike:
+                case TypeSerializationInfoType.Value:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Add);
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Sub);
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValBytes.MakeGenericMethod(type));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.NullableValue:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullableObject<{Accessor.Formatter.Format(info.UnderlyingType)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Add);
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Sub);
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableObjectByValBytes.MakeGenericMethod(info.UnderlyingType));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.SerializableValue:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Add);
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Sub);
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectBytes.MakeGenericMethod(type));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+                
+                case TypeSerializationInfoType.NullableSerializableValue:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObject<{Accessor.Formatter.Format(info.SerializableType)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Add);
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Sub);
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableSerializableObjectBytes.MakeGenericMethod(info.SerializableType));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+                
+                case TypeSerializationInfoType.SerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                    if (info.CollectionType == info.SerializableType.MakeArrayType())
+                    {
+                        il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{info.SerializableType}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                        il.Emit(OpCodes.Ldloc, lclReadInd);
+                        il.Emit(OpCodes.Add);
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                        il.Emit(OpCodes.Ldloc, lclReadInd);
+                        il.Emit(OpCodes.Sub);
+                        il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayBytes.MakeGenericMethod(info.SerializableType));
+                    }
+                    else
+                    {
+                        il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{info.SerializableType}, {info.CollectionType}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                        il.Emit(OpCodes.Ldloc, lclReadInd);
+                        il.Emit(OpCodes.Add);
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                        il.Emit(OpCodes.Ldloc, lclReadInd);
+                        il.Emit(OpCodes.Sub);
+                        il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyBytes.MakeGenericMethod(info.SerializableType, info.CollectionType));
+                    }
+
+                    if (info.Type != TypeSerializationInfoType.SerializableCollection)
+                    {
+                        il.Emit(OpCodes.Newobj, CommonReflectionCache.GetNullableConstructor(type));
+                    }
+
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+
+                    Type collectionType = info.Type == TypeSerializationInfoType.NullableSerializableCollection
+                        ? info.CollectionType
+                        : Nullable.GetUnderlyingType(info.CollectionType)!;
+
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullableSerializableObjects<{info.UnderlyingType}, {collectionType}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Add);
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint))));
+                    il.Emit(OpCodes.Ldloc, lclReadInd);
+                    il.Emit(OpCodes.Sub);
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableSerializableObjectsAnyBytes.MakeGenericMethod(info.UnderlyingType, collectionType));
+
+                    if (info.Type != TypeSerializationInfoType.NullableSerializableCollection)
+                    {
+                        il.Emit(OpCodes.Newobj, CommonReflectionCache.GetNullableConstructor(type));
+                    }
+
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
             }
-            else if (isSerializableArray)
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{Accessor.Formatter.Format(elementType!)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Sub);
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayBytes.MakeGenericMethod(elementType));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else if (isSerializableAny)
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{Accessor.Formatter.Format(elementType!)}, {Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Sub);
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyBytes.MakeGenericMethod(elementType, type));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else if (isByRef)
-            {
-                il.CommentIfDebug($"serializer.ReadObject(__makeref(bindLcl{i}), bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldloca, bindLcls[i]);
-                il.Emit(OpCodes.Mkrefany, type);
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Sub);
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByTRefBytes);
-            }
-            else if (underlyingNullableType == null)
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Sub);
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValBytes.MakeGenericMethod(type));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullable<{Accessor.Formatter.Format(underlyingNullableType)}>(__makeref(bindLcl{i}), bytes + lclReadInd, maxCount - lclReadInd, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldloca, bindLcls[i]);
-                il.Emit(OpCodes.Mkrefany, type);
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(byte*)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Add);
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerBytesParams, typeof(uint)) ));
-                il.Emit(OpCodes.Ldloc, lclReadInd);
-                il.Emit(OpCodes.Sub);
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableObjectByTRefBytes.MakeGenericMethod(underlyingNullableType));
-            }
+
 
             il.CommentIfDebug("lclReadInd += lclTempByteCt;");
             il.Emit(OpCodes.Ldloc, lclReadInd);
@@ -1819,7 +2073,7 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Add);
             il.Emit(OpCodes.Stloc, lclReadInd);
 
-            if (!isPrimitive)
+            if (info.Type != TypeSerializationInfoType.PrimitiveLike)
                 continue;
 
             il.CommentIfDebug("goto lblDontPrimitiveRead;");
@@ -1881,67 +2135,102 @@ internal sealed class SerializerGenerator
         for (int i = 0; i < toBind.Count; ++i)
         {
             ParameterInfo parameter = toBind.Array![i + toBind.Offset];
+
             Type type = parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType()! : parameter.ParameterType;
-            Type? underlyingNullableType = Nullable.GetUnderlyingType(type);
+            TypeSerializationInfo info = new TypeSerializationInfo(type);
             bindLcls[i] = il.DeclareLocal(type);
-            GetTypeInfo(type, underlyingNullableType, out bool isSerializable, out bool isSerializableArray, out bool isSerializableAny, out bool isByRef, out Type? elementType);
 
             il.CommentIfDebug($"== Read {Accessor.Formatter.Format(type)} ==");
-            if (isSerializable)
+
+            switch (info.Type)
             {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObject<{Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream) )));
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectStream.MakeGenericMethod(type));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else if (isSerializableArray)
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{Accessor.Formatter.Format(elementType!)}>(stream, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayStream.MakeGenericMethod(elementType!));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else if (isSerializableAny)
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{Accessor.Formatter.Format(elementType!)}, {Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyStream.MakeGenericMethod(elementType, type));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else if (isByRef)
-            {
-                il.CommentIfDebug($"serializer.ReadObject(__makeref(bindLcl{i}), stream, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldloca, bindLcls[i]);
-                il.Emit(OpCodes.Mkrefany, type);
-                il.Emit(OpCodes.Ldarg, checked ( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByTRefStream);
-            }
-            else if (underlyingNullableType == null)
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValStream.MakeGenericMethod(type));
-                il.Emit(OpCodes.Stloc, bindLcls[i]);
-            }
-            else
-            {
-                il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullable<{Accessor.Formatter.Format(underlyingNullableType)}>(__makeref(bindLcl{i}), stream, out lclTempByteCt);");
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer)) ));
-                il.Emit(OpCodes.Ldloca, bindLcls[i]);
-                il.Emit(OpCodes.Mkrefany, type);
-                il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream)) ));
-                il.Emit(OpCodes.Ldloca, lclTempByteCt);
-                il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableObjectByTRefStream.MakeGenericMethod(underlyingNullableType));
+                case TypeSerializationInfoType.PrimitiveLike:
+                case TypeSerializationInfoType.Value:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadObject<{Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadObjectByValStream.MakeGenericMethod(type));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.NullableValue:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullable<{Accessor.Formatter.Format(info.UnderlyingType)}>(__makeref(bindLcl{i}), stream, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldloca, bindLcls[i]);
+                    il.Emit(OpCodes.Mkrefany, type);
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableObjectByTRefStream.MakeGenericMethod(info.UnderlyingType));
+                    break;
+
+                case TypeSerializationInfoType.SerializableValue:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObject<{Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectStream.MakeGenericMethod(type));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableValue:
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullableSerializableObject<{Accessor.Formatter.Format(type)}>(stream, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableSerializableObjectStream.MakeGenericMethod(type));
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.SerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                    if (info.CollectionType == info.SerializableType.MakeArrayType())
+                    {
+                        il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{info.SerializableType}>(stream, out lclTempByteCt);");
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                        il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsArrayStream.MakeGenericMethod(info.SerializableType!));
+                    }
+                    else
+                    {
+                        il.CommentIfDebug($"bindLcl{i} = serializer.ReadSerializableObjects<{info.SerializableType}, {info.CollectionType}>(stream, out lclTempByteCt);");
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                        il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                        il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyStream.MakeGenericMethod(info.SerializableType, info.CollectionType));
+                    }
+
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+
+                    if (info.Type != TypeSerializationInfoType.SerializableCollection)
+                    {
+                        il.Emit(OpCodes.Newobj, CommonReflectionCache.GetNullableConstructor(type));
+                    }
+
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+
+                    Type collectionType = info.Type == TypeSerializationInfoType.NullableSerializableCollection
+                        ? info.CollectionType
+                        : Nullable.GetUnderlyingType(info.CollectionType)!;
+
+                    il.CommentIfDebug($"bindLcl{i} = serializer.ReadNullableSerializableObjects<{info.UnderlyingType}, {collectionType}>(stream, out lclTempByteCt);");
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(IRpcSerializer))));
+                    il.Emit(OpCodes.Ldarg, checked((ushort)Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream))));
+                    il.Emit(OpCodes.Ldloca, lclTempByteCt);
+                    il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadNullableSerializableObjectsAnyStream.MakeGenericMethod(info.UnderlyingType, collectionType));
+
+                    if (info.Type != TypeSerializationInfoType.NullableSerializableCollection)
+                    {
+                        il.Emit(OpCodes.Newobj, CommonReflectionCache.GetNullableConstructor(type));
+                    }
+
+                    il.Emit(OpCodes.Stloc, bindLcls[i]);
+                    break;
             }
         }
 

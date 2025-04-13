@@ -162,7 +162,13 @@ public class SerializationConfiguration
         if (type == null)
             maxSize = MaximumStringLength;
         else if (!MaximumArraySizes.TryGetValue(type, out maxSize))
-            maxSize = MaximumGlobalArraySize;
+        {
+            if (Nullable.GetUnderlyingType(type) is not { } nullableUnderlyingType
+                || !MaximumArraySizes.TryGetValue(nullableUnderlyingType, out maxSize))
+            {
+                maxSize = MaximumGlobalArraySize;
+            }
+        }
 
         if (maxSize < 0 || maxSize >= length)
             return;

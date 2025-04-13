@@ -532,12 +532,12 @@ public class DefaultSerializer : IRpcSerializer
 
         SerializableTypeInfo info = default;
         info.MinimumSize = attribute!.MinimumSize;
-        info.IsFixedSize = attribute.IsFixedSize;
+        info.IsFixedSize = attribute.IsFixedSize && typeof(TSerializable).IsValueType;
 
         SerializableTypeInfoCache.TryAdd(type, info);
 
         isFixedSize = info.IsFixedSize;
-        return typeof(TSerializable).IsValueType ? sizeof(int) + v.MinimumSize : sizeof(int);
+        return typeof(TSerializable).IsValueType ? sizeof(int) + info.MinimumSize : sizeof(int);
     }
 
     /// <inheritdoc />
@@ -660,16 +660,24 @@ public class DefaultSerializer : IRpcSerializer
     }
 
     /// <inheritdoc />
-    public int GetSerializableSize<TSerializable>(in TSerializable value) where TSerializable : IRpcSerializable
+    public int GetSerializableSize<TSerializable>(in TSerializable? value) where TSerializable : IRpcSerializable
     {
-        ref TSerializable s = ref Unsafe.AsRef(in value);
+        ref TSerializable? s = ref Unsafe.AsRef(in value);
         if (s == null)
             return sizeof(int);
         return s.GetSize(this) + sizeof(int);
     }
 
+    public int GetNullableSerializableSize<TSerializable>(in TSerializable? value) where TSerializable : struct, IRpcSerializable
+    {
+        if (!value.HasValue)
+            return sizeof(int);
+
+        return value.Value.GetSize(this) + sizeof(int);
+    }
+
     /// <inheritdoc />
-    public int GetSerializablesSize<TSerializable>(IEnumerable<TSerializable?> value) where TSerializable : IRpcSerializable
+    public int GetSerializablesSize<TSerializable>(IEnumerable<TSerializable?>? value) where TSerializable : IRpcSerializable
     {
         if (value == null)
         {
@@ -677,24 +685,23 @@ public class DefaultSerializer : IRpcSerializer
         }
 
         int size = GetSerializableMinimumSize<TSerializable>(out bool isFixedSize);
-        isFixedSize &= typeof(TSerializable).IsValueType;
         int count;
         if (isFixedSize)
         {
             if (value is ICollection c)
             {
                 count = c.Count;
-                return sizeof(int) + count * (size + sizeof(int)) + SerializationHelper.GetHeaderSize(count, false);
+                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false);
             }
             if (value is ICollection<TSerializable?> c2)
             {
                 count = c2.Count;
-                return sizeof(int) + count * (size + sizeof(int)) + SerializationHelper.GetHeaderSize(count, false);
+                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false);
             }
             if (value is IReadOnlyCollection<TSerializable?> c3)
             {
                 count = c3.Count;
-                return sizeof(int) + count * (size + sizeof(int)) + SerializationHelper.GetHeaderSize(count, false);
+                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false);
             }
         }
 
@@ -760,6 +767,106 @@ public class DefaultSerializer : IRpcSerializer
                         ttlSize += size;
                     else if (s != null)
                         ttlSize += s.GetSize(this);
+                    ++count;
+                }
+
+
+                break;
+        }
+
+        return ttlSize + SerializationHelper.GetHeaderSize(count, false) + (count == 0 ? 0 : sizeof(int)) + count * sizeof(int);
+    }
+
+    public int GetNullableSerializablesSize<TSerializable>(IEnumerable<TSerializable?>? value) where TSerializable : struct, IRpcSerializable
+    {
+        if (value == null)
+        {
+            return SerializationHelper.GetHeaderSize(0, true);
+        }
+
+        int size = GetSerializableMinimumSize<TSerializable>(out bool isFixedSize);
+        int count;
+        if (isFixedSize)
+        {
+            if (value is ICollection c)
+            {
+                count = c.Count;
+                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false);
+            }
+            if (value is ICollection<TSerializable?> c2)
+            {
+                count = c2.Count;
+                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false);
+            }
+            if (value is IReadOnlyCollection<TSerializable?> c3)
+            {
+                count = c3.Count;
+                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false);
+            }
+        }
+
+        int ttlSize = 0;
+        count = 0;
+
+        switch (value)
+        {
+            case TSerializable?[] array:
+                count = array.Length;
+                if (count == 0)
+                {
+                    return SerializationHelper.GetHeaderSize(0, false);
+                }
+
+                for (int i = 0; i < array.Length; ++i)
+                {
+                    ref TSerializable? s = ref array[i];
+                    if (s.HasValue)
+                        ttlSize += s.Value.GetSize(this);
+                }
+
+                break;
+
+            case ArraySegment<TSerializable?> arraySegment:
+                if (arraySegment.Count == 0)
+                {
+                    return SerializationHelper.GetHeaderSize(0, arraySegment.Array == null);
+                }
+
+                TSerializable?[] segmentArray = arraySegment.Array!;
+                int maxCt = arraySegment.Offset + arraySegment.Count;
+                count = arraySegment.Count;
+                for (int i = arraySegment.Offset; i < maxCt; ++i)
+                {
+                    ref TSerializable? s = ref segmentArray[i];
+                    if (s.HasValue)
+                        ttlSize += s.Value.GetSize(this);
+                }
+
+                break;
+
+            case List<TSerializable?> list:
+                count = list.Count;
+                if (count == 0)
+                {
+                    return SerializationHelper.GetHeaderSize(0, false);
+                }
+
+                for (int i = 0; i < list.Count; i++)
+                {
+                    TSerializable? s = list[i];
+                    if (s.HasValue)
+                        ttlSize += s.Value.GetSize(this);
+                }
+
+                break;
+
+            default:
+                foreach (TSerializable? s in value)
+                {
+                    if (isFixedSize)
+                        ttlSize += size;
+                    else if (s.HasValue)
+                        ttlSize += s.Value.GetSize(this);
                     ++count;
                 }
 
@@ -844,6 +951,7 @@ public class DefaultSerializer : IRpcSerializer
         ThrowNoParserFound(type);
         return 0; // not reached
     }
+
     private int GetNullableSize(object? value, Type underlyingType)
     {
         if (value == null)
@@ -870,6 +978,7 @@ public class DefaultSerializer : IRpcSerializer
         ThrowNoNullableParserFound(underlyingType);
         return 0; // not reached
     }
+
     private int GetNullableSize(TypedReference value, Type underlyingType)
     {
         if (!GetNullableHasValue(value))
@@ -1207,6 +1316,22 @@ public class DefaultSerializer : IRpcSerializer
         return write + sizeof(int);
     }
 
+    public unsafe int WriteNullableSerializableObject<TSerializable>(in TSerializable? serializable, byte* bytes, uint maxSize) where TSerializable : struct, IRpcSerializable
+    {
+        Span<byte> span = new Span<byte>(bytes, (int)Math.Min(int.MaxValue, maxSize));
+
+        if (!serializable.HasValue)
+        {
+            WriteToBuffer(span, int.MinValue);
+            return sizeof(int);
+        }
+
+        TSerializable value = serializable.Value;
+        int write = value.Write(span.Slice(sizeof(int)), this);
+        WriteToBuffer(span, write);
+        return write + sizeof(int);
+    }
+
     /// <inheritdoc />
     public unsafe int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable
     {
@@ -1333,6 +1458,147 @@ public class DefaultSerializer : IRpcSerializer
 
                         WriteToBuffer(bytes + index, write);
                         index += checked( (uint)write ) + sizeof(int);
+
+                        rollingMaxSize = Math.Max(rollingMaxSize, write);
+                    }
+                    while (enumerator.MoveNext());
+                }
+
+                uint index2 = 0;
+                SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index2, count, false, this, forceFull: true);
+                break;
+        }
+
+        WriteToBuffer(bytes + maxSizeIndex, rollingMaxSize);
+
+        return (int)index;
+    }
+
+    public unsafe int WriteNullableSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, byte* bytes, uint maxSize) where TSerializable : struct, IRpcSerializable
+    {
+        uint index = 0;
+        if (serializable == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, true, this);
+        }
+
+        uint maxSizeIndex;
+        int rollingMaxSize;
+
+        switch (serializable)
+        {
+            case TSerializable?[] array:
+                SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, array.Length, false, this);
+                if (array.Length == 0)
+                    return (int)index;
+
+                rollingMaxSize = 0;
+                maxSizeIndex = index;
+                index += sizeof(int);
+
+                for (int i = 0; i < array.Length; ++i)
+                {
+                    ref TSerializable? s = ref array[i];
+                    long size = (long)maxSize - index;
+                    if (size < sizeof(int))
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOut)) { ErrorCode = 1 };
+
+                    if (!s.HasValue)
+                    {
+                        WriteToBuffer(bytes + index, int.MinValue);
+                        index += sizeof(int);
+                        continue;
+                    }
+
+                    int write = s.Value.Write(new Span<byte>(bytes + index + sizeof(int), (int)Math.Min(int.MaxValue, size)), this);
+                    if (write < 0)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOut)) { ErrorCode = 1 };
+
+                    WriteToBuffer(bytes + index, write);
+                    index += checked((uint)write) + sizeof(int);
+
+                    rollingMaxSize = Math.Max(rollingMaxSize, write);
+                }
+                break;
+
+            case ArraySegment<TSerializable?> arraySegment:
+                int segCt = arraySegment.Count;
+                int segOf = arraySegment.Offset;
+                TSerializable?[]? segArr = arraySegment.Array;
+                if (segCt == 0 || segArr == null)
+                {
+                    return SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, segArr == null, this);
+                }
+
+                SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, segCt, false, this);
+
+                rollingMaxSize = 0;
+                maxSizeIndex = index;
+                index += sizeof(int);
+
+                int segMax = segOf + segCt;
+                for (int i = segOf; i < segMax; ++i)
+                {
+                    ref TSerializable? s = ref segArr[i];
+                    long size = (long)maxSize - index;
+                    if (size < sizeof(int))
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOut)) { ErrorCode = 1 };
+
+                    if (!s.HasValue)
+                    {
+                        WriteToBuffer(bytes + index, int.MinValue);
+                        index += sizeof(int);
+                        continue;
+                    }
+
+                    int write = s.Value.Write(new Span<byte>(bytes + index + sizeof(int), (int)Math.Min(int.MaxValue, size)), this);
+                    if (write < 0)
+                        throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOut)) { ErrorCode = 1 };
+
+                    WriteToBuffer(bytes + index, write);
+                    index += checked((uint)write) + sizeof(int);
+
+                    rollingMaxSize = Math.Max(rollingMaxSize, write);
+                }
+                break;
+
+            default:
+
+                int count = 0;
+                using (IEnumerator<TSerializable?> enumerator = serializable.GetEnumerator())
+                {
+                    if (!enumerator.MoveNext())
+                    {
+                        SerializationHelper.WriteStandardArrayHeader(bytes, maxSize, ref index, 0, false, this, forceFull: true);
+                        return (int)index;
+                    }
+
+                    index = (uint)SerializationHelper.GetHeaderSize(0, false, forceFull: true);
+                    maxSizeIndex = index;
+                    rollingMaxSize = 0;
+                    index += sizeof(int);
+
+                    do
+                    {
+                        long size = (long)maxSize - index;
+                        if (size < sizeof(int))
+                            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOut)) { ErrorCode = 1 };
+
+                        ++count;
+                        TSerializable? s = enumerator.Current;
+                        if (!s.HasValue)
+                        {
+                            WriteToBuffer(bytes + index, int.MinValue);
+                            index += sizeof(int);
+                            continue;
+                        }
+
+                        int write = s.Value.Write(new Span<byte>(bytes + index + sizeof(int), (int)Math.Min(int.MaxValue, size)), this);
+                        if (write < 0)
+                            throw new RpcOverflowException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOut)) { ErrorCode = 1 };
+
+                        WriteToBuffer(bytes + index, write);
+                        index += checked((uint)write) + sizeof(int);
 
                         rollingMaxSize = Math.Max(rollingMaxSize, write);
                     }
@@ -1867,6 +2133,67 @@ public class DefaultSerializer : IRpcSerializer
 #endif
     }
 
+    public int WriteNullableSerializableObject<TSerializable>(in TSerializable? serializable, Stream stream) where TSerializable : struct, IRpcSerializable
+    {
+#if NET5_0_OR_GREATER
+        bool hasValue = serializable.HasValue;
+        Unsafe.SkipInit(out TSerializable value);
+        if (hasValue)
+            value = serializable!.Value;
+#else
+        // properties not readonly in older versions
+        ref TSerializable? s = ref Unsafe.AsRef(in serializable);
+        bool hasValue = s.HasValue;
+        TSerializable value = hasValue ? s!.Value : default;
+#endif
+
+        int size = hasValue ? value.GetSize(this) : 0;
+        int fullSize = size + sizeof(int);
+
+        int write = 0;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+        scoped Span<byte> buffer = fullSize > Configuration.MaximumStackAllocationSize
+            ? new byte[fullSize]
+            : stackalloc byte[fullSize];
+
+        if (hasValue)
+        {
+            write = value.Write(buffer.Slice(sizeof(int)), this);
+            WriteToBuffer(buffer, write);
+        }
+        else
+        {
+            WriteToBuffer(buffer, int.MinValue);
+        }
+        write += sizeof(int);
+        stream.Write(buffer[..write]);
+        return write;
+#else
+        byte[] buffer = fullSize > MaxArrayPoolSize
+            ? new byte[fullSize]
+            : ArrayPool.Rent(fullSize);
+        try
+        {
+            if (hasValue)
+            {
+                write = value.Write(buffer.AsSpan(sizeof(int)), this);
+                WriteToBuffer(buffer, write);
+            }
+            else
+            {
+                WriteToBuffer(buffer, int.MinValue);
+            }
+            stream.Write(buffer, 0, write + sizeof(int));
+            return write + sizeof(int);
+        }
+        finally
+        {
+            if (fullSize <= MaxArrayPoolSize)
+                ArrayPool.Return(buffer);
+        }
+#endif
+    }
+
     private static unsafe int ReadSerializableSizeFromBuffer(byte* buffer, uint maxSize, bool stream, bool checkError)
     {
         if (maxSize < sizeof(int))
@@ -2027,7 +2354,6 @@ public class DefaultSerializer : IRpcSerializer
         }
 
         int size = GetSerializableMinimumSize<TSerializable>(out bool isFixedSize);
-        isFixedSize &= typeof(TSerializable).IsValueType;
 
         switch (serializable)
         {
@@ -2040,7 +2366,7 @@ public class DefaultSerializer : IRpcSerializer
                 int maxSize = 0;
                 if (isFixedSize)
                 {
-                    maxSize = size;
+                    maxSize = size - sizeof(int);
                 }
                 else
                 {
@@ -2119,7 +2445,7 @@ public class DefaultSerializer : IRpcSerializer
                 maxSize = 0;
                 if (isFixedSize)
                 {
-                    maxSize = size;
+                    maxSize = size - sizeof(int);
                 }
                 else
                 {
@@ -2195,7 +2521,7 @@ public class DefaultSerializer : IRpcSerializer
                 maxSize = 0;
                 if (isFixedSize)
                 {
-                    maxSize = size;
+                    maxSize = size - sizeof(int);
                 }
                 else
                 {
@@ -2269,7 +2595,7 @@ public class DefaultSerializer : IRpcSerializer
                 maxSize = 0;
                 if (isFixedSize)
                 {
-                    maxSize = size;
+                    maxSize = size - sizeof(int);
                 }
                 else
                 {
@@ -2363,7 +2689,7 @@ public class DefaultSerializer : IRpcSerializer
                         maxSize = 0;
                         if (isFixedSize)
                         {
-                            maxSize = size;
+                            maxSize = size - sizeof(int);
                         }
                         else
                         {
@@ -2434,7 +2760,7 @@ public class DefaultSerializer : IRpcSerializer
                     maxSize = 0;
                     if (isFixedSize)
                     {
-                        maxSize = size;
+                        maxSize = size - sizeof(int);
                         while (enumerator.MoveNext())
                             ++count;
                     }
@@ -2486,6 +2812,510 @@ public class DefaultSerializer : IRpcSerializer
                             write = s.Write(buffer.Slice(sizeof(int)), this);
 #else
                             write = s.Write(buffer.AsSpan(sizeof(int)), this);
+#endif
+                            WriteToBuffer(buffer, write);
+                        }
+                        else
+                        {
+                            WriteToBuffer(buffer, int.MinValue);
+                        }
+                        int amt = write + sizeof(int);
+                        index += (uint)amt;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        stream.Write(buffer[..amt]);
+#else
+                        stream.Write(buffer, 0, amt);
+#endif
+                    }
+                    if (count > 0)
+                        throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.InvalidOperationExceptionInconsistantEnumerator, Accessor.ExceptionFormatter.Format(serializable.GetType())));
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                    }
+                    finally
+                    {
+                        if (bufferSize <= MaxArrayPoolSize)
+                            ArrayPool.Return(buffer);
+                    }
+#endif
+                }
+                finally
+                {
+                    enumerator.Dispose();
+                }
+                break;
+            }
+        }
+
+        return (int)index;
+    }
+
+    public int WriteNullableSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, Stream stream) where TSerializable : struct, IRpcSerializable
+    {
+        uint index = 0;
+        if (serializable == null)
+        {
+            return SerializationHelper.WriteStandardArrayHeader(stream, 0, true);
+        }
+
+        int size = GetSerializableMinimumSize<TSerializable>(out bool isFixedSize);
+
+        switch (serializable)
+        {
+            case TSerializable?[] array:
+                if (array.Length == 0)
+                {
+                    return SerializationHelper.WriteStandardArrayHeader(stream, 0, false);
+                }
+
+                int maxSize = 0;
+                if (isFixedSize)
+                {
+                    maxSize = size - sizeof(int);
+                }
+                else
+                {
+                    for (int i = 0; i < array.Length; ++i)
+                    {
+                        ref TSerializable? s = ref array[i];
+                        if (s.HasValue)
+                            maxSize = Math.Max(s.Value.GetSize(this), maxSize);
+                    }
+                }
+
+                int bufferSize = maxSize + sizeof(int);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                scoped Span<byte> buffer = bufferSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[bufferSize]
+                    : stackalloc byte[bufferSize];
+#else
+                byte[] buffer = bufferSize > MaxArrayPoolSize
+                    ? new byte[bufferSize]
+                    : ArrayPool.Rent(bufferSize);
+                try
+                {
+#endif
+                index += (uint)SerializationHelper.WriteStandardArrayHeader(stream, array.Length, false);
+                WriteToBuffer(buffer, maxSize);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                stream.Write(buffer[..sizeof(int)]);
+#else
+                stream.Write(buffer, 0, sizeof(int));
+#endif
+                index += sizeof(int);
+                for (int i = 0; i < array.Length; ++i)
+                {
+                    ref TSerializable? s = ref array[i];
+                    int write = 0;
+                    if (s.HasValue)
+                    {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        write = s.Value.Write(buffer.Slice(sizeof(int)), this);
+#else
+                        write = s.Value.Write(buffer.AsSpan(sizeof(int)), this);
+#endif
+                        WriteToBuffer(buffer, write);
+                    }
+                    else
+                    {
+                        WriteToBuffer(buffer, int.MinValue);
+                    }
+                    int amt = write + sizeof(int);
+                    index += (uint)amt;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                    stream.Write(buffer[..amt]);
+#else
+                    stream.Write(buffer, 0, amt);
+#endif
+                }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (bufferSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+                break;
+                
+            case ArraySegment<TSerializable?> arraySegment:
+                if (arraySegment.Count == 0)
+                {
+                    return SerializationHelper.WriteStandardArrayHeader(stream, 0, arraySegment.Array == null);
+                }
+
+                TSerializable?[] segmentArray = arraySegment.Array!;
+                int maxCt = arraySegment.Count + arraySegment.Offset;
+
+                maxSize = 0;
+                if (isFixedSize)
+                {
+                    maxSize = size - sizeof(int);
+                }
+                else
+                {
+                    for (int i = arraySegment.Offset; i < maxCt; ++i)
+                    {
+                        ref TSerializable? s = ref segmentArray[i];
+                        if (s.HasValue)
+                            maxSize = Math.Max(s.Value.GetSize(this), maxSize);
+                    }
+                }
+                
+                bufferSize = maxSize + sizeof(int);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                buffer = bufferSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[bufferSize]
+                    : stackalloc byte[bufferSize];
+#else
+                buffer = bufferSize > MaxArrayPoolSize
+                    ? new byte[bufferSize]
+                    : ArrayPool.Rent(bufferSize);
+                try
+                {
+#endif
+                index += (uint)SerializationHelper.WriteStandardArrayHeader(stream, arraySegment.Count, false);
+                WriteToBuffer(buffer, maxSize);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                stream.Write(buffer[..sizeof(int)]);
+#else
+                stream.Write(buffer, 0, sizeof(int));
+#endif
+                index += sizeof(int);
+                for (int i = arraySegment.Offset; i < maxCt; ++i)
+                {
+                    ref TSerializable? s = ref segmentArray[i];
+                    int write = 0;
+                    if (s.HasValue)
+                    {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        write = s.Value.Write(buffer.Slice(sizeof(int)), this);
+#else
+                        write = s.Value.Write(buffer.AsSpan(sizeof(int)), this);
+#endif
+                        WriteToBuffer(buffer, write);
+                    }
+                    else
+                    {
+                        WriteToBuffer(buffer, int.MinValue);
+                    }
+                    int amt = write + sizeof(int);
+                    index += (uint)amt;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                    stream.Write(buffer[..amt]);
+#else
+                    stream.Write(buffer, 0, amt);
+#endif
+                }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (bufferSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+                break;
+
+            case ICollection<TSerializable?> collection:
+                if (collection.Count == 0)
+                {
+                    return SerializationHelper.WriteStandardArrayHeader(stream, 0, false);
+                }
+
+                maxSize = 0;
+                if (isFixedSize)
+                {
+                    maxSize = size - sizeof(int);
+                }
+                else
+                {
+                    foreach (TSerializable? s in collection)
+                    {
+                        if (s.HasValue)
+                            maxSize = Math.Max(s.Value.GetSize(this), maxSize);
+                    }
+                }
+                
+                bufferSize = maxSize + sizeof(int);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                buffer = bufferSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[bufferSize]
+                    : stackalloc byte[bufferSize];
+#else
+                buffer = bufferSize > MaxArrayPoolSize
+                    ? new byte[bufferSize]
+                    : ArrayPool.Rent(bufferSize);
+                try
+                {
+#endif
+                index += (uint)SerializationHelper.WriteStandardArrayHeader(stream, collection.Count, false);
+                WriteToBuffer(buffer, maxSize);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                stream.Write(buffer[..sizeof(int)]);
+#else
+                stream.Write(buffer, 0, sizeof(int));
+#endif
+                index += sizeof(int);
+                foreach (TSerializable? s in collection)
+                {
+                    int write = 0;
+                    if (s.HasValue)
+                    {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        write = s.Value.Write(buffer.Slice(sizeof(int)), this);
+#else
+                        write = s.Value.Write(buffer.AsSpan(sizeof(int)), this);
+#endif
+                        WriteToBuffer(buffer, write);
+                    }
+                    else
+                    {
+                        WriteToBuffer(buffer, int.MinValue);
+                    }
+                    int amt = write + sizeof(int);
+                    index += (uint)amt;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                    stream.Write(buffer[..amt]);
+#else
+                    stream.Write(buffer, 0, amt);
+#endif
+                }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (bufferSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+                break;
+
+            case IReadOnlyCollection<TSerializable?> collection:
+                if (collection.Count == 0)
+                {
+                    return SerializationHelper.WriteStandardArrayHeader(stream, 0, false);
+                }
+
+                maxSize = 0;
+                if (isFixedSize)
+                {
+                    maxSize = size - sizeof(int);
+                }
+                else
+                {
+                    foreach (TSerializable? s in collection)
+                    {
+                        if (s.HasValue)
+                            maxSize = Math.Max(s.Value.GetSize(this), maxSize);
+                    }
+                }
+                
+                bufferSize = maxSize + sizeof(int);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                buffer = bufferSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[bufferSize]
+                    : stackalloc byte[bufferSize];
+#else
+                buffer = bufferSize > MaxArrayPoolSize
+                    ? new byte[bufferSize]
+                    : ArrayPool.Rent(bufferSize);
+                try
+                {
+#endif
+                index += (uint)SerializationHelper.WriteStandardArrayHeader(stream, collection.Count, false);
+                WriteToBuffer(buffer, maxSize);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                stream.Write(buffer[..sizeof(int)]);
+#else
+                stream.Write(buffer, 0, sizeof(int));
+#endif
+                index += sizeof(int);
+                foreach (TSerializable? s in collection)
+                {
+                    int write = 0;
+                    if (s.HasValue)
+                    {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        write = s.Value.Write(buffer.Slice(sizeof(int)), this);
+#else
+                        write = s.Value.Write(buffer.AsSpan(sizeof(int)), this);
+#endif
+                        WriteToBuffer(buffer, write);
+                    }
+                    else
+                    {
+                        WriteToBuffer(buffer, int.MinValue);
+                    }
+                    int amt = write + sizeof(int);
+                    index += (uint)amt;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                    stream.Write(buffer[..amt]);
+#else
+                    stream.Write(buffer, 0, amt);
+#endif
+                }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (bufferSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+                break;
+                
+            default:
+            {
+                IEnumerator<TSerializable?> enumerator = serializable.GetEnumerator();
+                try
+                {
+                    List<TSerializable?>? list = null;
+                    try
+                    {
+                        enumerator.Reset();
+                    }
+                    catch (NotSupportedException)
+                    {
+                        list = new List<TSerializable?>(16);
+                        while (enumerator.MoveNext())
+                        {
+                            list.Add(enumerator.Current);
+                        }
+                    }
+
+                    if (list != null)
+                    {
+                        if (list.Count == 0)
+                        {
+                            return SerializationHelper.WriteStandardArrayHeader(stream, 0, false);
+                        }
+
+                        maxSize = 0;
+                        if (isFixedSize)
+                        {
+                            maxSize = size - sizeof(int);
+                        }
+                        else
+                        {
+                            foreach (TSerializable? s in list)
+                            {
+                                if (s.HasValue)
+                                    maxSize = Math.Max(s.Value.GetSize(this), maxSize);
+                            }
+                        }
+                        
+                        bufferSize = maxSize + sizeof(int);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        buffer = bufferSize > Configuration.MaximumStackAllocationSize
+                            ? new byte[bufferSize]
+                            : stackalloc byte[bufferSize];
+#else
+                        buffer = bufferSize > MaxArrayPoolSize
+                            ? new byte[bufferSize]
+                            : ArrayPool.Rent(bufferSize);
+                        try
+                        {
+#endif
+                        index += (uint)SerializationHelper.WriteStandardArrayHeader(stream, list.Count, false);
+                        WriteToBuffer(buffer, maxSize);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        stream.Write(buffer[..sizeof(int)]);
+#else
+                        stream.Write(buffer, 0, sizeof(int));
+#endif
+                        index += sizeof(uint);
+                        foreach (TSerializable? s in list)
+                        {
+                            int write = 0;
+                            if (s.HasValue)
+                            {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                                write = s.Value.Write(buffer.Slice(sizeof(int)), this);
+#else
+                                write = s.Value.Write(buffer.AsSpan(sizeof(int)), this);
+#endif
+                                WriteToBuffer(buffer, write);
+                            }
+                            else
+                            {
+                                WriteToBuffer(buffer, int.MinValue);
+                            }
+                            int amt = write + sizeof(int);
+                            index += (uint)amt;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                            stream.Write(buffer[..amt]);
+#else
+                            stream.Write(buffer, 0, amt);
+#endif
+                        }
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                        }
+                        finally
+                        {
+                            if (bufferSize <= MaxArrayPoolSize)
+                                ArrayPool.Return(buffer);
+                        }
+#endif
+                        break;
+                    }
+                    
+
+                    int count = 0;
+                    maxSize = 0;
+                    if (isFixedSize)
+                    {
+                        maxSize = size - sizeof(int);
+                        while (enumerator.MoveNext())
+                            ++count;
+                    }
+                    else
+                    {
+                        while (enumerator.MoveNext())
+                        {
+                            TSerializable? s = enumerator.Current!;
+                            if (s.HasValue)
+                                maxSize = Math.Max(s.Value.GetSize(this), maxSize);
+                        }
+                    }
+
+                    if (count == 0)
+                    {
+                        return SerializationHelper.WriteStandardArrayHeader(stream, 0, false);
+                    }
+
+                    enumerator.Reset();
+                        
+                    bufferSize = maxSize + sizeof(int);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                    buffer = bufferSize > Configuration.MaximumStackAllocationSize
+                        ? new byte[bufferSize]
+                        : stackalloc byte[bufferSize];
+#else
+                    buffer = bufferSize > MaxArrayPoolSize
+                        ? new byte[bufferSize]
+                        : ArrayPool.Rent(bufferSize);
+                    try
+                    {
+#endif
+                    index += (uint)SerializationHelper.WriteStandardArrayHeader(stream, count, false);
+                    WriteToBuffer(buffer, maxSize);
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                    stream.Write(buffer[..sizeof(int)]);
+#else
+                    stream.Write(buffer, 0, sizeof(int));
+#endif
+                    index += sizeof(int);
+                    while (enumerator.MoveNext())
+                    {
+                        --count;
+                        TSerializable? s = enumerator.Current;
+                        int write = 0;
+                        if (s.HasValue)
+                        {
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                            write = s.Value.Write(buffer.Slice(sizeof(int)), this);
+#else
+                            write = s.Value.Write(buffer.AsSpan(sizeof(int)), this);
 #endif
                             WriteToBuffer(buffer, write);
                         }
@@ -3754,6 +4584,27 @@ public class DefaultSerializer : IRpcSerializer
         return s;
     }
 
+    public unsafe TSerializable? ReadNullableSerializableObject<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        int size = ReadSerializableSizeFromBuffer(bytes, maxSize, stream: false, checkError: true);
+        if (size == int.MinValue)
+        {
+            bytesRead = sizeof(int);
+            return null!;
+        }
+
+        TSerializable value = default;
+
+        int read = value.Read(new Span<byte>(bytes + sizeof(int), size), this);
+        if (read < 0)
+        {
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+        }
+
+        bytesRead = size + sizeof(int);
+        return value;
+    }
+
     /// <inheritdoc />
     public unsafe TSerializable[]? ReadSerializableObjects<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : IRpcSerializable
     {
@@ -3796,6 +4647,52 @@ public class DefaultSerializer : IRpcSerializer
                 throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
 
             index += (uint)size;
+        }
+
+        bytesRead = (int)index;
+        return array;
+    }
+
+    /// <inheritdoc />
+    public unsafe TSerializable?[]? ReadNullableSerializableObjects<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        uint index = 0;
+        if (!SerializationHelper.ReadStandardArrayHeader(bytes, maxSize, ref index, out int length, this))
+        {
+            bytesRead = (int)index;
+            return null;
+        }
+
+        if (length == 0)
+        {
+            bytesRead = (int)index;
+            return Array.Empty<TSerializable?>();
+        }
+
+        index += sizeof(int);
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+        TSerializable?[] array = new TSerializable?[length];
+        for (int i = 0; i < length; ++i)
+        {
+            int size = ReadSerializableSizeFromBuffer(bytes + index, maxSize - index, stream: false, checkError: true);
+            index += sizeof(int);
+            if (size == int.MinValue)
+            {
+                continue;
+            }
+
+            Span<byte> span = new Span<byte>(bytes + index, size);
+
+            TSerializable s = default;
+
+            int read = s.Read(span, this);
+            if (read < 0)
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+            index += (uint)size;
+            array[i] = s;
         }
 
         bytesRead = (int)index;
@@ -4052,6 +4949,249 @@ public class DefaultSerializer : IRpcSerializer
         throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
     }
 
+    public unsafe TCollectionType? ReadNullableSerializableObjects<TSerializable, TCollectionType>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        Type collectionType = typeof(TCollectionType);
+        if (collectionType.IsValueType)
+        {
+            if (collectionType == typeof(ArraySegment<TSerializable?>))
+            {
+                TSerializable?[]? arr = ReadNullableSerializableObjects<TSerializable>(bytes, maxSize, out bytesRead);
+                ArraySegment<TSerializable?> seg = arr == null ? default : new ArraySegment<TSerializable?>(arr, 0, arr.Length);
+                return Unsafe.As<ArraySegment<TSerializable?>, TCollectionType>(ref seg);
+            }
+
+            if (collectionType == typeof(Memory<TSerializable?>))
+            {
+                TSerializable?[]? arr = ReadNullableSerializableObjects<TSerializable>(bytes, maxSize, out bytesRead);
+                Memory<TSerializable?> seg = arr == null ? default : new Memory<TSerializable?>(arr, 0, arr.Length);
+                return Unsafe.As<Memory<TSerializable?>, TCollectionType>(ref seg);
+            }
+
+            if (collectionType == typeof(ReadOnlyMemory<TSerializable?>))
+            {
+                TSerializable?[]? arr = ReadNullableSerializableObjects<TSerializable>(bytes, maxSize, out bytesRead);
+                ReadOnlyMemory<TSerializable?> seg = arr == null ? default : new ReadOnlyMemory<TSerializable?>(arr, 0, arr.Length);
+                return Unsafe.As<ReadOnlyMemory<TSerializable?>, TCollectionType>(ref seg);
+            }
+
+            throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+        }
+
+        if (collectionType.IsArray)
+        {
+            if (collectionType == typeof(TSerializable?[]))
+            {
+                return (TCollectionType?)(object?)ReadNullableSerializableObjects<TSerializable>(bytes, maxSize, out bytesRead);
+            }
+
+            Type elementType = collectionType.GetElementType()!;
+            if (elementType == typeof(object))
+            {
+                uint index = 0;
+                if (!SerializationHelper.ReadStandardArrayHeader(bytes, maxSize, ref index, out int length, this))
+                {
+                    bytesRead = (int)index;
+                    return default;
+                }
+
+                if (length == 0)
+                {
+                    bytesRead = (int)index;
+                    return (TCollectionType)(object)Array.Empty<object>();
+                }
+
+                index += sizeof(int);
+
+                Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+                object?[] array = new object[length];
+                for (int i = 0; i < length; ++i)
+                {
+                    int size = ReadSerializableSizeFromBuffer(bytes + index, maxSize - index, stream: false, checkError: true);
+                    index += sizeof(int);
+                    if (size == int.MinValue)
+                    {
+                        continue;
+                    }
+
+                    Span<byte> span = new Span<byte>(bytes + index, size);
+
+                    TSerializable s = default;
+
+                    int read = s.Read(span, this);
+                    if (read < 0)
+                        throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+                    array[i] = s;
+                    index += (uint)size;
+                }
+
+                bytesRead = (int)index;
+                return (TCollectionType?)(object?)array;
+            }
+
+            throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+        }
+
+        if (collectionType.IsInterface)
+        {
+            if (collectionType.IsAssignableFrom(typeof(IReadOnlyCollection<TSerializable?>))
+                || collectionType.IsAssignableFrom(typeof(IReadOnlyList<TSerializable?>))
+                || collectionType.IsAssignableFrom(typeof(IEnumerable<TSerializable?>))
+                || collectionType == typeof(IEnumerable)
+               )
+            {
+                return (TCollectionType?)(object?)ReadNullableSerializableObjects<TSerializable>(bytes, maxSize, out bytesRead);
+            }
+
+            if (collectionType == typeof(IEnumerator))
+            {
+                return (TCollectionType?)ReadNullableSerializableObjects<TSerializable>(bytes, maxSize, out bytesRead)?.GetEnumerator();
+            }
+
+            if (collectionType.IsAssignableFrom(typeof(IEnumerator<TSerializable?>)))
+            {
+                return (TCollectionType?)(object?)ReadNullableSerializableList<TSerializable>(bytes, maxSize, out bytesRead)?.GetEnumerator();
+            }
+
+            throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+        }
+
+        if (collectionType == typeof(List<TSerializable?>))
+        {
+            return (TCollectionType?)(object?)ReadNullableSerializableList<TSerializable>(bytes, maxSize, out bytesRead);
+        }
+
+        bool coll1;
+        if (collectionType.IsClass && ((coll1 = typeof(ICollection<TSerializable?>).IsAssignableFrom(collectionType)) || typeof(IList).IsAssignableFrom(collectionType)))
+        {
+            uint index = 0;
+            if (!SerializationHelper.ReadStandardArrayHeader(bytes, maxSize, ref index, out int length, this))
+            {
+                bytesRead = (int)index;
+                return default;
+            }
+
+            Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+            if (coll1)
+            {
+                ICollection<TSerializable?>? collection;
+                try
+                {
+                    collection = (ICollection<TSerializable?>?)Activator.CreateInstance(collectionType, length);
+                }
+                catch
+                {
+                    try
+                    {
+                        collection = (ICollection<TSerializable?>?)Activator.CreateInstance(collectionType);
+                    }
+                    catch (Exception ex2)
+                    {
+                        throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)), ex2);
+                    }
+                }
+
+                if (collection == null)
+                {
+                    throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+                }
+
+                if (length == 0)
+                {
+                    bytesRead = (int)index;
+                    return (TCollectionType?)collection;
+                }
+
+                index += sizeof(int);
+
+                for (int i = 0; i < length; ++i)
+                {
+                    int size = ReadSerializableSizeFromBuffer(bytes + index, maxSize - index, stream: false, checkError: true);
+                    index += sizeof(int);
+                    if (size == int.MinValue)
+                    {
+                        collection.Add(null);
+                        continue;
+                    }
+
+                    Span<byte> span = new Span<byte>(bytes + index, size);
+
+                    TSerializable s = default;
+
+                    int read = s.Read(span, this);
+                    if (read < 0)
+                        throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+                    index += (uint)size;
+                    collection.Add(s);
+                }
+
+                bytesRead = (int)index;
+                return (TCollectionType?)collection;
+            }
+
+            IList? list;
+            try
+            {
+                list = (IList?)Activator.CreateInstance(collectionType, length);
+            }
+            catch
+            {
+                try
+                {
+                    list = (IList?)Activator.CreateInstance(collectionType);
+                }
+                catch (Exception ex2)
+                {
+                    throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)), ex2);
+                }
+            }
+
+            if (list == null)
+            {
+                throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+            }
+
+            if (length == 0)
+            {
+                bytesRead = (int)index;
+                return (TCollectionType?)list;
+            }
+
+            index += sizeof(int);
+
+            for (int i = 0; i < length; ++i)
+            {
+                int size = ReadSerializableSizeFromBuffer(bytes + index, maxSize - index, stream: false, checkError: true);
+                index += sizeof(int);
+                if (size == int.MinValue)
+                {
+                    list.Add(null);
+                    continue;
+                }
+
+                Span<byte> span = new Span<byte>(bytes + index, size);
+
+                TSerializable s = default;
+
+                int read = s.Read(span, this);
+                if (read < 0)
+                    throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+                index += (uint)size;
+                list.Add(s);
+            }
+
+            bytesRead = (int)index;
+            return (TCollectionType?)list;
+        }
+
+        throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+    }
+
     private unsafe List<TSerializable?>? ReadSerializableList<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : IRpcSerializable
     {
         uint index = 0;
@@ -4088,6 +5228,53 @@ public class DefaultSerializer : IRpcSerializer
             TSerializable s = default!;
             if (!typeof(TSerializable).IsValueType)
                 CreateSerializable(out s);
+
+            int read = s.Read(span, this);
+            if (read < 0)
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionBufferRunOut) { ErrorCode = 1 };
+
+            index += (uint)size;
+            list.Add(s);
+        }
+
+        bytesRead = (int)index;
+        return list;
+    }
+
+    private unsafe List<TSerializable?>? ReadNullableSerializableList<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        uint index = 0;
+        if (!SerializationHelper.ReadStandardArrayHeader(bytes, maxSize, ref index, out int length, this))
+        {
+            bytesRead = (int)index;
+            return null;
+        }
+
+        if (length == 0)
+        {
+            bytesRead = (int)index;
+            return new List<TSerializable?>(0);
+        }
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+        index += sizeof(int);
+
+        List<TSerializable?> list = new List<TSerializable?>(length);
+
+        for (int i = 0; i < length; ++i)
+        {
+            int size = ReadSerializableSizeFromBuffer(bytes + index, maxSize - index, stream: false, checkError: true);
+            index += sizeof(int);
+            if (size == int.MinValue)
+            {
+                list.Add(null);
+                continue;
+            }
+
+            Span<byte> span = new Span<byte>(bytes + index, size);
+
+            TSerializable s = default;
 
             int read = s.Read(span, this);
             if (read < 0)
@@ -5231,6 +6418,56 @@ public class DefaultSerializer : IRpcSerializer
         return s;
     }
 
+    public TSerializable? ReadNullableSerializableObject<TSerializable>(Stream stream, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        int size = ReadSerializableSizeFromStream(stream);
+        if (size == int.MinValue)
+        {
+            bytesRead = sizeof(int);
+            return null;
+        }
+
+        TSerializable s = default;
+
+        int read;
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+        scoped Span<byte> buffer = size > Configuration.MaximumStackAllocationSize
+            ? new byte[size]
+            : stackalloc byte[size];
+        int readCount = stream.Read(buffer);
+#else
+        byte[] buffer = size > MaxArrayPoolSize
+            ? new byte[size]
+            : ArrayPool.Rent(size);
+        try
+        {
+            int readCount = stream.Read(buffer, 0, size);
+#endif
+
+            if (readCount < size)
+            {
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+            }
+
+            read = s.Read(buffer, this);
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+        }
+        finally
+        {
+            if (size <= MaxArrayPoolSize)
+                ArrayPool.Return(buffer);
+        }
+#endif
+
+        if (read < 0)
+        {
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+        }
+
+        bytesRead = size + sizeof(int);
+        return s;
+    }
+
     /// <inheritdoc />
     public TSerializable?[]? ReadSerializableObjects<TSerializable>(Stream stream, out int bytesRead) where TSerializable : IRpcSerializable
     {
@@ -5287,6 +6524,75 @@ public class DefaultSerializer : IRpcSerializer
             {
                 throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
             }
+        }
+
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+        }
+        finally
+        {
+            if (maxSize <= MaxArrayPoolSize)
+                ArrayPool.Return(buffer);
+        }
+#endif
+
+        return array;
+    }
+
+    /// <inheritdoc />
+    public TSerializable?[]? ReadNullableSerializableObjects<TSerializable>(Stream stream, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        if (!SerializationHelper.ReadStandardArrayHeader(stream, out int length, out bytesRead, this))
+        {
+            return null;
+        }
+
+        if (length == 0)
+        {
+            return Array.Empty<TSerializable?>();
+        }
+
+        int maxSize = ReadSerializableSizeFromStream(stream);
+        if (maxSize < 0)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
+        bytesRead += sizeof(int);
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+        TSerializable?[] array = new TSerializable?[length];
+        maxSize = Math.Max(maxSize, sizeof(int));
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+        scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
+            ? new byte[maxSize]
+            : stackalloc byte[maxSize];
+#else
+        byte[] buffer = maxSize > MaxArrayPoolSize
+            ? new byte[maxSize]
+            : ArrayPool.Rent(maxSize);
+        try
+        {
+#endif
+        for (int i = 0; i < length; ++i)
+        {
+            int size = ReadSerializableSizeFromStreamToBuffer(stream, buffer, ref bytesRead);
+            if (size == int.MinValue)
+            {
+                continue;
+            }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+            Span<byte> span = buffer.Slice(0, size);
+#else
+            Span<byte> span = buffer.AsSpan(0, size);
+#endif
+            TSerializable val = default;
+
+            int read = val.Read(span, this);
+            if (read < 0)
+            {
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+            }
+
+            array[i] = val;
         }
 
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
@@ -5519,8 +6825,6 @@ public class DefaultSerializer : IRpcSerializer
                     throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
                 bytesRead += sizeof(int);
 
-                Configuration.AssertCanCreateArrayOfType(typeof(TSerializable), length, this);
-
                 maxSize = Math.Max(maxSize, sizeof(int));
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
                 scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
@@ -5606,8 +6910,6 @@ public class DefaultSerializer : IRpcSerializer
                     throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
                 bytesRead += sizeof(int);
 
-                Configuration.AssertCanCreateArrayOfType(typeof(TSerializable), length, this);
-
                 maxSize = Math.Max(maxSize, sizeof(int));
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
                 scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
@@ -5647,6 +6949,324 @@ public class DefaultSerializer : IRpcSerializer
 
                     list.Add(s);
                 }
+
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (maxSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+
+                return (TCollectionType?)list;
+            }
+        }
+
+        throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+    }
+
+    public TCollectionType? ReadNullableSerializableObjects<TSerializable, TCollectionType>(Stream stream, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        Type collectionType = typeof(TCollectionType);
+        if (collectionType.IsValueType)
+        {
+            if (collectionType == typeof(ArraySegment<TSerializable?>))
+            {
+                TSerializable?[]? arr = ReadNullableSerializableObjects<TSerializable>(stream, out bytesRead);
+                ArraySegment<TSerializable?> seg = arr == null ? default : new ArraySegment<TSerializable?>(arr, 0, arr.Length);
+                return Unsafe.As<ArraySegment<TSerializable?>, TCollectionType>(ref seg);
+            }
+
+            if (collectionType == typeof(Memory<TSerializable?>))
+            {
+                TSerializable?[]? arr = ReadNullableSerializableObjects<TSerializable>(stream, out bytesRead);
+                Memory<TSerializable?> seg = arr == null ? default : new Memory<TSerializable?>(arr, 0, arr.Length);
+                return Unsafe.As<Memory<TSerializable?>, TCollectionType>(ref seg);
+            }
+
+            if (collectionType == typeof(ReadOnlyMemory<TSerializable?>))
+            {
+                TSerializable?[]? arr = ReadNullableSerializableObjects<TSerializable>(stream, out bytesRead);
+                ReadOnlyMemory<TSerializable?> seg = arr == null ? default : new ReadOnlyMemory<TSerializable?>(arr, 0, arr.Length);
+                return Unsafe.As<ReadOnlyMemory<TSerializable?>, TCollectionType>(ref seg);
+            }
+
+            throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+        }
+
+        if (collectionType.IsArray)
+        {
+            if (collectionType == typeof(TSerializable?[]))
+            {
+                return (TCollectionType?)(object?)ReadNullableSerializableObjects<TSerializable>(stream, out bytesRead);
+            }
+
+            Type elementType = collectionType.GetElementType()!;
+            if (elementType == typeof(object))
+            {
+                if (!SerializationHelper.ReadStandardArrayHeader(stream, out int length, out bytesRead, this))
+                {
+                    return default;
+                }
+
+                if (length == 0)
+                {
+                    return (TCollectionType)(object)Array.Empty<object>();
+                }
+
+                int maxSize = ReadSerializableSizeFromStream(stream);
+                if (maxSize < 0)
+                    throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
+                bytesRead += sizeof(int);
+
+                Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+                object?[] array = new object[length];
+                maxSize = Math.Max(maxSize, sizeof(int));
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[maxSize]
+                    : stackalloc byte[maxSize];
+#else
+                byte[] buffer = maxSize > MaxArrayPoolSize
+                    ? new byte[maxSize]
+                    : ArrayPool.Rent(maxSize);
+                try
+                {
+#endif
+                    for (int i = 0; i < length; ++i)
+                    {
+                        int size = ReadSerializableSizeFromStreamToBuffer(stream, buffer, ref bytesRead);
+                        if (size == int.MinValue)
+                        {
+                            continue;
+                        }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        Span<byte> span = buffer.Slice(0, size);
+#else
+                        Span<byte> span = buffer.AsSpan(0, size);
+#endif
+                        TSerializable s = default!;
+
+                        int read = s.Read(span, this);
+                        if (read < 0)
+                        {
+                            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+                        }
+
+                        array[i] = s;
+                    }
+
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (maxSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+
+                return (TCollectionType?)(object?)array;
+            }
+
+            throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+        }
+
+        if (collectionType.IsInterface)
+        {
+            if (collectionType.IsAssignableFrom(typeof(IReadOnlyCollection<TSerializable?>))
+                || collectionType.IsAssignableFrom(typeof(IReadOnlyList<TSerializable?>))
+                || collectionType.IsAssignableFrom(typeof(IEnumerable<TSerializable?>))
+                || collectionType == typeof(IEnumerable)
+               )
+            {
+                return (TCollectionType?)(object?)ReadNullableSerializableObjects<TSerializable>(stream, out bytesRead);
+            }
+
+            if (collectionType == typeof(IEnumerator))
+            {
+                return (TCollectionType?)ReadNullableSerializableObjects<TSerializable>(stream, out bytesRead)?.GetEnumerator();
+            }
+
+            if (collectionType.IsAssignableFrom(typeof(IEnumerator<TSerializable>)))
+            {
+                return (TCollectionType?)(object?)ReadNullableSerializableList<TSerializable>(stream, out bytesRead)?.GetEnumerator();
+            }
+
+            throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+        }
+
+        if (collectionType == typeof(List<TSerializable?>))
+        {
+            return (TCollectionType?)(object?)ReadNullableSerializableList<TSerializable>(stream, out bytesRead);
+        }
+
+        bool coll1;
+        if (collectionType.IsClass && ((coll1 = typeof(ICollection<TSerializable?>).IsAssignableFrom(collectionType)) || typeof(IList).IsAssignableFrom(collectionType)))
+        {
+            if (!SerializationHelper.ReadStandardArrayHeader(stream, out int length, out bytesRead, this))
+            {
+                return default;
+            }
+
+            Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+            if (coll1)
+            {
+                ICollection<TSerializable?>? collection;
+                try
+                {
+                    collection = (ICollection<TSerializable?>?)Activator.CreateInstance(collectionType, length);
+                }
+                catch
+                {
+                    try
+                    {
+                        collection = (ICollection<TSerializable?>?)Activator.CreateInstance(collectionType);
+                    }
+                    catch (Exception ex2)
+                    {
+                        throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)), ex2);
+                    }
+                }
+
+                if (collection == null)
+                {
+                    throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+                }
+
+                if (length == 0)
+                {
+                    return (TCollectionType?)collection;
+                }
+
+                int maxSize = ReadSerializableSizeFromStream(stream);
+                if (maxSize < 0)
+                    throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
+                bytesRead += sizeof(int);
+
+                maxSize = Math.Max(maxSize, sizeof(int));
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[maxSize]
+                    : stackalloc byte[maxSize];
+#else
+                byte[] buffer = maxSize > MaxArrayPoolSize
+                    ? new byte[maxSize]
+                    : ArrayPool.Rent(maxSize);
+                try
+                {
+#endif
+                    for (int i = 0; i < length; ++i)
+                    {
+                        int size = ReadSerializableSizeFromStreamToBuffer(stream, buffer, ref bytesRead);
+                        if (size == int.MinValue)
+                        {
+                            collection.Add(null);
+                            continue;
+                        }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        Span<byte> span = buffer.Slice(0, size);
+#else
+                        Span<byte> span = buffer.AsSpan(0, size);
+#endif
+                        TSerializable s = default;
+
+                        int read = s.Read(span, this);
+                        if (read < 0)
+                        {
+                            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+                        }
+
+                        collection.Add(s);
+                    }
+
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+                }
+                finally
+                {
+                    if (maxSize <= MaxArrayPoolSize)
+                        ArrayPool.Return(buffer);
+                }
+#endif
+
+                return (TCollectionType?)collection;
+            }
+            else
+            {
+                IList? list;
+                try
+                {
+                    list = (IList?)Activator.CreateInstance(collectionType, length);
+                }
+                catch
+                {
+                    try
+                    {
+                        list = (IList?)Activator.CreateInstance(collectionType);
+                    }
+                    catch (Exception ex2)
+                    {
+                        throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)), ex2);
+                    }
+                }
+
+                if (list == null)
+                {
+                    throw new RpcInvalidParameterException(string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInvalidCollectionType, Accessor.ExceptionFormatter.Format(collectionType)));
+                }
+
+                if (length == 0)
+                {
+                    return (TCollectionType?)list;
+                }
+
+                int maxSize = ReadSerializableSizeFromStream(stream);
+                if (maxSize < 0)
+                    throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
+                bytesRead += sizeof(int);
+
+                Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+                maxSize = Math.Max(maxSize, sizeof(int));
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
+                    ? new byte[maxSize]
+                    : stackalloc byte[maxSize];
+#else
+                byte[] buffer = maxSize > MaxArrayPoolSize
+                    ? new byte[maxSize]
+                    : ArrayPool.Rent(maxSize);
+                try
+                {
+#endif
+                    for (int i = 0; i < length; ++i)
+                    {
+                        int size = ReadSerializableSizeFromStreamToBuffer(stream, buffer, ref bytesRead);
+                        if (size == int.MinValue)
+                        {
+                            list.Add(null);
+                            continue;
+                        }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+                        Span<byte> span = buffer.Slice(0, size);
+#else
+                        Span<byte> span = buffer.AsSpan(0, size);
+#endif
+                        TSerializable s = default!;
+
+                        int read = s.Read(span, this);
+                        if (read < 0)
+                        {
+                            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+                        }
+
+                        list.Add(s);
+                    }
 
 #if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
                 }
@@ -5714,6 +7334,75 @@ public class DefaultSerializer : IRpcSerializer
 
             if (!typeof(TSerializable).IsValueType)
                 CreateSerializable(out s);
+
+            int read = s.Read(span, this);
+            if (read < 0)
+            {
+                throw new RpcParseException(Properties.Exceptions.RpcParseExceptionStreamRunOut) { ErrorCode = 2 };
+            }
+
+            list.Add(s);
+        }
+
+#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_1_OR_GREATER
+        }
+        finally
+        {
+            if (maxSize <= MaxArrayPoolSize)
+                ArrayPool.Return(buffer);
+        }
+#endif
+
+        return list;
+    }
+
+    private List<TSerializable?>? ReadNullableSerializableList<TSerializable>(Stream stream, out int bytesRead) where TSerializable : struct, IRpcSerializable
+    {
+        if (!SerializationHelper.ReadStandardArrayHeader(stream, out int length, out bytesRead, this))
+        {
+            return null;
+        }
+
+        if (length == 0)
+        {
+            return new List<TSerializable?>(0);
+        }
+
+        int maxSize = ReadSerializableSizeFromStream(stream);
+        if (maxSize < 0)
+            throw new RpcParseException(Properties.Exceptions.RpcParseExceptionInvalidSerializableSize) { ErrorCode = 11 };
+        bytesRead += sizeof(int);
+
+        Configuration.AssertCanCreateArrayOfType(typeof(TSerializable?), length, this);
+
+        List<TSerializable?> list = new List<TSerializable?>(length);
+        maxSize = Math.Max(maxSize, sizeof(int));
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+        scoped Span<byte> buffer = maxSize > Configuration.MaximumStackAllocationSize
+            ? new byte[maxSize]
+            : stackalloc byte[maxSize];
+#else
+        byte[] buffer = maxSize > MaxArrayPoolSize
+            ? new byte[maxSize]
+            : ArrayPool.Rent(maxSize);
+        try
+        {
+#endif
+        for (int i = 0; i < length; ++i)
+        {
+            int size = ReadSerializableSizeFromStreamToBuffer(stream, buffer, ref bytesRead);
+            if (size == int.MinValue)
+            {
+                list.Add(null);
+                continue;
+            }
+
+#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+            Span<byte> span = buffer.Slice(0, size);
+#else
+            Span<byte> span = buffer.AsSpan(0, size);
+#endif
+            TSerializable s = default!;
 
             int read = s.Read(span, this);
             if (read < 0)

@@ -41,7 +41,7 @@ public class WebSocketsConnector
         try
         {
             connection = await endpoint.RequestConnectionAsync(_router, _lifetime, _serializer, token).ConfigureAwait(false);
-            connection.OnReconnect += ReconnectHandler;
+            connection.OnRequestingReconnect += ReconnectHandler;
             connection.Local.SetLogger(Accessor.Active);
         }
         catch (Exception ex)
