@@ -15,7 +15,6 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -26,8 +25,6 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using IRpcRouter = DanielWillett.ModularRpcs.Routing.IRpcRouter;
-using RpcOverhead = DanielWillett.ModularRpcs.Protocol.RpcOverhead;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 internal sealed class SerializerGenerator
@@ -214,9 +211,6 @@ internal sealed class SerializerGenerator
 
     internal static bool IsRpcSerializableType(Type type)
     {
-        if (IsPrimitiveLikeType(type))
-            return false;
-
         return type.IsDefinedSafe<RpcSerializableAttribute>() && typeof(IRpcSerializable).IsAssignableFrom(type);
     }
 
@@ -238,11 +232,6 @@ internal sealed class SerializerGenerator
     {
         return type.IsPrimitive
                || type.IsEnum
-               || type == typeof(decimal)
-               || type == typeof(DateTime)
-               || type == typeof(DateTimeOffset)
-               || type == typeof(TimeSpan)
-               || type == typeof(Guid)
 #if NET5_0_OR_GREATER
                || type == typeof(Half)
 #endif
@@ -293,18 +282,43 @@ internal sealed class SerializerGenerator
     }
     internal static bool CanQuickSerializeType(Type type)
     {
-        return BitConverter.IsLittleEndian && (type.IsPrimitive && (IntPtr.Size == 8 || type != typeof(nint) && type != typeof(nuint)) || type.IsEnum);
+        if (type == typeof(byte) || type == typeof(sbyte))
+            return true;
+
+        Type? underlyingType = null;
+
+        if (IntPtr.Size != 8)
+        {
+            if (type == typeof(nint) || type == typeof(nuint))
+                return false;
+
+            if (type.IsEnum)
+            {
+                underlyingType = type.GetEnumUnderlyingType();
+                if (underlyingType == typeof(nint) || underlyingType == typeof(nuint))
+                    return false;
+            }
+        }
+
+        if (type.IsEnum)
+        {
+            underlyingType ??= type.GetEnumUnderlyingType();
+            if (!BitConverter.IsLittleEndian)
+                return underlyingType == typeof(byte) || underlyingType == typeof(sbyte);
+
+            return true;
+        }
+
+        return BitConverter.IsLittleEndian && type.IsPrimitive;
     }
+
     internal static bool ShouldBePassedByReference(Type type)
     {
         return type.IsValueType
-               && (!IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal)
-#if NET7_0_OR_GREATER
-                   || type == typeof(UInt128) || type == typeof(Int128)
-#endif
-               )
+               && !(IsPrimitiveLikeType(type) || type == typeof(Guid) || type == typeof(decimal))
                && Nullable.GetUnderlyingType(type) == null;
     }
+
     internal static int GetPrimitiveTypeSize(Type type)
     {
         if (type == typeof(byte) || type == typeof(bool) || type == typeof(sbyte))
@@ -466,7 +480,7 @@ internal sealed class SerializerGenerator
 
                 case TypeSerializationInfoType.NullableValue:
                     il.CommentIfDebug($"size += serializer.WriteNullableObject<{genType}>(in arg{i}, bytes + index, maxSize - index);");
-                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValBytes.MakeGenericMethod(genType);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValBytes.MakeGenericMethod(info.UnderlyingType);
                     break;
 
                 case TypeSerializationInfoType.SerializableValue:
@@ -511,16 +525,19 @@ internal sealed class SerializerGenerator
 
                     il.Emit(OpCodes.Call, callHasValue);
                     Label hasValue = il.DefineLabel();
+                    Label doesntHaveValue = il.DefineLabel();
                     il.Emit(OpCodes.Brtrue_S, hasValue);
 
                     // if (!arg{i}.HasValue) {
                     il.Emit(OpCodes.Pop);
                     il.Emit(OpCodes.Ldnull);
+                    il.Emit(OpCodes.Br, doesntHaveValue);
 
                     // } else {
                     il.MarkLabel(hasValue);
                     il.Emit(OpCodes.Call, callGetValue);
                     il.Emit(OpCodes.Box, info.UnderlyingType);
+                    il.MarkLabel(doesntHaveValue);
                     // }
                     if (info.Type == TypeSerializationInfoType.NullableCollectionSerializableCollection)
                     {
@@ -635,7 +652,7 @@ internal sealed class SerializerGenerator
 
                 case TypeSerializationInfoType.NullableValue:
                     il.CommentIfDebug($"size += serializer.WriteNullableObject<{genType}>(in arg{i}, stream);");
-                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValStream.MakeGenericMethod(genType);
+                    writeMtd = CommonReflectionCache.RpcSerializerWriteNullableObjectByValStream.MakeGenericMethod(info.UnderlyingType);
                     break;
 
                 case TypeSerializationInfoType.SerializableValue:
@@ -680,16 +697,19 @@ internal sealed class SerializerGenerator
 
                     il.Emit(OpCodes.Call, callHasValue);
                     Label hasValue = il.DefineLabel();
+                    Label doesntHaveValue = il.DefineLabel();
                     il.Emit(OpCodes.Brtrue_S, hasValue);
 
                     // if (!arg{i}.HasValue) {
                     il.Emit(OpCodes.Pop);
                     il.Emit(OpCodes.Ldnull);
+                    il.Emit(OpCodes.Br, doesntHaveValue);
 
                     // } else {
                     il.MarkLabel(hasValue);
                     il.Emit(OpCodes.Call, callGetValue);
                     il.Emit(OpCodes.Box, info.UnderlyingType);
+                    il.MarkLabel(doesntHaveValue);
                     // }
                     if (info.Type == TypeSerializationInfoType.NullableCollectionSerializableCollection)
                     {
@@ -920,16 +940,19 @@ internal sealed class SerializerGenerator
 
                     il.Emit(OpCodes.Call, callHasValue);
                     Label hasValue = il.DefineLabel();
+                    Label doesntHaveValue = il.DefineLabel();
                     il.Emit(OpCodes.Brtrue_S, hasValue);
 
                     // if (!arg{i}.HasValue) {
                     il.Emit(OpCodes.Pop);
                     il.Emit(OpCodes.Ldnull);
+                    il.Emit(OpCodes.Br, doesntHaveValue);
 
                     // } else {
                     il.MarkLabel(hasValue);
                     il.Emit(OpCodes.Call, callGetValue);
                     il.Emit(OpCodes.Box, info.UnderlyingType);
+                    il.MarkLabel(doesntHaveValue);
                     // }
                     if (info.Type == TypeSerializationInfoType.NullableCollectionSerializableCollection)
                     {
@@ -1467,16 +1490,16 @@ internal sealed class SerializerGenerator
 
         Label lblRtn = il.DefineLabel();
         Type rtnType = method.ReturnType;
-        bool isAwaitable = TypeUtility.IsAwaitable(rtnType,
-            _proxyGenerator.UseConfigureAwaitWhenAwaitingRpcInvocations,
-            out Type? awaitReturnType,
-            out MethodInfo? configureAwaitMethod,
-            out MethodInfo? getAwaiterMethod,
-            out MethodInfo? getResultMethod,
-            out MethodInfo? onCompletedMethod,
-            out PropertyInfo? getIsCompletedProperty);
+
         LocalBuilder? lclResult;
-        if (isAwaitable)
+        if (TypeUtility.IsAwaitable(rtnType,
+                _proxyGenerator.UseConfigureAwaitWhenAwaitingRpcInvocations,
+                out Type? awaitReturnType,
+                out MethodInfo? configureAwaitMethod,
+                out MethodInfo? getAwaiterMethod,
+                out MethodInfo? getResultMethod,
+                out MethodInfo? onCompletedMethod,
+                out PropertyInfo? getIsCompletedProperty))
         {
             LocalBuilder? lclAwaitable = null;
             if (rtnType.IsValueType)
@@ -1486,7 +1509,7 @@ internal sealed class SerializerGenerator
                 il.Emit(OpCodes.Ldloca, lclAwaitable);
             }
             lblReturnType = il.DefineLabel();
-            LocalBuilder lclAwaiter = il.DeclareLocal(getAwaiterMethod!.ReturnType);
+            LocalBuilder lclAwaiter = il.DeclareLocal(getAwaiterMethod.ReturnType);
             if (configureAwaitMethod != null)
             {
                 if (configureAwaitMethod.ReturnType == typeof(void))
@@ -1497,7 +1520,7 @@ internal sealed class SerializerGenerator
                         il.Emit(OpCodes.Dup);
                     }
                     il.Emit(OpCodes.Ldc_I4_0);
-                    il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
+                    il.Emit(configureAwaitMethod.DeclaringType is { IsValueType: true } ? OpCodes.Call : OpCodes.Callvirt, configureAwaitMethod);
                     il.CommentIfDebug("awaiter = task.GetResult()");
                     if (lclAwaitable != null)
                     {
@@ -1510,7 +1533,7 @@ internal sealed class SerializerGenerator
                 {
                     il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter() // outputs ref value type");
                     il.Emit(OpCodes.Ldc_I4_0);
-                    il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
+                    il.Emit(configureAwaitMethod.DeclaringType is { IsValueType: true } ? OpCodes.Call : OpCodes.Callvirt, configureAwaitMethod);
                     il.Emit(OpCodes.Call, getAwaiterMethod);
                 }
                 else if (configureAwaitMethod.ReturnType.IsValueType)
@@ -1521,7 +1544,7 @@ internal sealed class SerializerGenerator
                         ? lclAwaitable
                         : il.DeclareLocal(configureAwaitMethod.ReturnType);
                     il.Emit(OpCodes.Ldc_I4_0);
-                    il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
+                    il.Emit(configureAwaitMethod.DeclaringType is { IsValueType: true } ? OpCodes.Call : OpCodes.Callvirt, configureAwaitMethod);
                     il.Emit(OpCodes.Stloc, lclTask);
                     il.Emit(OpCodes.Ldloca, lclTask);
                     il.Emit(OpCodes.Call, getAwaiterMethod);
@@ -1530,27 +1553,27 @@ internal sealed class SerializerGenerator
                 {
                     il.CommentIfDebug("awaiter = task.ConfigureAwait(false).GetAwaiter() // outputs reference type");
                     il.Emit(OpCodes.Ldc_I4_0);
-                    il.Emit(configureAwaitMethod.GetCallRuntime(), configureAwaitMethod);
+                    il.Emit(configureAwaitMethod.DeclaringType is { IsValueType: true } ? OpCodes.Call : OpCodes.Callvirt, configureAwaitMethod);
                     if (configureAwaitMethod.ReturnType.IsByRef)
                         il.Emit(OpCodes.Ldind_Ref);
-                    il.Emit(getAwaiterMethod.GetCallRuntime(), getAwaiterMethod);
+                    il.Emit(OpCodes.Callvirt, getAwaiterMethod);
                 }
             }
             else
             {
                 il.CommentIfDebug("awaiter = task.GetAwaiter()");
-                il.Emit(getAwaiterMethod.GetCallRuntime(), getAwaiterMethod);
+                il.Emit(getAwaiterMethod.DeclaringType is { IsValueType: true } ? OpCodes.Call : OpCodes.Callvirt, getAwaiterMethod);
             }
 
             if (!lclAwaiter.LocalType!.IsValueType)
                 il.Emit(OpCodes.Dup, lclAwaiter);
             il.Emit(OpCodes.Stloc, lclAwaiter);
 
-            if (lclAwaiter.LocalType!.IsValueType)
+            if (lclAwaiter.LocalType.IsValueType)
                 il.Emit(OpCodes.Ldloca, lclAwaiter);
 
             il.CommentIfDebug("bool isCompleted = awaiter.IsCompleted");
-            il.Emit(getIsCompletedProperty!.GetMethod.GetCallRuntime(), getIsCompletedProperty.GetMethod);
+            il.Emit(getIsCompletedProperty.DeclaringType is { IsValueType: true } ? OpCodes.Call : OpCodes.Callvirt, getIsCompletedProperty.GetMethod!);
 
             Label lblQueueContinuation = il.DefineLabel();
 
@@ -1558,14 +1581,14 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Brfalse, lblQueueContinuation);
 
 
-            lclResult = getResultMethod!.ReturnType == typeof(void) ? null : il.DeclareLocal(getResultMethod.ReturnType);
+            lclResult = getResultMethod.ReturnType == typeof(void) ? null : il.DeclareLocal(getResultMethod.ReturnType);
 
             // try {
             il.BeginExceptionBlock();
 
-            il.CommentIfDebug($"    {Accessor.Formatter.Format(awaitReturnType!)} rtnValue = awaiter.GetResult()");
+            il.CommentIfDebug($"    {Accessor.Formatter.Format(awaitReturnType)} rtnValue = awaiter.GetResult()");
 
-            if (lclAwaiter.LocalType!.IsValueType)
+            if (lclAwaiter.LocalType.IsValueType)
                 il.Emit(OpCodes.Ldloca, lclAwaiter);
             else
                 il.Emit(OpCodes.Ldloc, lclAwaiter);
@@ -1596,21 +1619,21 @@ internal sealed class SerializerGenerator
             il.CommentIfDebug("} else {");
             il.MarkLabel(lblQueueContinuation);
 
-            Type[] ctorArgs = [ typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), getAwaiterMethod.ReturnType ];
-            Type closureType;
+            Type? closureType;
+            Type closureLookupType = getAwaiterMethod.ReturnType;
             lock (_closureTypes)
             {
-                if (!_closureTypes.TryGetValue(getAwaiterMethod.ReturnType, out closureType))
+                if (!_closureTypes.TryGetValue(closureLookupType, out closureType))
                 {
                     // create a closure type to capture necessary information for continuation
                     TypeBuilder tb = ProxyGenerator.Instance.ModuleBuilder.DefineType("Closure_"
-                        + (getAwaiterMethod.ReturnType.FullName ?? getAwaiterMethod.ReturnType.Name).Replace('+', '_').Replace('.', '_'),
+                        + (closureLookupType.FullName ?? closureLookupType.Name).Replace('+', '_').Replace('.', '_'),
                         TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.SpecialName);
 
                     FieldBuilder overheadField = tb.DefineField("_overhead", typeof(RpcOverhead), FieldAttributes.Public | FieldAttributes.InitOnly);
                     FieldBuilder routerField = tb.DefineField("_router", typeof(IRpcRouter), FieldAttributes.Public | FieldAttributes.InitOnly);
                     FieldBuilder serializerField = tb.DefineField("_serializer", typeof(IRpcSerializer), FieldAttributes.Public | FieldAttributes.InitOnly);
-                    FieldBuilder awaiterField = tb.DefineField("_awaiter", getAwaiterMethod.ReturnType, FieldAttributes.Public);
+                    FieldBuilder awaiterField = tb.DefineField("_awaiter", closureLookupType, FieldAttributes.Public);
 
                     // Continuation action
                     MethodBuilder continuation = tb.DefineMethod(
@@ -1624,32 +1647,33 @@ internal sealed class SerializerGenerator
                     IOpCodeEmitter contIl = continuation.AsEmitter(debuggable: ProxyGenerator.DebugPrint, addBreakpoints: ProxyGenerator.BreakpointPrint);
 
                     LocalBuilder? lclResult2 = getResultMethod.ReturnType == typeof(void) ? null : contIl.DeclareLocal(getResultMethod.ReturnType);
-
+                    
                     Label lblContRtn = contIl.DefineLabel();
                     Label lblExitTry = contIl.DefineLabel();
-
+                    
                     // try {
                     contIl.BeginExceptionBlock();
-
+                    
                     contIl.CommentIfDebug("[var rtnValue = ]awaiter.GetResult()");
                     contIl.Emit(OpCodes.Ldarg_0);
                     if (awaiterField.FieldType.IsValueType)
                         contIl.Emit(OpCodes.Ldflda, awaiterField);
                     else
                         contIl.Emit(OpCodes.Ldfld, awaiterField);
-
+                    
                     contIl.Emit(getResultMethod.GetCallRuntime(), getResultMethod);
                     if (lclResult2 != null)
                         contIl.Emit(OpCodes.Stloc, lclResult2);
 
                     contIl.Emit(OpCodes.Leave, lblExitTry);
-
+                    
                     // } catch (Exception ex) {
                     contIl.BeginCatchBlock(typeof(Exception));
-
+                    
                     lclEx = contIl.DeclareLocal(typeof(Exception));
-                    contIl.Emit(OpCodes.Stloc, lclEx);
 
+                    contIl.Emit(OpCodes.Stloc, lclEx);
+                    
                     contIl.CommentIfDebug("  router.HandleInvokeException(ex, overhead, serializer)");
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, routerField);
@@ -1659,12 +1683,12 @@ internal sealed class SerializerGenerator
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, serializerField);
                     contIl.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcRouterHandleInvokeException);
-
+                    
                     contIl.CommentIfDebug("  return");
                     contIl.Emit(OpCodes.Leave, lblContRtn);
                     contIl.EndExceptionBlock();
                     // }
-
+                    
                     contIl.MarkLabel(lblExitTry);
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, routerField);
@@ -1672,18 +1696,19 @@ internal sealed class SerializerGenerator
                     {
                         contIl.Emit(OpCodes.Ldloc, lclResult2);
                     }
-
-                    MethodInfo processMethod = ProcessReturnValue(il, awaitReturnType!);
-
+                    
+                    MethodInfo processMethod = ProcessReturnValue(contIl, awaitReturnType);
+                    
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, overheadField);
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, serializerField);
                     contIl.Emit(OpCodes.Callvirt, processMethod);
-
+                    
                     contIl.MarkLabel(lblContRtn);
                     contIl.Emit(OpCodes.Ret);
-
+                    
+                    Type[] ctorArgs = [ typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), closureLookupType ];
                     // Constructor
                     ConstructorBuilder ctor = tb.DefineConstructor(
                         MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
@@ -1727,7 +1752,7 @@ internal sealed class SerializerGenerator
 
                     ctorIl.Emit(OpCodes.Newobj, CommonReflectionCache.ActionConstructor);
                     
-                    ctorIl.Emit(onCompletedMethod!.GetCallRuntime(), onCompletedMethod!);
+                    ctorIl.Emit(onCompletedMethod.GetCallRuntime(), onCompletedMethod);
 
                     ctorIl.Emit(OpCodes.Ret);
 
@@ -1737,12 +1762,12 @@ internal sealed class SerializerGenerator
                     closureType = tb.CreateType()!;
 #endif
 
-                    _closureTypes.Add(getAwaiterMethod.ReturnType, closureType);
+                    _closureTypes.Add(closureLookupType, closureType);
                 }
             }
-
-            ConstructorInfo fullCtor = closureType.GetConstructor(ctorArgs)!;
-
+            
+            ConstructorInfo fullCtor = closureType.GetConstructors(BindingFlags.Instance | BindingFlags.Public)[0];
+            
             il.CommentIfDebug("  _ = new Closure(overhead, router, serializer, awaiter)");
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));
@@ -1750,6 +1775,10 @@ internal sealed class SerializerGenerator
             il.Emit(OpCodes.Ldloc, lclAwaiter);
             il.Emit(OpCodes.Newobj, fullCtor);
             il.Emit(OpCodes.Pop);
+            // skip async stuff: awaitReturnType = typeof(void);
+            // skip async stuff: lblReturnType ??= il.DefineLabel();
+            // skip async stuff: lclResult = null;
+            // skip async stuff: il.Emit(OpCodes.Br, lblReturnType.Value);
             il.CommentIfDebug("  return");
             il.Emit(OpCodes.Br, lblRtn);
         }
@@ -1767,7 +1796,7 @@ internal sealed class SerializerGenerator
         if (lclResult != null)
             il.Emit(OpCodes.Ldloc, lclResult);
 
-        MethodInfo processMethod2 = ProcessReturnValue(il, awaitReturnType!);
+        MethodInfo processMethod2 = ProcessReturnValue(il, awaitReturnType);
         il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
         il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcSerializer)) ));
         il.Emit(OpCodes.Callvirt, processMethod2);
@@ -1790,7 +1819,7 @@ internal sealed class SerializerGenerator
 
             case TypeSerializationInfoType.NullableValue:
                 il.CommentIfDebug($"  router.HandleInvokeNullableReturnValue<{awaitReturnType}>(rtnValue, overhead, serializer)");
-                return CommonReflectionCache.RpcRouterHandleInvokeNullableReturnValue.MakeGenericMethod(awaitReturnType);
+                return CommonReflectionCache.RpcRouterHandleInvokeNullableReturnValue.MakeGenericMethod(info.UnderlyingType);
 
             case TypeSerializationInfoType.SerializableValue:
                 il.CommentIfDebug($"  router.HandleInvokeSerializableReturnValue<{info.SerializableType}>(rtnValue, null, overhead, serializer)");
@@ -1804,8 +1833,7 @@ internal sealed class SerializerGenerator
 
             case TypeSerializationInfoType.SerializableCollection:
             case TypeSerializationInfoType.NullableSerializableCollection:
-                bool nullable = info.Type is TypeSerializationInfoType.NullableSerializableCollection
-                    or TypeSerializationInfoType.NullableCollectionNullableSerializableCollection;
+                bool nullable = info.Type == TypeSerializationInfoType.NullableSerializableCollection;
                 if (!nullable)
                     il.CommentIfDebug($"  router.HandleSerializableReturnValue<{info.SerializableType}>(default, rtnValue ?? DBNull.Value, overhead, serializer)");
                 else
@@ -1848,12 +1876,25 @@ internal sealed class SerializerGenerator
 
             case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
             case TypeSerializationInfoType.NullableCollectionSerializableCollection:
-
+                nullable = info.Type == TypeSerializationInfoType.NullableCollectionNullableSerializableCollection;
                 MethodInfo callHasValue = CommonReflectionCache.GetNullableHasValueGetter(awaitReturnType);
 
                 MethodInfo callGetValue = CommonReflectionCache.GetNullableValueGetter(awaitReturnType);
+
                 lclRtnValue = il.DeclareLocal(awaitReturnType);
                 il.Emit(OpCodes.Stloc, lclRtnValue);
+                if (nullable || info.SerializableType.IsValueType)
+                {
+                    LocalBuilder lclDefault = il.DeclareLocal(info.SerializableType);
+                    il.Emit(OpCodes.Ldloca, lclDefault);
+                    il.Emit(OpCodes.Initobj, info.SerializableType);
+                    il.Emit(OpCodes.Ldloc, lclDefault);
+                }
+                else
+                {
+                    il.Emit(OpCodes.Ldnull);
+                }
+
                 il.Emit(OpCodes.Ldloca, lclRtnValue);
 
                 il.CommentIfDebug("lclRtnValue = arg.HasValue ? arg.Value : null");
@@ -1862,18 +1903,24 @@ internal sealed class SerializerGenerator
 
                 il.Emit(OpCodes.Call, callHasValue);
                 Label hasValue = il.DefineLabel();
+                Label doesntHaveValue = il.DefineLabel();
                 il.Emit(OpCodes.Brtrue_S, hasValue);
 
                 // if (!arg{i}.HasValue) {
                 il.Emit(OpCodes.Pop);
-                il.Emit(OpCodes.Ldnull);
+                il.Emit(OpCodes.Ldsfld, CommonReflectionCache.GetDbNullValue);
+                il.Emit(OpCodes.Br, doesntHaveValue);
 
                 // } else {
                 il.MarkLabel(hasValue);
                 il.Emit(OpCodes.Call, callGetValue);
-                awaitReturnType = Nullable.GetUnderlyingType(info.CollectionType)!;
-                // }
-                goto case TypeSerializationInfoType.SerializableCollection;
+                il.Emit(OpCodes.Box, info.UnderlyingType);
+                il.MarkLabel(doesntHaveValue);
+
+                return !nullable
+                    ? CommonReflectionCache.RpcRouterHandleInvokeSerializableReturnValue.MakeGenericMethod(info.SerializableType)
+                    : CommonReflectionCache.RpcRouterHandleInvokeNullableSerializableReturnValue.MakeGenericMethod(info.UnderlyingType);
+
 
             default:
                 throw new InvalidOperationException($"Invalid type: {info.Type}."); // shouldn't be reached
@@ -1911,7 +1958,6 @@ internal sealed class SerializerGenerator
 
             TypeSerializationInfo info = new TypeSerializationInfo(type);
 
-            Type? underlyingNullableType = Nullable.GetUnderlyingType(type);
             bindLcls[i] = il.DeclareLocal(type);
 
             Label lblDoPrimitiveRead = default;
@@ -2200,8 +2246,6 @@ internal sealed class SerializerGenerator
                         il.Emit(OpCodes.Ldloca, lclTempByteCt);
                         il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcSerializerReadSerializableObjectsAnyStream.MakeGenericMethod(info.SerializableType, info.CollectionType));
                     }
-
-                    il.Emit(OpCodes.Stloc, bindLcls[i]);
 
                     if (info.Type != TypeSerializationInfoType.SerializableCollection)
                     {

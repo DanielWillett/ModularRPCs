@@ -1,3 +1,7 @@
+#if DEBUG
+// #define WRITE_TO_FILE
+#endif
+
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
@@ -56,7 +60,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private delegate ValueTask ConvReturnValueToVt(object returnValue);
     private delegate object? ConvVtToReturnValue(Task task);
 #if DEBUG
-    internal const bool DebugPrint = false;
+    // set to true to print IL code
+    internal const bool DebugPrint = true;
     internal const bool BreakpointPrint = false;
 #else 
     internal const bool DebugPrint = false;
@@ -172,7 +177,13 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         SerializerGenerator = new SerializerGenerator(this);
         Assembly thisAssembly = Assembly.GetExecutingAssembly();
         ProxyAssemblyName = new AssemblyName(thisAssembly.GetName().Name + ".Proxy");
+#if NET9_0_OR_GREATER && WRITE_TO_FILE
+        AssemblyBuilder = new PersistedAssemblyBuilder(ProxyAssemblyName, typeof(object).Assembly);
+#elif NETFRAMEWORK && WRITE_TO_FILE
+        AssemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(ProxyAssemblyName, AssemblyBuilderAccess.RunAndSave);
+#else
         AssemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(ProxyAssemblyName, AssemblyBuilderAccess.RunAndCollect);
+#endif
         ModuleBuilder = AssemblyBuilder.DefineDynamicModule(ProxyAssemblyName.Name!);
         _identifierErrorConstructor = typeof(RpcObjectInitializationException).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, null, [ typeof(string) ], null)
                                       ?? throw new MemberAccessException("Failed to find RpcObjectInitializationException(string).");
@@ -1679,18 +1690,25 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         ProxyTypeInfo info = default;
 
         string typeName = (type.FullName ?? type.Name) + "<RPC_Proxy>";
-        if (ModuleBuilder.GetType(typeName, false, false) != null)
+        try
         {
-            typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
-            string copiedTypeName = typeName;
-            int dupNum = 0;
-            while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+            if (ModuleBuilder.GetType(typeName, false, false) != null)
             {
-                ++dupNum;
-                copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
-            }
+                typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
+                string copiedTypeName = typeName;
+                int dupNum = 0;
+                while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
+                {
+                    ++dupNum;
+                    copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
+                }
 
-            typeName = copiedTypeName;
+                typeName = copiedTypeName;
+            }
+        }
+        catch (NotImplementedException)
+        {
+            typeName = type.Name + "_" + Guid.NewGuid();
         }
 
         bool unity = false;

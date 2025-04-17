@@ -323,7 +323,15 @@ public interface IRpcSerializer
     /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
-    unsafe object? ReadSerializableObjects(Type elementType, Type collectionType, byte* bytes, uint maxSize, out int bytesRead);
+    unsafe object? ReadSerializableObjects(Type elementType, Type collectionType, byte* bytes, uint maxSize, bool isNullable, out int bytesRead);
+
+    /// <summary>
+    /// Read a list of serializable objects from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    unsafe object? ReadNullableSerializableObjects(Type elementType, Type underlyingType, Type collectionType, byte* bytes, uint maxSize, out int bytesRead);
 
     /// <summary>
     /// Read a nullable reference type or value type from a raw binary buffer to a <see cref="TypedReference"/>.
@@ -417,7 +425,15 @@ public interface IRpcSerializer
     /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
-    object? ReadSerializableObjects(Type elementType, Type collectionType, Stream stream, out int bytesRead);
+    object? ReadSerializableObjects(Type elementType, Type collectionType, Stream stream, bool isNullable, out int bytesRead);
+
+    /// <summary>
+    /// Read a list of serializable objects from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    object? ReadNullableSerializableObjects(Type elementType, Type underlyingType, Type collectionType, Stream stream, out int bytesRead);
 
     /// <summary>
     /// Read a nullable reference type or value type from a stream to a <see cref="TypedReference"/>.

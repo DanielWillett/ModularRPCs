@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Reflection;
 using System;
 
 namespace DanielWillett.ModularRpcs.Serialization;
@@ -52,8 +52,9 @@ internal readonly struct TypeSerializationInfo
             {
                 Type = TypeSerializationInfoType.NullableValue;
                 SerializableType = type;
-                UnderlyingType = nullableType;
             }
+
+            UnderlyingType = nullableType;
         }
         else
         {

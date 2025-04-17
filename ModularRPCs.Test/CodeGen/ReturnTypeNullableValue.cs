@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace ModularRPCs.Test.CodeGen;
 
 [NonParallelizable, TestFixture]
-public class NullableReturnType
+public class ReturnTypeNullableValue
 {
     private static bool _wasInvoked;
     private const int RtnValue = 3;
@@ -201,7 +201,7 @@ public class NullableReturnType
         int? rtnValue = await proxy.InvokeFromClient(true);
 
         Assert.That(_wasInvoked, Is.True);
-        Assert.That(rtnValue, Is.EqualTo(RtnValue));
+        Assert.That(rtnValue, Is.Null);
     }
 
 
