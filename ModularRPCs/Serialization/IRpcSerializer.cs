@@ -1,10 +1,8 @@
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using DanielWillett.ModularRpcs.Configuration;
-using JetBrains.Annotations;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -58,7 +56,19 @@ public interface IRpcSerializer
     /// Get the size of an object in bytes.
     /// </summary>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int GetNullableSerializableSize<TSerializable>(in TSerializable? value) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
+    /// Get the size of an object in bytes.
+    /// </summary>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     int GetSerializablesSize<TSerializable>(IEnumerable<TSerializable?>? value) where TSerializable : IRpcSerializable;
+
+    /// <summary>
+    /// Get the size of an object in bytes.
+    /// </summary>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int GetNullableSerializablesSize<TSerializable>(IEnumerable<TSerializable?>? value) where TSerializable : struct, IRpcSerializable;
 
     /// <summary>
     /// Get the size of an object of type <paramref name="valueType"/> in bytes.
@@ -128,11 +138,25 @@ public interface IRpcSerializer
     unsafe int WriteSerializableObject<TSerializable>(in TSerializable? serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Write a serializable object to a raw binary buffer. 
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    unsafe int WriteNullableSerializableObject<TSerializable>(in TSerializable? serializable, byte* bytes, uint maxSize) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
     /// Write a list of serializable objects to a raw binary buffer. 
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     unsafe int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, byte* bytes, uint maxSize) where TSerializable : IRpcSerializable;
+
+    /// <summary>
+    /// Write a list of serializable objects to a raw binary buffer. 
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="bytes"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    unsafe int WriteNullableSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, byte* bytes, uint maxSize) where TSerializable : struct, IRpcSerializable;
 
     /// <summary>
     /// Write a nullable reference type or value type to a raw binary buffer via a <see cref="TypedReference"/>.
@@ -179,11 +203,25 @@ public interface IRpcSerializer
     int WriteSerializableObject<TSerializable>(in TSerializable? serializable, Stream stream) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Write a serializable object to a stream. 
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteNullableSerializableObject<TSerializable>(in TSerializable? serializable, Stream stream) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
     /// Write a list of serializable objects to a stream. 
     /// </summary>
     /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     int WriteSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, Stream stream) where TSerializable : IRpcSerializable;
+
+    /// <summary>
+    /// Write a list of serializable objects to a stream. 
+    /// </summary>
+    /// <returns>Number of bytes written to <paramref name="stream"/>.</returns>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    int WriteNullableSerializableObjects<TSerializable>(IEnumerable<TSerializable?>? serializable, Stream stream) where TSerializable : struct, IRpcSerializable;
 
     /// <summary>
     /// Write a nullable reference type or value type to a stream via a <see cref="TypedReference"/>.
@@ -240,6 +278,14 @@ public interface IRpcSerializer
     unsafe TSerializable? ReadSerializableObject<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Read a serializable object from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    unsafe TSerializable? ReadNullableSerializableObject<TSerializable>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
     /// Read a list of serializable objects from a raw binary buffer.
     /// </summary>
     /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
@@ -256,6 +302,14 @@ public interface IRpcSerializer
     unsafe TCollectionType? ReadSerializableObjects<TSerializable, TCollectionType>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Read a list of serializable objects from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    unsafe TCollectionType? ReadNullableSerializableObjects<TSerializable, TCollectionType>(byte* bytes, uint maxSize, out int bytesRead) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
     /// Read a serializable object from a raw binary buffer.
     /// </summary>
     /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
@@ -269,7 +323,15 @@ public interface IRpcSerializer
     /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
-    unsafe object? ReadSerializableObjects(Type elementType, Type collectionType, byte* bytes, uint maxSize, out int bytesRead);
+    unsafe object? ReadSerializableObjects(Type elementType, Type collectionType, byte* bytes, uint maxSize, bool isNullable, out int bytesRead);
+
+    /// <summary>
+    /// Read a list of serializable objects from a raw binary buffer.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="bytes"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    unsafe object? ReadNullableSerializableObjects(Type elementType, Type underlyingType, Type collectionType, byte* bytes, uint maxSize, out int bytesRead);
 
     /// <summary>
     /// Read a nullable reference type or value type from a raw binary buffer to a <see cref="TypedReference"/>.
@@ -318,6 +380,14 @@ public interface IRpcSerializer
     TSerializable? ReadSerializableObject<TSerializable>(Stream stream, out int bytesRead) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Read a serializable object from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    TSerializable? ReadNullableSerializableObject<TSerializable>(Stream stream, out int bytesRead) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
     /// Read a list of serializable objects from a stream.
     /// </summary>
     /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
@@ -334,6 +404,14 @@ public interface IRpcSerializer
     TCollectionType? ReadSerializableObjects<TSerializable, TCollectionType>(Stream stream, out int bytesRead) where TSerializable : IRpcSerializable;
 
     /// <summary>
+    /// Read a list of serializable objects from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    TCollectionType? ReadNullableSerializableObjects<TSerializable, TCollectionType>(Stream stream, out int bytesRead) where TSerializable : struct, IRpcSerializable;
+
+    /// <summary>
     /// Read a serializable object from a stream.
     /// </summary>
     /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
@@ -347,7 +425,15 @@ public interface IRpcSerializer
     /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
     /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
     /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
-    object? ReadSerializableObjects(Type elementType, Type collectionType, Stream stream, out int bytesRead);
+    object? ReadSerializableObjects(Type elementType, Type collectionType, Stream stream, bool isNullable, out int bytesRead);
+
+    /// <summary>
+    /// Read a list of serializable objects from a stream.
+    /// </summary>
+    /// <exception cref="RpcParseException"><paramref name="stream"/> was not long enough, or there was another parsing or formatting error.</exception>
+    /// <exception cref="RpcInvalidParameterException">The type given is not serializable.</exception>
+    /// <returns>The value read, or <see langword="null"/> if the reference type was written as <see langword="null"/>.</returns>
+    object? ReadNullableSerializableObjects(Type elementType, Type underlyingType, Type collectionType, Stream stream, out int bytesRead);
 
     /// <summary>
     /// Read a nullable reference type or value type from a stream to a <see cref="TypedReference"/>.

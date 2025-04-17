@@ -18,7 +18,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -1230,7 +1229,9 @@ public class RpcEndpoint : IRpcInvocationPoint
         IsKnownTypeOnly = 1,
         IsTypeNameOnly = 1 << 1,
         IsSerializableType = 1 << 2,
-        IsSerializableCollectionType = (1 << 3) | IsSerializableType
+        IsSerializableCollectionType = (1 << 3) | IsSerializableType,
+        IsNullableSerializableCollectionElementType = 1 << 4 | IsSerializableCollectionType,
+        NullCollectionValueAmbiguousCase = 1 << 5
     }
 
     [Flags]

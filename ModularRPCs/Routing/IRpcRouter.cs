@@ -131,7 +131,7 @@ public interface IRpcRouter
     void HandleInvokeException(Exception exception, RpcOverhead overhead, IRpcSerializer serializer);
 
     /// <summary>
-    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a non-<see langword="void"/> return type.
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a <see cref="IRpcSerializable"/> return type.
     /// </summary>
     /// <param name="value">The value to be serialized. This is ignored if <paramref name="collection"/> is not null.</param>
     /// <param name="collection">The collection to be serialized. To use a null collection, pass <see cref="DBNull.Value"/>.</param>
@@ -146,4 +146,21 @@ public interface IRpcRouter
     /// <param name="overhead">Overhead of the RPC being invoked.</param>
     /// <param name="serializer">The serializer being used by the RPC.</param>
     void HandleInvokeReturnValue<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer);
+
+    /// <summary>
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a nullable value return type.
+    /// </summary>
+    /// <param name="value">The value to be serialized.</param>
+    /// <param name="overhead">Overhead of the RPC being invoked.</param>
+    /// <param name="serializer">The serializer being used by the RPC.</param>
+    void HandleInvokeNullableReturnValue<TReturnType>(TReturnType? value, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : struct;
+
+    /// <summary>
+    /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a nullable <see cref="IRpcSerializable"/> return type or collection of them.
+    /// </summary>
+    /// <param name="value">The value to be serialized. This is ignored if <paramref name="collection"/> is not null.</param>
+    /// <param name="collection">The collection to be serialized. To use a null collection, pass <see cref="DBNull.Value"/>.</param>
+    /// <param name="overhead">Overhead of the RPC being invoked.</param>
+    /// <param name="serializer">The serializer being used by the RPC.</param>
+    void HandleInvokeNullableSerializableReturnValue<TSerializable>(TSerializable? value, object? collection, RpcOverhead overhead, IRpcSerializer serializer) where TSerializable : struct, IRpcSerializable;
 }

@@ -15,15 +15,32 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
     /// <inheritdoc />
     public bool IsSingleConnection => true;
 
+    /// <inheritdoc />
+    public event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionAdded;
+
+    /// <inheritdoc />
+    public event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionRemoved;
+
     /// <summary>
     /// Exchange the current connection for a new one.
     /// </summary>
+    /// <remarks>This does not close the old connection.</remarks>
     /// <returns>The old connection.</returns>
     public IModularRpcRemoteConnection? ExchangeConnection(IModularRpcRemoteConnection newConnection)
     {
         lock (_sync)
         {
-            return Interlocked.Exchange(ref _remoteConnection, newConnection);
+            IModularRpcRemoteConnection? old = Interlocked.Exchange(ref _remoteConnection, newConnection);
+
+            if (!ReferenceEquals(old, newConnection))
+            {
+                if (old != null)
+                    InvokeRemove(old);
+
+                InvokeAdd(newConnection);
+            }
+
+            return old;
         }
     }
 
@@ -49,7 +66,11 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         }
 
         if (existing == null || ReferenceEquals(existing, connection))
+        {
+            if (!ReferenceEquals(existing, connection))
+                InvokeAdd(connection);
             return true;
+        }
 
         try
         {
@@ -76,6 +97,9 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             {
                 this.LogWarning(ex, "Failed to dispose old connection.");
             }
+            
+            InvokeRemove(existing);
+            InvokeAdd(connection);
         }
 
         return true;
@@ -117,6 +141,8 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             {
                 this.LogWarning(ex, "Failed to dispose removed connection.");
             }
+
+            InvokeRemove(existing);
         }
 
         return true;
@@ -158,6 +184,8 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             {
                 this.LogWarning(ex, "Failed to dispose removed connection.");
             }
+
+            InvokeRemove(existing);
         }
     }
 #endif
@@ -192,6 +220,32 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             {
                 this.LogWarning(ex, "Failed to dispose removed connection.");
             }
+
+            InvokeRemove(existing);
+        }
+    }
+
+    private void InvokeRemove(IModularRpcRemoteConnection remote)
+    {
+        try
+        {
+            ConnectionRemoved?.Invoke(this, remote);
+        }
+        catch (Exception ex)
+        {
+            this.LogError(ex, "Error invoking ConnectionRemoved event handler from ClientRpcConnectionLifetime.");
+        }
+    }
+
+    private void InvokeAdd(IModularRpcRemoteConnection remote)
+    {
+        try
+        {
+            ConnectionAdded?.Invoke(this, remote);
+        }
+        catch (Exception ex)
+        {
+            this.LogError(ex, "Error invoking ConnectionAdded event handler from ClientRpcConnectionLifetime.");
         }
     }
 }

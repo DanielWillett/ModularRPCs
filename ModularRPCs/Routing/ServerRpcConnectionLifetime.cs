@@ -13,6 +13,13 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
     private object? _logger;
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }
+
+    /// <inheritdoc />
+    public event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionAdded;
+
+    /// <inheritdoc />
+    public event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionRemoved;
+
     public int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false, bool openOnly = true)
     {
         IModularRpcRemoteConnection[]? copy;
@@ -78,6 +85,8 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             }
 
             _connections.Add(connection);
+
+            InvokeAdd(connection);
         }
 
         return new ValueTask<bool>(true);
@@ -102,7 +111,6 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
 
         if (removed == null)
             return false;
-
 
         try
         {
@@ -129,6 +137,8 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             {
                 this.LogWarning(ex, "Failed to dispose removed connection.");
             }
+
+            InvokeRemove(removed);
         }
 
         return true;
@@ -151,6 +161,11 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         }
 
         await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        for (int i = connections.Length - 1; i >= 0; --i)
+        {
+            InvokeRemove(connections[i]);
+        }
     }
 #endif
     public void Dispose()
@@ -167,6 +182,35 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             }
 
             Task.WaitAll(allTasks);
+
+            for (int i = _connections.Count - 1; i >= 0; --i)
+            {
+                InvokeRemove(_connections[i]);
+            }
+        }
+    }
+
+    private void InvokeRemove(IModularRpcRemoteConnection remote)
+    {
+        try
+        {
+            ConnectionRemoved?.Invoke(this, remote);
+        }
+        catch (Exception ex)
+        {
+            this.LogError(ex, "Error invoking ConnectionRemoved event handler from ClientRpcConnectionLifetime.");
+        }
+    }
+
+    private void InvokeAdd(IModularRpcRemoteConnection remote)
+    {
+        try
+        {
+            ConnectionAdded?.Invoke(this, remote);
+        }
+        catch (Exception ex)
+        {
+            this.LogError(ex, "Error invoking ConnectionAdded event handler from ClientRpcConnectionLifetime.");
         }
     }
 }

@@ -70,6 +70,23 @@ public class RpcTask<T> : RpcTask
 
     protected internal override bool TrySetResult(object? value)
     {
+        if (typeof(T).IsValueType && Nullable.GetUnderlyingType(typeof(T)) is { } underlyingType)
+        {
+            if (value == null)
+            {
+                ResultIntl = default;
+                return true;
+            }
+
+            if (!underlyingType.IsInstanceOfType(value))
+            {
+                return false;
+            }
+
+            ResultIntl = (T)value;
+            return true;
+        }
+
         if (value is not T convValue)
         {
             if (value == null && !typeof(T).IsValueType)

@@ -3,6 +3,7 @@ using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -25,6 +26,7 @@ internal static class TypeUtility
     public const TypeCode TypeCodeTimeSpan = (TypeCode)17;
     public const TypeCode TypeCodeGuid = (TypeCode)19;
     public const TypeCode TypeCodeDateTimeOffset = (TypeCode)20;
+    public const TypeCode TypeCodeNullable = (TypeCode)21;
 
     // NOTE: Extension methods are not supported.
     public static bool IsAwaitable(Type valueType, bool useConfigureAwait,
@@ -213,12 +215,161 @@ internal static class TypeUtility
         return property;
     }
 
-    public static Type? GetSerializableEnumerableType(Type type)
+    public static Type? GetSerializableEnumerableType(Type type, out bool isNullable)
     {
+        if (type == typeof(string))
+        {
+            isNullable = false;
+            return null;
+        }
+
+        if (SerializableEnumerableTypes.TryGetValue(type, out Type? t))
+        {
+            isNullable = t != null && Nullable.GetUnderlyingType(t) != null;
+            return t;
+        }
+
+        if (type.IsArray)
+        {
+            Type arrayElementType = type.GetElementType()!;
+            if (Nullable.GetUnderlyingType(arrayElementType) is { } nullableElementType)
+            {
+                if (SerializerGenerator.IsRpcSerializableType(nullableElementType))
+                {
+                    SerializableEnumerableTypes.TryAdd(type, arrayElementType);
+                    isNullable = true;
+                    return arrayElementType;
+                }
+            }
+
+            isNullable = false;
+            if (SerializerGenerator.IsRpcSerializableType(arrayElementType))
+            {
+                SerializableEnumerableTypes.TryAdd(type, arrayElementType);
+                return arrayElementType;
+            }
+
+            SerializableEnumerableTypes.TryAdd(type, null);
+            return null;
+        }
+
+        if (type.IsInterface)
+        {
+            if (type.IsConstructedGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                Type elementType = type.GetGenericArguments()[0];
+                if (Nullable.GetUnderlyingType(elementType) is { } nullableElementType)
+                {
+                    if (SerializerGenerator.IsRpcSerializableType(nullableElementType))
+                    {
+                        SerializableEnumerableTypes.TryAdd(type, elementType);
+                        isNullable = true;
+                        return elementType;
+                    }
+                }
+
+                if (SerializerGenerator.IsRpcSerializableType(elementType))
+                {
+                    SerializableEnumerableTypes.TryAdd(type, elementType);
+                    isNullable = false;
+                    return elementType;
+                }
+            }
+        }
+
+        if (type is { IsValueType: true, IsConstructedGenericType: true })
+        {
+            Type genTypeDef = type.GetGenericTypeDefinition();
+            if (genTypeDef == typeof(Memory<>) || genTypeDef == typeof(ReadOnlyMemory<>) || genTypeDef == typeof(ArraySegment<>))
+            {
+                Type elementType = type.GetGenericArguments()[0];
+                Type checkType = elementType;
+                if (Nullable.GetUnderlyingType(elementType) is { } nullableElementType)
+                {
+                    checkType = nullableElementType;
+                    isNullable = true;
+                }
+                else
+                {
+                    isNullable = false;
+                }
+
+                if (SerializerGenerator.IsRpcSerializableType(checkType))
+                {
+                    SerializableEnumerableTypes.TryAdd(type, elementType);
+                    return elementType;
+                }
+            }
+        }
+
+        bool isIListNonGeneric = false;
+        foreach (Type intx in type.GetInterfaces())
+        {
+            if (intx == typeof(IList))
+                isIListNonGeneric = true;
+
+            if (!intx.IsConstructedGenericType)
+                continue;
+
+            if (intx.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+                continue;
+
+            Type elementType = intx.GetGenericArguments()[0];
+            if (Nullable.GetUnderlyingType(elementType) is { } nullableElementType)
+            {
+                if (SerializerGenerator.IsRpcSerializableType(nullableElementType))
+                {
+                    SerializableEnumerableTypes.TryAdd(type, elementType);
+                    isNullable = true;
+                    return elementType;
+                }
+            }
+
+            if (!SerializerGenerator.IsRpcSerializableType(elementType))
+                continue;
+
+            SerializableEnumerableTypes.TryAdd(type, elementType);
+            isNullable = false;
+            return elementType;
+        }
+
+        if (isIListNonGeneric && type.IsConstructedGenericType)
+        {
+            Type elementType = type.GetGenericArguments()[0];
+            if (Nullable.GetUnderlyingType(elementType) is { } nullableElementType)
+            {
+                if (SerializerGenerator.IsRpcSerializableType(nullableElementType))
+                {
+                    SerializableEnumerableTypes.TryAdd(type, elementType);
+                    isNullable = true;
+                    return elementType;
+                }
+            }
+
+            if (SerializerGenerator.IsRpcSerializableType(elementType))
+            {
+                SerializableEnumerableTypes.TryAdd(type, elementType);
+                isNullable = false;
+                return elementType;
+            }
+        }
+
+        SerializableEnumerableTypes.TryAdd(type, null);
+        isNullable = false;
+        return null;
+    }
+
+    public static Type? GetEnumerableType(Type type)
+    {
+        if (type == typeof(string))
+        {
+            return null;
+        }
+
         if (type.IsArray)
             return type.GetElementType();
 
-        if (SerializableEnumerableTypes.TryGetValue(type, out Type? t))
+        if (EnumerableTypes.TryGetValue(type, out Type? t))
             return t;
 
         if (type.IsInterface)
@@ -226,11 +377,8 @@ internal static class TypeUtility
             if (type.IsConstructedGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
                 Type elementType = type.GetGenericArguments()[0];
-                if (typeof(IRpcSerializable).IsAssignableFrom(elementType))
-                {
-                    SerializableEnumerableTypes.TryAdd(type, elementType);
-                    return elementType;
-                }
+                EnumerableTypes.TryAdd(type, elementType);
+                return elementType;
             }
         }
 
@@ -239,37 +387,17 @@ internal static class TypeUtility
             if (!intx.IsConstructedGenericType)
                 continue;
 
-            if (intx.GetGenericTypeDefinition() != typeof(IEnumerable<>))
-                continue;
-
-            Type elementType = intx.GetGenericArguments()[0];
-            if (!typeof(IRpcSerializable).IsAssignableFrom(elementType))
-                continue;
-
-            SerializableEnumerableTypes.TryAdd(type, elementType);
-            return elementType;
-        }
-
-        SerializableEnumerableTypes.TryAdd(type, null);
-        return null;
-    }
-    public static Type? GetEnumerableType(Type type)
-    {
-        if (type.IsArray)
-            return type.GetElementType();
-
-        if (EnumerableTypes.TryGetValue(type, out Type? t))
-            return t;
-
-        foreach (Type intx in type.GetInterfaces())
-        {
-            if (!intx.IsConstructedGenericType)
-                continue;
+            if (EnumerableTypes.TryGetValue(intx, out Type? elementType))
+            {
+                EnumerableTypes.TryAdd(type, elementType);
+                return elementType;
+            }
 
             if (intx.GetGenericTypeDefinition() != typeof(IEnumerable<>))
                 continue;
 
-            Type elementType = intx.GetGenericArguments()[0];
+            elementType = intx.GetGenericArguments()[0];
+            EnumerableTypes.TryAdd(intx, elementType);
             EnumerableTypes.TryAdd(type, elementType);
             return elementType;
         }
