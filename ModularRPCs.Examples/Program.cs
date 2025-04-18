@@ -64,12 +64,7 @@ public class Program
         LoopbackEndpoint endpoint = new LoopbackEndpoint(false, false);
 
         LoopbackRpcClientsideRemoteConnection remote =
-            (LoopbackRpcClientsideRemoteConnection)await endpoint.RequestConnectionAsync(
-                clientProvider.GetRequiredService<IRpcRouter>(),
-                serverProvider.GetRequiredService<IRpcRouter>(),
-                clientProvider.GetRequiredService<IRpcConnectionLifetime>(),
-                serverProvider.GetRequiredService<IRpcConnectionLifetime>()
-            );
+            (LoopbackRpcClientsideRemoteConnection)await endpoint.RequestConnectionAsync(clientProvider, serverProvider);
 
 
         var server = remote.Server;

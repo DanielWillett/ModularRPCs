@@ -1653,7 +1653,10 @@ internal sealed class SerializerGenerator
                     
                     // try {
                     contIl.BeginExceptionBlock();
-                    
+
+#if DEBUG
+                    contIl.EmitWriteLine($"Closure invoking for {Accessor.Formatter.Format(method)}.");
+#endif
                     contIl.CommentIfDebug("[var rtnValue = ]awaiter.GetResult()");
                     contIl.Emit(OpCodes.Ldarg_0);
                     if (awaiterField.FieldType.IsValueType)
@@ -1662,6 +1665,9 @@ internal sealed class SerializerGenerator
                         contIl.Emit(OpCodes.Ldfld, awaiterField);
                     
                     contIl.Emit(getResultMethod.GetCallRuntime(), getResultMethod);
+#if DEBUG
+                    contIl.EmitWriteLine($"Got result for {Accessor.Formatter.Format(method)}.");
+#endif
                     if (lclResult2 != null)
                         contIl.Emit(OpCodes.Stloc, lclResult2);
 
@@ -1673,7 +1679,10 @@ internal sealed class SerializerGenerator
                     lclEx = contIl.DeclareLocal(typeof(Exception));
 
                     contIl.Emit(OpCodes.Stloc, lclEx);
-                    
+
+#if DEBUG
+                    contIl.EmitWriteLine($"Got exception for {Accessor.Formatter.Format(method)}.");
+#endif
                     contIl.CommentIfDebug("  router.HandleInvokeException(ex, overhead, serializer)");
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, routerField);
@@ -1753,6 +1762,9 @@ internal sealed class SerializerGenerator
                     ctorIl.Emit(OpCodes.Newobj, CommonReflectionCache.ActionConstructor);
                     
                     ctorIl.Emit(onCompletedMethod.GetCallRuntime(), onCompletedMethod);
+#if DEBUG
+                    ctorIl.EmitWriteLine($"Added onCompleted: {Accessor.Formatter.Format(onCompletedMethod)}.");
+#endif
 
                     ctorIl.Emit(OpCodes.Ret);
 
@@ -1767,7 +1779,10 @@ internal sealed class SerializerGenerator
             }
             
             ConstructorInfo fullCtor = closureType.GetConstructors(BindingFlags.Instance | BindingFlags.Public)[0];
-            
+
+#if DEBUG
+            il.EmitWriteLine($"Creating closure for : {Accessor.Formatter.Format(method)}.");
+#endif
             il.CommentIfDebug("  _ = new Closure(overhead, router, serializer, awaiter)");
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
             il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));

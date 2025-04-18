@@ -88,7 +88,7 @@ public abstract class RpcTargetAttribute : Attribute
     ///     }
     /// 
     ///     await Task.Delay(5000);
-    ///     Console.WriteLine(data[0]);
+    ///     Accessor.Logger!.LogInfo("source", data[0]);
     /// }
     /// 
     /// // elsewhere

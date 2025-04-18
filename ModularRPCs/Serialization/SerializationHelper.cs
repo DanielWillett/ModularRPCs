@@ -295,45 +295,49 @@ public static class SerializationHelper
 
         bytes[index] = lenFlag;
         ++index;
-        if ((lenFlag & 3) == 0)
-            return 1;
-
-        switch (lenFlag & 3)
+        if ((lenFlag & 0b10000000) == 0)
         {
-            case 1:
-                bytes[index] = (byte)length;
-                ++index;
-                break;
+            switch (lenFlag & 3)
+            {
+                case 1:
+                    bytes[index] = (byte)length;
+                    ++index;
+                    break;
 
-            case 2:
-                if (BitConverter.IsLittleEndian)
-                {
-                    Unsafe.WriteUnaligned(bytes + index, (ushort)length);
-                }
-                else
-                {
-                    bytes[index + 1] = unchecked( (byte) length );
-                    bytes[index]     = unchecked( (byte)(length >>> 8) );
-                }
+                case 2:
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Unsafe.WriteUnaligned(bytes + index, (ushort)length);
+                    }
+                    else
+                    {
+                        bytes[index + 1] = unchecked((byte)length);
+                        bytes[index] = unchecked((byte)(length >>> 8));
+                    }
 
-                index += 2;
-                break;
+                    index += 2;
+                    break;
 
-            default:
-                if (BitConverter.IsLittleEndian)
-                {
-                    Unsafe.WriteUnaligned(bytes + index, length);
-                }
-                else
-                {
-                    bytes[index + 3] = unchecked( (byte) length );
-                    bytes[index + 2] = unchecked( (byte)(length >>> 8) );
-                    bytes[index + 1] = unchecked( (byte)(length >>> 16) );
-                    bytes[index]     = unchecked( (byte)(length >>> 24) );
-                }
+                default:
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Unsafe.WriteUnaligned(bytes + index, length);
+                    }
+                    else
+                    {
+                        bytes[index + 3] = unchecked((byte)length);
+                        bytes[index + 2] = unchecked((byte)(length >>> 8));
+                        bytes[index + 1] = unchecked((byte)(length >>> 16));
+                        bytes[index] = unchecked((byte)(length >>> 24));
+                    }
 
-                index += 4;
-                break;
+                    index += 4;
+                    break;
+            }
+        }
+        else
+        {
+            index += (uint)hdrSize - 1u;
         }
 
         return hdrSize;
@@ -350,7 +354,7 @@ public static class SerializationHelper
     {
         byte lenFlag = GetLengthFlag(length, isNull, forceFull);
         int hdrSize = GetHeaderSize(lenFlag);
-        
+
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         byte[] span = DefaultSerializer.ArrayPool.Rent(hdrSize);
         try
@@ -359,39 +363,40 @@ public static class SerializationHelper
         Span<byte> span = stackalloc byte[hdrSize];
 #endif
         span[0] = lenFlag;
-        switch (lenFlag & 3)
+        if ((lenFlag & 0b10000000) == 0)
         {
-            case 0:
-                break;
-            case 1:
-                span[1] = (byte)length;
-                break;
+            switch (lenFlag & 3)
+            {
+                case 1:
+                    span[1] = (byte)length;
+                    break;
 
-            case 2:
-                if (BitConverter.IsLittleEndian)
-                {
-                    Unsafe.WriteUnaligned(ref span[1], (ushort)length);
-                }
-                else
-                {
-                    span[2] = unchecked( (byte) length );
-                    span[1] = unchecked( (byte)(length >>> 8) );
-                }
-                break;
+                case 2:
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Unsafe.WriteUnaligned(ref span[1], (ushort)length);
+                    }
+                    else
+                    {
+                        span[2] = unchecked( (byte) length );
+                        span[1] = unchecked( (byte)(length >>> 8) );
+                    }
+                    break;
 
-            default:
-                if (BitConverter.IsLittleEndian)
-                {
-                    Unsafe.WriteUnaligned(ref span[1], length);
-                }
-                else
-                {
-                    span[4] = unchecked( (byte) length );
-                    span[3] = unchecked( (byte)(length >>> 8) );
-                    span[2] = unchecked( (byte)(length >>> 16) );
-                    span[1] = unchecked( (byte)(length >>> 24) );
-                }
-                break;
+                default:
+                    if (BitConverter.IsLittleEndian)
+                    {
+                        Unsafe.WriteUnaligned(ref span[1], length);
+                    }
+                    else
+                    {
+                        span[4] = unchecked( (byte) length );
+                        span[3] = unchecked( (byte)(length >>> 8) );
+                        span[2] = unchecked( (byte)(length >>> 16) );
+                        span[1] = unchecked( (byte)(length >>> 24) );
+                    }
+                    break;
+            }
         }
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
@@ -435,6 +440,10 @@ public static class SerializationHelper
 
         if ((lenFlag & 0b10000000) != 0)
         {
+            if ((lenFlag & 3) == 3)
+            {
+                index += 4;
+            }
             length = -1;
             return false;
         }
@@ -493,7 +502,8 @@ public static class SerializationHelper
             return true;
         }
 
-        if ((lenFlag & 0b10000000) != 0)
+        bool isNull = (lenFlag & 0b10000000) != 0;
+        if (isNull && (lenFlag & 3) != 3)
         {
             length = -1;
             bytesRead = 1;
@@ -534,9 +544,16 @@ public static class SerializationHelper
                 break;
 
             default:
-                length = BitConverter.IsLittleEndian
-                    ? Unsafe.ReadUnaligned<int>(ref span[0])
-                    : span[0] << 24 | span[1] << 16 | span[2] << 8 | span[3];
+                if (!isNull)
+                {
+                    length = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<int>(ref span[0])
+                        : span[0] << 24 | span[1] << 16 | span[2] << 8 | span[3];
+                }
+                else
+                {
+                    length = -1;
+                }
                 bytesRead = 5;
                 break;
         }
@@ -547,13 +564,15 @@ public static class SerializationHelper
             DefaultSerializer.ArrayPool.Return(span);
         }
 #endif
-        return true;
+        return !isNull;
     }
 
     internal static byte GetLengthFlag(int length, bool isNull, bool forceFull = false)
     {
         if (isNull)
-            return 0b10000000;
+        {
+            return forceFull ? (byte)0b10000011 : (byte)0b10000000;
+        }
 
         if (forceFull)
             return 3;
@@ -583,7 +602,7 @@ public static class SerializationHelper
     /// <param name="length">The number of elements in the array.</param>
     /// <param name="isNull">If the array is <see langword="null"/>.</param>
     /// <returns>Size of the header in bytes.</returns>
-    public static int GetHeaderSize(int length, bool isNull, bool forceFull = false) => GetHeaderSize(GetLengthFlag(length, isNull, forceFull));
+    public static int GetHeaderSize(int length, bool isNull, bool forceFull = false) => forceFull ? 5 : GetHeaderSize(GetLengthFlag(length, isNull, forceFull));
 
     /// <summary>
     /// Manually try to advance a stream a number of bytes to make sure a stream ends up where it should, even if a parser has to throw an error. It may not actually advance that much or at all, depending on how much data is left and what type of stream it is.

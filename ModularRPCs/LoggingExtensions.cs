@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ReflectionTools;
 using Microsoft.Extensions.Logging;
 using System;
@@ -135,7 +135,7 @@ public static class LoggingExtensions
                         hdr += " " + message;
                     if (ex != null)
                         hdr += Environment.NewLine + ex;
-                    Console.WriteLine(hdr);
+                    Accessor.Logger!.LogInfo("source", hdr);
                     return;
 
                 case LoggerType.Callback:
@@ -209,7 +209,7 @@ public static class LoggingExtensions
                         hdr += " " + message;
                     if (ex != null)
                         hdr += Environment.NewLine + ex;
-                    Console.WriteLine(hdr);
+                    Accessor.Logger!.LogInfo("source", hdr);
                     return;
 
                 case LoggerType.Callback:
@@ -283,7 +283,7 @@ public static class LoggingExtensions
                         hdr += " " + message;
                     if (ex != null)
                         hdr += Environment.NewLine + ex;
-                    Console.WriteLine(hdr);
+                    Accessor.Logger!.LogInfo("source", hdr);
                     return;
 
                 case LoggerType.Callback:
@@ -357,7 +357,7 @@ public static class LoggingExtensions
                         hdr += " " + message;
                     if (ex != null)
                         hdr += Environment.NewLine + ex;
-                    Console.WriteLine(hdr);
+                    Accessor.Logger!.LogInfo("source", hdr);
                     return;
 
                 case LoggerType.Callback:

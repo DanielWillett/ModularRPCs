@@ -523,7 +523,7 @@ public class DefaultSerializer : IRpcSerializer
         if (SerializableTypeInfoCache.TryGetValue(type, out SerializableTypeInfo v))
         {
             isFixedSize = v.IsFixedSize;
-            return typeof(TSerializable).IsValueType ? sizeof(int) + v.MinimumSize : sizeof(int);
+            return (isFixedSize || typeof(TSerializable).IsValueType) ? sizeof(int) + v.MinimumSize : sizeof(int);
         }
 
         RpcSerializableAttribute? attribute = type.GetAttributeSafe<RpcSerializableAttribute>();
@@ -537,7 +537,7 @@ public class DefaultSerializer : IRpcSerializer
         SerializableTypeInfoCache.TryAdd(type, info);
 
         isFixedSize = info.IsFixedSize;
-        return typeof(TSerializable).IsValueType ? sizeof(int) + info.MinimumSize : sizeof(int);
+        return (info.IsFixedSize || typeof(TSerializable).IsValueType) ? sizeof(int) + info.MinimumSize : sizeof(int);
     }
 
     /// <inheritdoc />
@@ -688,20 +688,30 @@ public class DefaultSerializer : IRpcSerializer
         int count;
         if (isFixedSize)
         {
+            if (value is ArraySegment<TSerializable> seg)
+            {
+                if (seg.Array == null)
+                {
+                    return SerializationHelper.GetHeaderSize(0, true, forceFull: true);
+                }
+
+                count = seg.Count;
+                return (sizeof(int) * (count > 0 ? 1 : 0)) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
+            }
             if (value is ICollection c)
             {
                 count = c.Count;
-                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
+                return (sizeof(int) * (count > 0 ? 1 : 0)) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
             }
             if (value is ICollection<TSerializable?> c2)
             {
                 count = c2.Count;
-                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
+                return (sizeof(int) * (count > 0 ? 1 : 0)) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
             }
             if (value is IReadOnlyCollection<TSerializable?> c3)
             {
                 count = c3.Count;
-                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
+                return (sizeof(int) * (count > 0 ? 1 : 0)) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
             }
         }
 
@@ -761,6 +771,7 @@ public class DefaultSerializer : IRpcSerializer
                 break;
 
             default:
+                size -= sizeof(int);
                 foreach (TSerializable? s in value)
                 {
                     if (isFixedSize)
@@ -774,7 +785,7 @@ public class DefaultSerializer : IRpcSerializer
                 break;
         }
 
-        return ttlSize + SerializationHelper.GetHeaderSize(count, false, forceFull: true) + (count == 0 ? 0 : sizeof(int)) + count * sizeof(int);
+        return ttlSize + SerializationHelper.GetHeaderSize(count, false, forceFull: true) + (sizeof(int) * (count > 0 ? 1 : 0)) + count * sizeof(int);
     }
 
     public int GetNullableSerializablesSize<TSerializable>(IEnumerable<TSerializable?>? value) where TSerializable : struct, IRpcSerializable
@@ -784,29 +795,8 @@ public class DefaultSerializer : IRpcSerializer
             return SerializationHelper.GetHeaderSize(0, true, forceFull: true);
         }
 
-        int size = GetSerializableMinimumSize<TSerializable>(out bool isFixedSize);
-        int count;
-        if (isFixedSize)
-        {
-            if (value is ICollection c)
-            {
-                count = c.Count;
-                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
-            }
-            if (value is ICollection<TSerializable?> c2)
-            {
-                count = c2.Count;
-                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
-            }
-            if (value is IReadOnlyCollection<TSerializable?> c3)
-            {
-                count = c3.Count;
-                return sizeof(int) + count * size + SerializationHelper.GetHeaderSize(count, false, forceFull: true);
-            }
-        }
-
         int ttlSize = 0;
-        count = 0;
+        int count = 0;
 
         switch (value)
         {
@@ -863,9 +853,7 @@ public class DefaultSerializer : IRpcSerializer
             default:
                 foreach (TSerializable? s in value)
                 {
-                    if (isFixedSize)
-                        ttlSize += size;
-                    else if (s.HasValue)
+                    if (s.HasValue)
                         ttlSize += s.Value.GetSize(this);
                     ++count;
                 }

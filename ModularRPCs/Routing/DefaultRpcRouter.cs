@@ -427,7 +427,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             return;
 
         HandleReturn(overhead);
-
+#if DEBUG
+        Accessor.Logger!.LogInfo("source", $"Invoked return value: {value}");
+#endif
         if (collection == null)
         {
             InvokeHandleSerializableReturnValueAsync(value, overhead, serializer);
@@ -442,6 +444,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
         else
         {
+#if DEBUG
+            Accessor.Logger!.LogInfo("source", $"Invalid parameter: {value} ({value.GetType()}");
+#endif
             throw new RpcInvalidParameterException(
                 string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInfoNoParamInfo,
                     Accessor.ExceptionFormatter.Format(collection.GetType()),
@@ -482,6 +487,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     private async void InvokeHandleSerializableReturnValueAsync<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : IRpcSerializable
     {
+#if DEBUG
+        Accessor.Logger!.LogInfo("source", $"Invoked serializable return value: {value}");
+#endif
         try
         {
             await ReplyRpcSerializableValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, value, serializer);
@@ -508,12 +516,22 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     private async void InvokeHandleSerializableCollectionReturnValueAsync<TReturnType>(IEnumerable<TReturnType>? collection, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : IRpcSerializable
     {
+#if DEBUG
+        Accessor.Logger!.LogInfo("source", $"Invoked serializable collection return value: {collection}");
+#endif
         try
         {
             await ReplyRpcSerializableCollectionValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, collection, serializer);
+
+#if DEBUG
+            Accessor.Logger!.LogInfo("source", "Done with collection");
+#endif
         }
         catch (Exception ex)
         {
+#if DEBUG
+            Accessor.Logger!.LogError("source", ex, "error in InvokeHandleSerializableCollectionReturnValueAsync");
+#endif
             HandleInvokeException(overhead, ex);
             await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
         }
@@ -611,6 +629,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// <inheritdoc />
     public virtual unsafe ValueTask ReceiveData(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
+#if DEBUG
+        Accessor.Logger!.LogInfo("source", $"received {primitiveOverhead}");
+#endif
         if (rawData.Length <= 1)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
@@ -861,11 +882,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
                     
                     if (!vt.IsCompleted)
-                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
+                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
                 }
                 catch (Exception ex)
                 {
-                    HandleInvokeException(sourceMethodHandle, ex);
+                    HandleInvokeException(connection, sourceMethodHandle, ex);
                     rpcTask.TriggerComplete(ex);
                     FinishListening(rpcTask);
                 }
@@ -908,12 +929,12 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 ValueTask vt = remote1.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
 
                 if (!vt.IsCompleted)
-                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
+                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, remote1, vt, rpcTask), token);
             }
             catch (Exception ex)
             {
                 tokens.Dispose();
-                HandleInvokeException(sourceMethodHandle, ex);
+                HandleInvokeException(remote1, sourceMethodHandle, ex);
                 rpcTask.TriggerComplete(ex);
                 FinishListening(rpcTask);
             }
@@ -954,11 +975,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
 
                 if (!vt.IsCompleted)
-                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
+                    Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
             }
             catch (Exception ex)
             {
-                HandleInvokeException(sourceMethodHandle, ex);
+                HandleInvokeException(connection, sourceMethodHandle, ex);
                 rpcTask.TriggerComplete(ex);
                 FinishListening(rpcTask);
             }
@@ -1048,7 +1069,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                             ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, token);
 
                             if (!vt.IsCompleted)
-                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
+                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
                         }
                         else
                         {
@@ -1057,14 +1078,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                             if (!vt.IsCompleted)
                             {
                                 // ReSharper disable once AccessToDisposedClosure
-                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream), token);
+                                Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask, leaveOpen ? null : stream), token);
                                 isDisposed = true;
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        HandleInvokeException(sourceMethodHandle, ex);
+                        HandleInvokeException(connection, sourceMethodHandle, ex);
                         rpcTask.TriggerComplete(ex);
                         FinishListening(rpcTask);
                     }
@@ -1107,13 +1128,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
                     if (!vt.IsCompleted)
                     {
-                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream), token);
+                        Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, remote1, vt, rpcTask, leaveOpen ? null : stream), token);
                         isDisposed = true;
                     }
                 }
                 catch (Exception ex)
                 {
-                    HandleInvokeException(sourceMethodHandle, ex);
+                    HandleInvokeException(remote1, sourceMethodHandle, ex);
                     rpcTask.TriggerComplete(ex);
                     FinishListening(rpcTask);
                 }
@@ -1175,7 +1196,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, token);
 
                         if (!vt.IsCompleted)
-                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask), token);
+                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
                     }
                     else
                     {
@@ -1184,14 +1205,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         if (!vt.IsCompleted)
                         {
                             // ReSharper disable once AccessToDisposedClosure
-                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, vt, rpcTask, leaveOpen ? null : stream), token);
+                            Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask, leaveOpen ? null : stream), token);
                             isDisposed = true;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    HandleInvokeException(sourceMethodHandle, ex);
+                    HandleInvokeException(connection, sourceMethodHandle, ex);
                     rpcTask.TriggerComplete(ex);
                     FinishListening(rpcTask);
                 }
@@ -1220,7 +1241,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
     }
 
-    private Func<Task> WrapInvokeTaskInTryBlock(RuntimeMethodHandle sourceMethodHandle, ValueTask vt, RpcTask? rpcTask, IDisposable? toDispose = null)
+    private Func<Task> WrapInvokeTaskInTryBlock(RuntimeMethodHandle sourceMethodHandle, IModularRpcRemoteConnection connection, ValueTask vt, RpcTask? rpcTask, IDisposable? toDispose = null)
     {
         return async () =>
         {
@@ -1235,7 +1256,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
             catch (Exception ex)
             {
-                HandleInvokeException(sourceMethodHandle, ex);
+                HandleInvokeException(connection, sourceMethodHandle, ex);
                 rpcTask?.TriggerComplete(ex);
                 FinishListening(rpcTask);
             }
@@ -1306,12 +1327,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         FinishListening(rpcTask);
     }
-    private void HandleInvokeException(RuntimeMethodHandle sourceMethodHandle, Exception ex)
+    private void HandleInvokeException(IModularRpcRemoteConnection connection, RuntimeMethodHandle sourceMethodHandle, Exception ex)
     {
         // ReSharper disable once RedundantSuppressNullableWarningExpression
         this.LogError(ex,
             string.Format(Properties.Exceptions.RpcInvocationExceptionWithInvocationPointMessage,
                 Accessor.Formatter.Format(ex.GetType()),
+                connection,
                 Accessor.Formatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!),
                 ex.Message)
         );
@@ -1430,7 +1452,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)tc;
             ++index;
@@ -1518,7 +1540,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)TypeUtility.TypeCodeNullable;
             ++index;
@@ -1592,7 +1614,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)TypeCode.Object;
             ++index;
@@ -1655,7 +1677,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)TypeCode.Object;
             ++index;
@@ -1698,6 +1720,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     private static unsafe ValueTask ReplyRpcSerializableCollectionValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IEnumerable<TValue>? collection, IRpcSerializer serializer) where TValue : IRpcSerializable
     {
+#if DEBUG
+        Accessor.Logger!.LogInfo("source", "replying...");
+#endif
         uint pfxSize = GetPrefixSize(serializer);
         uint size = pfxSize;
         bool hasKnownTypeId;
@@ -1717,7 +1742,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)TypeCode.Object;
             ++index;
@@ -1759,6 +1784,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index += (uint)serializer.WriteSerializableObjects(collection, ptr + index, size - index);
         }
 
+#if DEBUG
+        Accessor.Logger!.LogInfo("source", $"sending {index}...");
+#endif
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
     }
 
@@ -1783,7 +1811,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint index;
         fixed (byte* ptr = alloc)
         {
-            index = WritePrefix(ptr, pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
+            index = WritePrefix(ptr, size - pfxSize, OvhCodeIdValueRtnSuccess, messageId, subMessageId, serializer);
 
             ptr[index] = (byte)TypeCode.Object;
             ++index;
