@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<LangVersion>preview</LangVersion>
+		<RootNamespace>DanielWillett.ModularRpcs.SourceGeneration</RootNamespace>
+
+		<Nullable>enable</Nullable>
+
+		<Version>1.0.0</Version>
+		<PackageVersion>$(Version)-test0</PackageVersion>
+
+		<FileVersion>$(Version).0</FileVersion>
+		<AssemblyVersion>$(Version).0</AssemblyVersion>
+
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<IncludeBuildOutput>false</IncludeBuildOutput>
+
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+		<PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease11, 2.0.0)" PrivateAssets="all" GeneratePathProperty="true" />
+	</ItemGroup>
+
+	<ItemGroup>
+		
+		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+		<None Include="$(PkgDanielWillett_ModularRPCs)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+
+	</ItemGroup>
+
+</Project>

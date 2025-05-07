@@ -187,6 +187,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Generated proxy type {0} is not correctly implemented. It should implement IRpcGeneratedProxyType..
+        /// </summary>
+        internal static string GeneratedProxyTypeNotProperlyImplemented {
+            get {
+                return ResourceManager.GetString("GeneratedProxyTypeNotProperlyImplemented", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The given identifier type is not valid. Expected: &apos;{0}&apos;, actual: &apos;{1}&apos;..
         /// </summary>
         internal static string GetObjectByIdentifierIdentityTypeNotCorrectType {
@@ -894,6 +903,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcParseExceptionBufferRunOut {
             get {
                 return ResourceManager.GetString("RpcParseExceptionBufferRunOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The RpcOverhead failed to parse a message because the buffer was too short while reading parameter: &quot;{0} {1}&quot;..
+        /// </summary>
+        internal static string RpcParseExceptionBufferRunOutFastRead {
+            get {
+                return ResourceManager.GetString("RpcParseExceptionBufferRunOutFastRead", resourceCulture);
             }
         }
         

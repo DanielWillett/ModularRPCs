@@ -1,4 +1,4 @@
-﻿using DanielWillett.ReflectionTools.Emit;
+using DanielWillett.ReflectionTools.Emit;
 using System;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -13,6 +13,11 @@ public struct RpcCallMethodInfo
     public bool HasIdentifier;
     public TimeSpan Timeout;
 
+    /// <remarks>
+    /// Only saved for source-generated methods.
+    /// </remarks>>
+    public RuntimeMethodHandle MethodHandle;
+
     private static readonly FieldInfo HasIdentifierField = typeof(RpcCallMethodInfo).GetField(nameof(HasIdentifier), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo IsFireAndForgetField = typeof(RpcCallMethodInfo).GetField(nameof(IsFireAndForget), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo SignatureHashField = typeof(RpcCallMethodInfo).GetField(nameof(SignatureHash), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -26,6 +31,7 @@ public struct RpcCallMethodInfo
     public static RpcCallMethodInfo FromCallMethod(ProxyGenerator generator, MethodInfo method, bool isFireAndForget)
     {
         RpcCallMethodInfo info = default;
+        info.MethodHandle = method.MethodHandle;
         info.IsFireAndForget = isFireAndForget;
         info.SignatureHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
         info.Endpoint = RpcEndpointTarget.FromCallMethod(method);

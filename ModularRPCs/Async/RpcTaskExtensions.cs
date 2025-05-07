@@ -81,12 +81,15 @@ public static class RpcTaskExtensions
     }
 
     /// <summary>
-    /// Add a <see cref="CancellationToken"/> to a task that will throw an <see cref="OperationCanceledException"/> when the token is canceled.
+    /// Sets the <see cref="CancellationToken"/> of a task that will throw an <see cref="OperationCanceledException"/> when the token is canceled.
+    /// <para>
+    /// This will overwrite any existing <see cref="CancellationToken"/>.
+    /// </para>
     /// </summary>
     /// <remarks>If the task is a fire-and-forget task, nothing will happen.</remarks>
     public static RpcTask WithToken(this RpcTask task, CancellationToken token)
     {
-        if (task is { IsCompleted: false, ConnectionIntl: { } connection })
+        if (token.CanBeCanceled && task is { IsCompleted: false, ConnectionIntl: { } connection })
             task.SetToken(token, connection.Local.Router);
 
         return task;

@@ -26,7 +26,7 @@ public static class ProxyGeneratorUnityExtensions
     public static Component CreateProxyComponent(this ProxyGenerator proxyGenerator, GameObject parentObject, Type componentType, IRpcRouter router)
     {
         ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(componentType);
-        if (typeInfo.SetUnityRouterField == null || !componentType.IsSubclassOf(typeof(Component)))
+        if (typeInfo is { IsGenerated: false, SetUnityRouterField: null } || !componentType.IsSubclassOf(typeof(Component)))
         {
             throw new ArgumentException(
                 string.Format(
@@ -38,20 +38,28 @@ public static class ProxyGeneratorUnityExtensions
         }
 
         Component comp = parentObject.AddComponent(componentType);
-        typeInfo.SetUnityRouterField(comp, router);
+        if (typeInfo.IsGenerated)
+        {
+            IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)comp;
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+        }
+        else
+        {
+            typeInfo.SetUnityRouterField!(comp, router);
+        }
         return comp;
     }
 
     /// <summary>
-    /// Create an instance of the RPC proxy of <typeparamref name="TComponentType"/> by adding it as a <see cref="Component"/> to a <paramref name="parentObject"/>.
+    /// Create an instance of the RPC proxy of <typeparamref name="TComponentType"/> by adding it as a <see cref="Component"/> to a <paramref name="gameObject"/>.
     /// </summary>
     public static TComponentType AddRpcComponent<TComponentType>(this GameObject gameObject, IRpcRouter router) where TComponentType : Component
     {
-        return ProxyGenerator.Instance.CreateProxyComponent<TComponentType>(gameObject, router);
+        return (TComponentType)ProxyGenerator.Instance.CreateProxyComponent(gameObject, typeof(TComponentType), router);
     }
 
     /// <summary>
-    /// Create an instance of the RPC proxy of <paramref name="componentType"/> by adding it as a <see cref="Component"/> to a <paramref name="parentObject"/>.
+    /// Create an instance of the RPC proxy of <paramref name="componentType"/> by adding it as a <see cref="Component"/> to a <paramref name="gameObject"/>.
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="componentType"/> is not a subclass of <see cref="Component"/>.</exception>
     public static Component AddRpcComponent(this GameObject gameObject, Type componentType, IRpcRouter router)
@@ -77,7 +85,7 @@ public static class ProxyGeneratorUnityExtensions
 
         Type type = objectToInstantiate.GetType();
         ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(type);
-        if (typeInfo.SetUnityRouterField == null)
+        if (typeInfo is { IsGenerated: false, SetUnityRouterField: null })
         {
             throw new ArgumentException(
                 string.Format(
@@ -89,7 +97,15 @@ public static class ProxyGeneratorUnityExtensions
         }
 
         Object newObj = Object.Instantiate(objectToInstantiate, position, rotation, parent);
-        typeInfo.SetUnityRouterField(newObj, router);
+        if (typeInfo.IsGenerated)
+        {
+            IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+        }
+        else
+        {
+            typeInfo.SetUnityRouterField!(newObj, router);
+        }
         return newObj;
     }
 
@@ -111,7 +127,7 @@ public static class ProxyGeneratorUnityExtensions
 
         Type type = objectToInstantiate.GetType();
         ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(type);
-        if (typeInfo.SetUnityRouterField == null)
+        if (typeInfo is { IsGenerated: false, SetUnityRouterField: null })
         {
             throw new ArgumentException(
                 string.Format(
@@ -123,7 +139,15 @@ public static class ProxyGeneratorUnityExtensions
         }
 
         Object newObj = Object.Instantiate(objectToInstantiate, transform, instantiateInWorldSpace);
-        typeInfo.SetUnityRouterField(newObj, router);
+        if (typeInfo.IsGenerated)
+        {
+            IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+        }
+        else
+        {
+            typeInfo.SetUnityRouterField!(newObj, router);
+        }
         return newObj;
     }
 
@@ -157,7 +181,7 @@ public static class ProxyGeneratorUnityExtensions
 
         Type type = objectToInstantiate.GetType();
         ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(type);
-        if (typeInfo.SetUnityRouterField == null)
+        if (typeInfo is { IsGenerated: false, SetUnityRouterField: null })
         {
             throw new ArgumentException(
                 string.Format(
@@ -169,7 +193,15 @@ public static class ProxyGeneratorUnityExtensions
         }
 
         Object newObj = Object.Instantiate(objectToInstantiate);
-        typeInfo.SetUnityRouterField(newObj, router);
+        if (typeInfo.IsGenerated)
+        {
+            IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+        }
+        else
+        {
+            typeInfo.SetUnityRouterField!(newObj, router);
+        }
         return newObj;
     }
 
@@ -192,7 +224,7 @@ public static class ProxyGeneratorUnityExtensions
 
         Type type = objectToInstantiate.GetType();
         ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(type);
-        if (typeInfo.SetUnityRouterField == null)
+        if (typeInfo is { IsGenerated: false, SetUnityRouterField: null })
         {
             throw new ArgumentException(
                 string.Format(
@@ -204,7 +236,15 @@ public static class ProxyGeneratorUnityExtensions
         }
 
         Object newObj = Object.Instantiate(objectToInstantiate, position, rotation);
-        typeInfo.SetUnityRouterField(newObj, router);
+        if (typeInfo.IsGenerated)
+        {
+            IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+        }
+        else
+        {
+            typeInfo.SetUnityRouterField!(newObj, router);
+        }
         return newObj;
     }
     private static void InitInstantiatedGameObjectRecursive(ProxyGenerator proxyGenerator, GameObject objParent, IRpcRouter router, List<Component> workingComponentList)
@@ -219,10 +259,18 @@ public static class ProxyGeneratorUnityExtensions
                 continue;
 
             ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(compType.BaseType!);
-            if (typeInfo.SetUnityRouterField == null)
+            if (typeInfo is { IsGenerated: false, SetUnityRouterField: null })
                 continue;
 
-            typeInfo.SetUnityRouterField(component, router);
+            if (typeInfo.IsGenerated)
+            {
+                IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)component;
+                genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+            }
+            else
+            {
+                typeInfo.SetUnityRouterField!(component, router);
+            }
         }
 
         workingComponentList.Clear();

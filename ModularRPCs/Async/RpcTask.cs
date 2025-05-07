@@ -7,7 +7,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
-using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Async;
 
@@ -91,6 +90,12 @@ public class RpcTask
         Awaiter = new RpcTaskAwaiter(this, true);
     }
 
+    ~RpcTask()
+    {
+        TokenRegistration? tkn = Interlocked.Exchange(ref _token, null);
+        tkn?.Registration.Dispose();
+    }
+
     /// <summary>
     /// Get the awaiter object for this task used by <see langword="async"/> method builders to queue continuations.
     /// </summary>
@@ -134,7 +139,9 @@ public class RpcTask
 
         TokenRegistration reg = new TokenRegistration
         {
-            Token = token
+            Token = token,
+            Router = router,
+            Task = this
         };
         old = Interlocked.Exchange(ref _token, reg);
         if (old != null)
@@ -153,14 +160,20 @@ public class RpcTask
         {
             router.InvokeCancellation(this);
             TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
+            Interlocked.CompareExchange(ref _token, null, reg);
             return;
         }
 
-        reg.Registration = token.Register(() =>
+        reg.Registration = token.Register(reg.RegistrationMethod);
+
+        if (token.IsCancellationRequested)
         {
             router.InvokeCancellation(this);
             TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
-        });
+            Interlocked.CompareExchange(ref _token, null, reg);
+            reg.Registration.Dispose();
+            return;
+        }
 
         if (ReferenceEquals(_token, reg))
             return;
@@ -178,6 +191,16 @@ public class RpcTask
     {
         public CancellationToken Token;
         public CancellationTokenRegistration Registration;
+        public IRpcRouter Router;
+        public RpcTask Task;
+
+        public void RegistrationMethod()
+        {
+            Registration.Dispose();
+            Interlocked.CompareExchange(ref Task._token, null, this);
+            Router.InvokeCancellation(Task);
+            Task.TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
+        }
     }
 
     public Exception? GetException()

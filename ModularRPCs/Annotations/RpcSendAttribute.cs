@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using DanielWillett.ModularRpcs.Async;
 using JetBrains.Annotations;
 

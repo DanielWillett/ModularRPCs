@@ -1840,6 +1840,41 @@ internal static class TypeUtility
     {
         public static readonly TypeCode Value = GetTypeCode(typeof(TValue));
     }
+
+    public static MethodInfo? FindDeclaredMethodByName(Type declaringType, string methodName, Type[]? parameters, BindingFlags flags)
+    {
+        MethodInfo? refMethod;
+        try
+        {
+            refMethod = declaringType.GetMethod(
+                methodName,
+                flags | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly
+            );
+        }
+        catch (AmbiguousMatchException)
+        {
+            if (parameters == null)
+                return null;
+
+            try
+            {
+                refMethod = declaringType.GetMethod(
+                    methodName,
+                    flags | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+                    null,
+                    CallingConventions.Any,
+                    parameters,
+                    null
+                );
+            }
+            catch (AmbiguousMatchException)
+            {
+                refMethod = null;
+            }
+        }
+
+        return refMethod;
+    }
 }
 
 public enum ResolveMethodResult

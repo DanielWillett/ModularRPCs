@@ -450,4 +450,10 @@
   <data name="ArgumentExpectedBaseType" xml:space="preserve">
     <value>Expected a type assignable to {0}.</value>
   </data>
+  <data name="GeneratedProxyTypeNotProperlyImplemented" xml:space="preserve">
+    <value>Generated proxy type {0} is not correctly implemented. It should implement IRpcGeneratedProxyType.</value>
+  </data>
+  <data name="RpcParseExceptionBufferRunOutFastRead" xml:space="preserve">
+    <value>The RpcOverhead failed to parse a message because the buffer was too short while reading parameter: "{0} {1}".</value>
+  </data>
 </root>

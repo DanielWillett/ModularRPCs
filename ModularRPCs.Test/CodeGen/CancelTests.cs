@@ -15,7 +15,7 @@ namespace ModularRPCs.Test.CodeGen;
 [NonParallelizable, TestFixture]
 public class CancelTests
 {
-    private const int DelayMs = 100;
+    private const int DelayMs = 400;
     private static bool _didCancel;
 
     [Test]
@@ -26,7 +26,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromServer(connection).WithToken(tknSrc.Token));
     }
     
@@ -37,7 +37,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromClient().WithToken(tknSrc.Token));
     }
 
@@ -49,7 +49,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromServer(connection).WithToken(tknSrc.Token));
     }
     
@@ -60,7 +60,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromClient().WithToken(tknSrc.Token));
     }
 
@@ -72,7 +72,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromServer(connection, tknSrc.Token));
     }
     
@@ -83,7 +83,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromClient(tknSrc.Token));
     }
 
@@ -95,7 +95,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromServer(connection, tknSrc.Token));
     }
     
@@ -106,7 +106,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(Is.AssignableTo<OperationCanceledException>(), async () => await proxy.InvokeFromClient(tknSrc.Token));
     }
 
@@ -127,7 +127,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromServerToken(connection).WithToken(tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);
@@ -143,7 +143,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromClientToken().WithToken(tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);
@@ -160,7 +160,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromServerToken(connection).WithToken(tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);
@@ -176,7 +176,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromClientToken().WithToken(tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);
@@ -193,7 +193,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromServerToken(connection, tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);
@@ -209,7 +209,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromClientToken(tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);
@@ -226,7 +226,7 @@ public class CancelTests
 
         TestClass proxy = server.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
 
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromServerToken(connection, tknSrc.Token));
 
@@ -243,7 +243,7 @@ public class CancelTests
 
         TestClass proxy = client.GetRequiredService<TestClass>();
 
-        using CancellationTokenSource tknSrc = new CancellationTokenSource(10);
+        using CancellationTokenSource tknSrc = new CancellationTokenSource(100);
         Assert.ThrowsAsync(GetOpCancelledConstraint(), async () => await proxy.InvokeFromClientToken(tknSrc.Token));
 
         await Task.Delay(10, CancellationToken.None);

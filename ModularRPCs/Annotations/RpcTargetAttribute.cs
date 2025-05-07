@@ -15,7 +15,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace DanielWillett.ModularRpcs.Annotations;
 
 [MeansImplicitUse]
-public abstract class RpcTargetAttribute : Attribute
+public abstract class RpcTargetAttribute : Attribute, IEquatable<RpcTargetAttribute>
 {
     /// <summary>
     /// Declaring type of the target method.
@@ -173,4 +173,69 @@ public abstract class RpcTargetAttribute : Attribute
     {
         return TypeUtility.TryResolveMethod(decoratingMethod, MethodName, Type, TypeName, ParameterTypes, ParameterTypeNames, ParametersAreBindedParametersOnly, out method, out result);
     }
+
+    /// <inheritdoc />
+    public virtual bool Equals(RpcTargetAttribute other)
+    {
+        if (other is null || other.GetType() != GetType())
+            return false;
+
+        if (ReferenceEquals(this, other))
+            return true;
+
+        if (Type != other.Type
+            || Raw != other.Raw
+            || !string.Equals(TypeName, other.TypeName, StringComparison.Ordinal)
+            || !string.Equals(MethodName, other.MethodName, StringComparison.Ordinal)
+            || ParametersAreBindedParametersOnly != other.ParametersAreBindedParametersOnly)
+        {
+            return false;
+        }
+
+        if (ParameterTypes == null)
+        {
+            if (other.ParameterTypes != null)
+                return false;
+        }
+        else if (other.ParameterTypes == null || other.ParameterTypes.Length != ParameterTypes.Length)
+        {
+            return false;
+        }
+        else
+        {
+            for (int i = 0; i < ParameterTypes.Length; ++i)
+            {
+                if (ParameterTypes[i] != other.ParameterTypes[i])
+                    return false;
+            }
+        }
+        if (ParameterTypeNames == null)
+        {
+            if (other.ParameterTypeNames != null)
+                return false;
+        }
+        else if (other.ParameterTypeNames == null || other.ParameterTypeNames.Length != ParameterTypeNames.Length)
+        {
+            return false;
+        }
+        else
+        {
+            for (int i = 0; i < ParameterTypeNames.Length; ++i)
+            {
+                if (!string.Equals(ParameterTypeNames[i], other.ParameterTypeNames[i], StringComparison.Ordinal))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj)
+    {
+        return obj is RpcTargetAttribute t && Equals(t);
+    }
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Type, Raw, TypeName, MethodName, ParametersAreBindedParametersOnly);
 }
