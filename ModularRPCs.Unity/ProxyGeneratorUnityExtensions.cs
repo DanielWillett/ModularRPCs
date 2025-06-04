@@ -37,7 +37,7 @@ public static class ProxyGeneratorUnityExtensions
             );
         }
 
-        Component comp = parentObject.AddComponent(componentType);
+        Component comp = parentObject.AddComponent(typeInfo.Type);
         typeInfo.SetUnityRouterField(comp, router);
         return comp;
     }
@@ -219,10 +219,7 @@ public static class ProxyGeneratorUnityExtensions
                 continue;
 
             ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(compType.BaseType!);
-            if (typeInfo.SetUnityRouterField == null)
-                continue;
-
-            typeInfo.SetUnityRouterField(component, router);
+            typeInfo.SetUnityRouterField?.Invoke(component, router);
         }
 
         workingComponentList.Clear();
