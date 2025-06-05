@@ -427,9 +427,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             return;
 
         HandleReturn(overhead);
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", $"Invoked return value: {value}");
-#endif
         if (collection == null)
         {
             InvokeHandleSerializableReturnValueAsync(value, overhead, serializer);
@@ -444,9 +441,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
         else
         {
-#if DEBUG
-            Accessor.Logger!.LogInfo("source", $"Invalid parameter: {value} ({value.GetType()}");
-#endif
             throw new RpcInvalidParameterException(
                 string.Format(Properties.Exceptions.RpcInvalidParameterExceptionInfoNoParamInfo,
                     Accessor.ExceptionFormatter.Format(collection.GetType()),
@@ -487,9 +481,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     private async void InvokeHandleSerializableReturnValueAsync<TReturnType>(TReturnType value, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : IRpcSerializable
     {
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", $"Invoked serializable return value: {value}");
-#endif
         try
         {
             await ReplyRpcSerializableValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, value, serializer);
@@ -516,22 +507,12 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     private async void InvokeHandleSerializableCollectionReturnValueAsync<TReturnType>(IEnumerable<TReturnType>? collection, RpcOverhead overhead, IRpcSerializer serializer) where TReturnType : IRpcSerializable
     {
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", $"Invoked serializable collection return value: {collection}");
-#endif
         try
         {
             await ReplyRpcSerializableCollectionValueSuccessRtn(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, collection, serializer);
-
-#if DEBUG
-            Accessor.Logger!.LogInfo("source", "Done with collection");
-#endif
         }
         catch (Exception ex)
         {
-#if DEBUG
-            Accessor.Logger!.LogError("source", ex, "error in InvokeHandleSerializableCollectionReturnValueAsync");
-#endif
             HandleInvokeException(overhead, ex);
             await ReplyRpcException(overhead.MessageId, overhead.SubMessageId, overhead.SendingConnection!, ex, serializer);
         }
@@ -629,9 +610,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// <inheritdoc />
     public virtual unsafe ValueTask ReceiveData(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", $"received {primitiveOverhead}");
-#endif
         if (rawData.Length <= 1)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionBufferRunOut) { ErrorCode = 1 };
 
@@ -708,6 +686,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                         Accessor.ExceptionFormatter.Format(taskType))
                     ));
                 }
+
                 FinishListening(task);
                 break;
 
@@ -1721,9 +1700,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     private static unsafe ValueTask ReplyRpcSerializableCollectionValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IEnumerable<TValue>? collection, IRpcSerializer serializer) where TValue : IRpcSerializable
     {
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", "replying...");
-#endif
         uint pfxSize = GetPrefixSize(serializer);
         uint size = pfxSize;
         bool hasKnownTypeId;
@@ -1785,9 +1761,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index += (uint)serializer.WriteSerializableObjects(collection, ptr + index, size - index);
         }
 
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", $"sending {index}...");
-#endif
         return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
     }
 

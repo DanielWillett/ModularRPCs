@@ -276,6 +276,7 @@ public class RpcTask
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void DisposeCancellation()
     {
+        CombinedTokensToDisposeOnComplete.Dispose();
         TokenRegistration? tkn = Interlocked.Exchange(ref _token, null);
         if (tkn == null)
             return;

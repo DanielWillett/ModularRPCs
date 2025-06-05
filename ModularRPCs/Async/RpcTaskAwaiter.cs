@@ -38,6 +38,7 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
     private Action? _continuation;
     private ExecutionContext? _executionContext;
     private SynchronizationContext? _synchronizationContext;
+    private int _hasRanContinuation;
     public RpcTask Task { get; }
 
     /// <summary>
@@ -52,7 +53,9 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
     internal void TriggerComplete()
     {
         if (Interlocked.Decrement(ref Task.CompleteCount) != 0)
+        {
             return;
+        }
 
         if (_synchronizationContext != null)
         {
@@ -87,8 +90,14 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
         static void CompleteIntl(RpcTaskAwaiter me)
         {
             me.IsCompleted = true;
-            me._continuation?.Invoke();
-            me.Task.CombinedTokensToDisposeOnComplete.Dispose();
+            Interlocked.MemoryBarrier();
+            Action? continuation = me._continuation;
+            if (continuation != null && Interlocked.Exchange(ref me._hasRanContinuation, 1) == 0)
+            {
+                continuation.Invoke();
+            }
+
+            me.Task.DisposeCancellation();
         }
     }
 
@@ -105,6 +114,15 @@ public class RpcTaskAwaiter : ICriticalNotifyCompletion
     internal void OnCompletedIntl(Action continuation, bool continueOnCapturedContext, bool flowExecutionContext)
     {
         _continuation = continuation;
+        Interlocked.MemoryBarrier();
+        if (IsCompleted)
+        {
+            if (Interlocked.Exchange(ref _hasRanContinuation, 1) == 0)
+            {
+                _continuation();
+                return;
+            }
+        }
         if (flowExecutionContext)
             _executionContext = ExecutionContext.Capture();
         if (continueOnCapturedContext)

@@ -4,13 +4,13 @@ using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
-using DanielWillett.ReflectionTools;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Loopback;
+
 public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection, IModularRpcClientsideConnection, IRefSafeLoggable
 {
     private ContiguousBuffer? _buffer;
@@ -45,15 +45,9 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
     IModularRpcLocalConnection IModularRpcRemoteConnection.Local => Local;
     ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", "1...");
-#endif
         if (IsClosed)
             throw new RpcConnectionClosedException();
 
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", "2...");
-#endif
         if (rawData.Length <= 0)
             throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
 
@@ -62,22 +56,14 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
             Interlocked.CompareExchange(ref _buffer, new ContiguousBuffer(Server.Local, 4096), null);
         }
 
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", "3...");
-#endif
+
         byte[] rtnBuffer = new byte[rawData.Length];
         rawData.CopyTo(rtnBuffer);
 
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", "4...");
-#endif
         if (!UseStreams)
         {
             if (!UseContiguousBuffer)
             {
-#if DEBUG
-                Accessor.Logger!.LogInfo("source", "5...");
-#endif
                 return Server.Local.Router.ReceiveData(Server, Server.Local.Serializer, rtnBuffer, true, token);
             }
 
@@ -85,9 +71,7 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
             while (bytesLeft > 0)
             {
                 int numBytes = Math.Min(bytesLeft, _buffer!.Buffer.Length);
-#if DEBUG
-                Accessor.Logger!.LogInfo("source", $"6... {bytesLeft} ({numBytes})");
-#endif
+
                 Buffer.BlockCopy(rtnBuffer, 0, _buffer!.Buffer, 0, numBytes);
                 _buffer.ProcessBuffer((uint)numBytes, serializer, _callback);
                 bytesLeft -= numBytes;
@@ -144,9 +128,6 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
     private void HandleContiguousBufferCallback(
         ReadOnlyMemory<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead)
     {
-#if DEBUG
-        Accessor.Logger!.LogInfo("source", "callback");
-#endif
         ValueTask vt = Server.Local.Router.ReceiveData(in overhead, Server, Server.Local.Serializer, data, canTakeOwnership);
 
         if (vt.IsCompleted)
