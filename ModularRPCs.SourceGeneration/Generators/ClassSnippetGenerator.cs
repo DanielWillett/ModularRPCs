@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
 
-internal class ClassSnippetGenerator
+internal readonly struct ClassSnippetGenerator
 {
     public readonly SourceProductionContext Context;
     public readonly RpcClassDeclaration Class;
@@ -19,7 +19,7 @@ internal class ClassSnippetGenerator
     }
 
 
-    public SourceText GenerateClassSnippet()
+    public void GenerateClassSnippet()
     {
         Context.CancellationToken.ThrowIfCancellationRequested();
 
@@ -55,6 +55,10 @@ internal class ClassSnippetGenerator
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
-        return SourceText.From(sb.ToString());
+        Context.AddSource(Class.Namespace == null
+                ? $"{Class.Name}"
+                : $"{Class.Namespace}.{Class.Name}",
+            SourceText.From(sb.ToString())
+        );
     }
 }

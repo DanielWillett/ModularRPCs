@@ -671,7 +671,7 @@ public class TestManualExplicitProxyClass
                         modularRpcsGeneratedIndex += (uint)modularRpcsGeneratedSerializer.WriteObject(
                             primitiveLikeValue,
                             modularRpcsGeneratedPtr + modularRpcsGeneratedIndex,
-                            (uint)modularRpcsGeneratedSize// - modularRpcsGeneratedIndex
+                            (uint)modularRpcsGeneratedSize
                         );
                     }
 

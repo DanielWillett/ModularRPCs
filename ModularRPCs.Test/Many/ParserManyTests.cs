@@ -10,7 +10,7 @@ using System.Runtime.CompilerServices;
 
 namespace ModularRPCs.Test.Many;
 
-[Ignore("these take forever"), TestFixture]
+[Ignore("these take forever"), TestFixture, Timeout(60000)]
 public partial class ParserManyTests
 {
     public static unsafe void TestManyParserBytes<T>(T[] values, IArrayBinaryTypeParser<T> parser, Func<T, T, bool> equality = null)

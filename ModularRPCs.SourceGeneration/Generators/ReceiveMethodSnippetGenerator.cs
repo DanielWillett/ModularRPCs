@@ -1,12 +1,12 @@
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
-using DanielWillett.ModularRpcs.Annotations;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
 
-internal class ReceiveMethodSnippetGenerator
+internal readonly struct ReceiveMethodSnippetGenerator
 {
     public readonly SourceProductionContext Context;
     public readonly RpcMethodDeclaration Method;
@@ -20,18 +20,18 @@ internal class ReceiveMethodSnippetGenerator
     }
 
 
-    public SourceText GenerateClassSnippet()
+    public void GenerateClassSnippet()
     {
         Context.CancellationToken.ThrowIfCancellationRequested();
 
         StringBuilder sb = new StringBuilder(2048);
 
-        string ns = NamespaceHelper.SanitizeNamespace(Method.Namespace);
+        string ns = NamespaceHelper.SanitizeNamespace(Method.Type.Namespace);
 
         sb.Append(    "namespace ").AppendLine(ns);
         sb.AppendLine("{");
         sb.Append(    "    partial ")
-            .Append(Method.IsStruct ? "struct" : "class")
+            .Append(Method.Type.IsStruct ? "struct" : "class")
             .Append(" @")
             .Append(Method.Name)
             .Append(" : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType");
@@ -56,6 +56,10 @@ internal class ReceiveMethodSnippetGenerator
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
-        return SourceText.From(sb.ToString());
+        Context.AddSource(Method.Type.Namespace == null
+                ? $"{Method.Type.Name}.Receive_{Method.Name}"
+                : $"{Method.Type.Namespace}.{Method.Type.Name}.Receive_{Method.Name}",
+            SourceText.From(sb.ToString())
+        );
     }
 }

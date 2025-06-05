@@ -196,7 +196,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
             return;
 
-        _accessIgnoredAssemblies.Add(thisAssembly);
         attr = new CustomAttributeBuilder(
             typeof(IgnoresAccessChecksToAttribute).GetConstructor([ typeof(string) ])!,
             [ thisAssembly.GetName().Name ]

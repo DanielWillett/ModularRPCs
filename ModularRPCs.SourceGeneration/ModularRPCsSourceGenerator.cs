@@ -45,7 +45,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                         /// <remarks>A <see cref="T:DanielWillett.ModularRpcs.Annotations.RpcExplicitProxyType"/> will be added to this type.</remarks>
                         [global::System.AttributeUsageAttribute(global::System.AttributeTargets.Class | global::System.AttributeTargets.Struct)]
                         [global::Microsoft.CodeAnalysis.EmbeddedAttribute]
-                        sealed class GenerateRpcSourceAttribute : global::System.Attribute
+                        internal sealed partial class GenerateRpcSourceAttribute : global::System.Attribute
                         {
                         }
                     }
@@ -81,10 +81,18 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             })
             .SelectMany(EnumerateMethods);
 
-        context.RegisterSourceOutput(classes, static (n, c) => new ClassSnippetGenerator(n, c).GenerateClassSnippet());
-        context.RegisterSourceOutput(methods, static (n, m) => m.IsReceive
-            ? new ReceiveMethodSnippetGenerator(n, m).GenerateMethodSnippet()
-            : new SendMethodSnippetGenerator(n, m).GenerateMethodSnippet());
+        context.RegisterSourceOutput(classes, static (n, c) =>
+        {
+            new ClassSnippetGenerator(n, c).GenerateClassSnippet();
+        });
+
+        context.RegisterSourceOutput(methods, static (n, m) =>
+        {
+            if (m.IsReceive)
+                new ReceiveMethodSnippetGenerator(n, m).GenerateClassSnippet();
+            else
+                new SendMethodSnippetGenerator(n, m).GenerateClassSnippet();
+        });
     }
 
     private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(ITypeSymbol symbol, CancellationToken token)

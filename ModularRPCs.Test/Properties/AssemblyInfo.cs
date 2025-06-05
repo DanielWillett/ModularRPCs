@@ -18,3 +18,5 @@ using NUnit.Framework;
 [assembly: Guid("bfda7eff-67ec-479f-a506-3f475a8020a3")]
 [assembly: LevelOfParallelism(24)]
 [assembly: Parallelizable(ParallelScope.Children)]
+
+[assembly: Timeout(5000)]

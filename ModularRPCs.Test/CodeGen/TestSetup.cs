@@ -62,7 +62,7 @@ internal static class TestSetup
         IServiceProvider clientProvider = collection.BuildServiceProvider();
         client = clientProvider;
 
-        ProxyGenerator.Instance.DefaultTimeout = TimeSpan.FromMinutes(2d);
+        ProxyGenerator.Instance.DefaultTimeout = TimeSpan.FromSeconds(5d);
 
         return Intl();
 
