@@ -37,7 +37,7 @@ public static class ProxyGeneratorUnityExtensions
             );
         }
 
-        Component comp = parentObject.AddComponent(componentType);
+        Component comp = parentObject.AddComponent(typeInfo.Type);
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)comp;

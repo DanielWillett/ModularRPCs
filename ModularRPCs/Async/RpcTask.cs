@@ -5,6 +5,8 @@ using DanielWillett.ModularRpcs.Routing;
 using JetBrains.Annotations;
 using System;
 using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 
@@ -264,17 +266,24 @@ public class RpcTask
         {
             if (Awaiter.IsCompleted)
             {
-                TokenRegistration? tkn = Interlocked.Exchange(ref _token, null);
-                if (tkn != null)
-                {
-                    tkn.Registration.Dispose();
-                    if (tkn.Token.IsCancellationRequested)
-                    {
-                        TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
-                    }
-                }
+                DisposeCancellation();
             }
         }
     }
+
     public static RpcTask<T> FromResult<T>(T value) => new RpcTask<T>(value);
+
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public void DisposeCancellation()
+    {
+        TokenRegistration? tkn = Interlocked.Exchange(ref _token, null);
+        if (tkn == null)
+            return;
+
+        tkn.Registration.Dispose();
+        if (tkn.Token.IsCancellationRequested)
+        {
+            TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
+        }
+    }
 }

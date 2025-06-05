@@ -212,7 +212,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         ulong messageId = task.MessageId;
 
         IModularRpcRemoteConnection? connection = task.ConnectionIntl;
-        if (connection == null)
+        if (connection == null || connection.IsClosed)
             return;
 
         ValueTask vt;
@@ -1294,6 +1294,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         if (rpcTask == null)
             return;
 
+        rpcTask.DisposeCancellation();
         Timer? timer = Interlocked.Exchange(ref rpcTask.Timer, null);
         if (timer == null)
             return;
