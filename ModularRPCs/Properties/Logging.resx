@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -128,6 +128,12 @@
   </data>
   <data name="ConstructorNotVisibileToOverridingClasses" xml:space="preserve">
     <value>The constructor with arguments {0} in type '{1}' is not accessible by the proxy class.</value>
+  </data>
+  <data name="GeneratedInvokeMethodTargetNotFound" xml:space="preserve">
+    <value>Generated invoke method target not found in {0}: \"{1}\".</value>
+  </data>
+  <data name="GenerateInvokeMethodImplementationNotFound" xml:space="preserve">
+    <value>Generated invoke method not found in {0}: \"{1}\".</value>
   </data>
   <data name="MethodNotVisibileToOverridingClasses" xml:space="preserve">
     <value>The method '{0}' in type '{1}' is not accessible or overridable by the proxy class.</value>

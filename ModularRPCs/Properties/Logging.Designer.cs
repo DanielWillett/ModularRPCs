@@ -97,6 +97,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Generated invoke method target not found in {0}: \&quot;{1}\&quot;..
+        /// </summary>
+        internal static string GeneratedInvokeMethodTargetNotFound {
+            get {
+                return ResourceManager.GetString("GeneratedInvokeMethodTargetNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Generated invoke method not found in {0}: \&quot;{1}\&quot;..
+        /// </summary>
+        internal static string GenerateInvokeMethodImplementationNotFound {
+            get {
+                return ResourceManager.GetString("GenerateInvokeMethodImplementationNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The method &apos;{0}&apos; in type &apos;{1}&apos; is not accessible or overridable by the proxy class..
         /// </summary>
         internal static string MethodNotVisibileToOverridingClasses {

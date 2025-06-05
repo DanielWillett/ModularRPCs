@@ -21,3 +21,4 @@ using System.Runtime.InteropServices;
 [assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Test")]
 [assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.WebSockets")]
 [assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Unity")]
+[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.SourceGeneration")]

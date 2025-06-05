@@ -70,8 +70,17 @@ internal static class TestSetup
         {
             LoopbackEndpoint endpoint = new LoopbackEndpoint(false, useStreams);
 
-            LoopbackRpcClientsideRemoteConnection remote
-                = (LoopbackRpcClientsideRemoteConnection)await endpoint.RequestConnectionAsync(clientProvider, serverProvider);
+            LoopbackRpcClientsideRemoteConnection remote;
+            try
+            {
+                remote = (LoopbackRpcClientsideRemoteConnection)await endpoint.RequestConnectionAsync(clientProvider, serverProvider);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                Assert.Fail("Exception thrown");
+                throw;
+            }
             remote.UseContiguousBuffer = true;
             remote.Server.UseContiguousBuffer = false; // todo
 
