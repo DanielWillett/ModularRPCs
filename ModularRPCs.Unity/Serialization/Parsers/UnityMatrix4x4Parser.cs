@@ -1,11 +1,12 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+﻿extern alias Unity;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using UnityEngine;
+using Unity::UnityEngine;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class UnityMatrix4x4Parser : BinaryTypeParser<Matrix4x4>, IBinaryTypeParser

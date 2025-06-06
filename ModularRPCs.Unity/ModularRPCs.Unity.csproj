@@ -74,7 +74,7 @@
 
   <ItemGroup>
     <PackageReference Include="JetBrains.Annotations" Version="[2018.2.1,)" Aliases="JetBrains" />
-    <Reference Include="UnityEngine" HintPath="./Libraries/UnityEngine.dll" />
+    <Reference Include="UnityEngine" HintPath="./Libraries/UnityEngine.dll" Aliases="Unity" />
   </ItemGroup>
 
   <ItemGroup>

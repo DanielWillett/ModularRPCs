@@ -5,7 +5,8 @@ namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 internal static class NamespaceHelper
 {
     private static readonly Regex NamespaceSanitizeRegex = new Regex(@"@{0,1}([^\\.]+)", RegexOptions.Compiled);
-    public static string SanitizeNamespace(string ns)
+
+    public static string? SanitizeNamespace(string? ns)
     {
         if (string.IsNullOrWhiteSpace(ns))
             return ns;
@@ -29,5 +30,12 @@ internal static class NamespaceHelper
         }
 
         return sb.ToString();
+    }
+
+    public static string GetQualifiedTypeName(string? @namespace, string name)
+    {
+        return string.IsNullOrEmpty(@namespace)
+            ? "global::" + name
+            : "global::" + SanitizeNamespace(@namespace) + "." + name;
     }
 }

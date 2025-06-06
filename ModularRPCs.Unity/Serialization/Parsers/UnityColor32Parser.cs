@@ -1,8 +1,9 @@
-﻿using DanielWillett.ModularRpcs.Configuration;
+﻿extern alias Unity;
+using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.IO;
-using UnityEngine;
+using Unity::UnityEngine;
 
 namespace DanielWillett.ModularRpcs.Serialization.Parsers;
 public class UnityColor32Parser : BinaryTypeParser<Color32>

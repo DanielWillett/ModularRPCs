@@ -11,6 +11,9 @@ namespace DanielWillett.ModularRpcs.Reflection;
 [EditorBrowsable(EditorBrowsableState.Never)]
 public static class SourceGenerationServices
 {
+    public delegate ref RpcCallMethodInfo GetCallInfo();
+    public delegate RpcCallMethodInfo GetCallInfoByVal();
+
     public static string ResxRpcInjectionExceptionInstanceNull => Properties.Exceptions.RpcInjectionExceptionInstanceNull;
     public static string ResxRpcParseExceptionBufferRunOutFastRead => Properties.Exceptions.RpcParseExceptionBufferRunOutFastRead;
 

@@ -1,10 +1,11 @@
+extern alias Unity;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ReflectionTools;
 using System;
 using System.Collections.Generic;
-using UnityEngine;
-using Object = UnityEngine.Object;
+using Unity::UnityEngine;
+using Object = Unity::UnityEngine.Object;
 
 namespace DanielWillett.ModularRpcs;
 
@@ -100,7 +101,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+            ProxyGenerator.Instance.SetupGeneratedProxyInfo(genType, new GeneratedProxyTypeInfo(router));
         }
         else
         {

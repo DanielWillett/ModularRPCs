@@ -5,6 +5,7 @@
 		<TargetFramework>netstandard2.0</TargetFramework>
 		<LangVersion>preview</LangVersion>
 		<RootNamespace>DanielWillett.ModularRpcs.SourceGeneration</RootNamespace>
+    <AssemblyName>DanielWillett.ModularRpcs.SourceGeneration</AssemblyName>
 
 		<Nullable>enable</Nullable>
 
@@ -16,19 +17,36 @@
 
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<IncludeBuildOutput>false</IncludeBuildOutput>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <NoWarn>NU5128</NoWarn>
 	</PropertyGroup>
 
-	<ItemGroup>
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" PrivateAssets="all" />
-		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
-		<PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease11, 2.0.0)" PrivateAssets="all" GeneratePathProperty="true" />
-	</ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Generator dependencies -->
+    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease11, 2.0.0)" PrivateAssets="all" GeneratePathProperty="true" />
+  </ItemGroup>
+	
+  <PropertyGroup>
+    <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
+  </PropertyGroup>
+
+  <Target Name="GetDependencyTargetPaths">
+    <ItemGroup>
+      <TargetPathWithTargetPlatformMoniker Include="$(PKGDanielWillett_ModularRPCs)\lib\netstandard2.0\*.dll" IncludeRuntimeDependency="false" />
+    </ItemGroup>
+  </Target>
 
 	<ItemGroup>
-		
+
 		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-		<None Include="$(PkgDanielWillett_ModularRPCs)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
 
 	</ItemGroup>
 

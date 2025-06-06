@@ -1,14 +1,17 @@
 ﻿extern alias JetBrains;
+extern alias Unity;
 using DanielWillett.ModularRpcs.Configuration;
 using DanielWillett.ModularRpcs.Serialization.Parsers;
 using System;
 using System.Collections.Generic;
-using UnityEngine;
+using Unity::UnityEngine;
 
 namespace DanielWillett.ModularRpcs.Serialization;
+
+[JetBrains::JetBrains.Annotations.UsedImplicitly, Unity::JetBrains.Annotations.UsedImplicitly]
 internal static class UnitySerializationRegistrationHelper
 {
-    [JetBrains::JetBrains.Annotations.UsedImplicitly]
+    [JetBrains::JetBrains.Annotations.UsedImplicitly, Unity::JetBrains.Annotations.UsedImplicitly]
 #pragma warning disable IDE0051
     private static void ApplyUnityParsers(Dictionary<Type, IBinaryTypeParser> primitiveParsers, Dictionary<Type, int> primitiveSizes, SerializationConfiguration config)
     {

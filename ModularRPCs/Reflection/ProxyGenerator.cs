@@ -25,9 +25,9 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using ArgumentOutOfRangeException = System.ArgumentOutOfRangeException;
 using Exception = System.Exception;
+using RuntimeMethodHandle = System.RuntimeMethodHandle;
 using Type = System.Type;
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
@@ -53,8 +53,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
-    private delegate ref RpcCallMethodInfo GetCallInfo();
-    private delegate RpcCallMethodInfo GetCallInfoByVal();
+
     private delegate int GetOverheadSize(object targetObject, RuntimeMethodHandle method, ref RpcCallMethodInfo callInfo, out int sizeWithoutId);
     private unsafe delegate int WriteIdentifierHandler(object targetObject, byte* bytes, int maxSize);
 #if DEBUG
@@ -102,12 +101,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     public string ProxyContextFieldName => "_proxyContext<RPC_Proxy>";
 
     /// <summary>
-    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the signature: <c>bool TryGetInstance<RPC_Proxy>(T, out WeakReference)</c>.
+    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the signature: <c>bool TryGetInstance&lt;RPC_Proxy&gt;(T, out WeakReference)</c>.
     /// </summary>
     public string TryGetInstanceMethodName => "TryGetInstance<RPC_Proxy>";
 
     /// <summary>
-    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the signature: <c>WeakReference GetInstance<RPC_Proxy>(object)</c>.
+    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the signature: <c>WeakReference GetInstance&lt;RPC_Proxy&gt;(object)</c>.
     /// </summary>
     public string GetInstanceMethodName => "GetInstance<RPC_Proxy>";
 
@@ -192,6 +191,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         );
         
         AssemblyBuilder.SetCustomAttribute(attr);
+
+        _generatedTypeBuilder = new GeneratedProxyTypeBuilder(
+            _getCallInfoFunctions
+        );
+        _generatedTypeBuilderArgs = [ _generatedTypeBuilder ];
 
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
             return;
@@ -316,7 +320,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             if (newType.IsGenerated)
             {
                 IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newProxiedObject;
-                genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+                SetupGeneratedProxyInfo(genType, new GeneratedProxyTypeInfo(router));
             }
             else
             {
@@ -347,6 +351,15 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         {
             throw new MemberAccessException(Properties.Exceptions.InternalsNotVisibleMemberAccessException, ex);
         }
+    }
+
+    /// <summary>
+    /// Calls <see cref="IRpcGeneratedProxyType.SetupGeneratedProxyInfo"/> with the correct arguments.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Advanced)]
+    public void SetupGeneratedProxyInfo(IRpcGeneratedProxyType generatedProxy, GeneratedProxyTypeInfo info)
+    {
+        generatedProxy.SetupGeneratedProxyInfo(info);
     }
 
     /// <summary>
@@ -688,7 +701,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (callInfoGetter == null)
             return -1;
         
-        if (callInfoGetter is GetCallInfo callInfoByRefGetter)
+        if (callInfoGetter is SourceGenerationServices.GetCallInfo callInfoByRefGetter)
         {
             ref RpcCallMethodInfo callInfo = ref callInfoByRefGetter();
 
@@ -700,7 +713,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         }
         else
         {
-            RpcCallMethodInfo callInfo = ((GetCallInfoByVal)callInfoGetter)();
+            RpcCallMethodInfo callInfo = ((SourceGenerationServices.GetCallInfoByVal)callInfoGetter)();
 
             GetOverheadSize? calculateMethod = GetOverheadSizeMethod(targetType);
             if (calculateMethod == null)
@@ -781,7 +794,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                     il.Emit(OpCodes.Ldsfld, field);
                     il.Emit(OpCodes.Ret);
 
-                    return newMethod.CreateDelegate(typeof(GetCallInfoByVal));
+                    return newMethod.CreateDelegate(typeof(SourceGenerationServices.GetCallInfoByVal));
                 }
 
                 try
@@ -792,7 +805,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                     il.Emit(OpCodes.Ldsflda, field);
                     il.Emit(OpCodes.Ret);
 
-                    return newMethod.CreateDelegate(typeof(GetCallInfo));
+                    return newMethod.CreateDelegate(typeof(SourceGenerationServices.GetCallInfo));
                 }
                 catch (Exception) // older frameworks don't support return by ref for dynamic methods, ofc mono throws a different exception than .net framework
                 {
@@ -1690,15 +1703,38 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         il.Emit(OpCodes.Newobj, _identifierErrorConstructor);
         il.Emit(OpCodes.Throw);
     }
+    private static readonly Type[] GeneratedTypeSetupMethodArgs = [ typeof(GeneratedProxyTypeBuilder) ];
+
+    private readonly GeneratedProxyTypeBuilder _generatedTypeBuilder;
+    private readonly object[] _generatedTypeBuilderArgs;
+
     private unsafe ProxyTypeInfo CreateProxyType(Type type)
     {
         ProxyTypeInfo info = default;
 
-        if (type.IsDefinedSafe<RpcGeneratedProxyTypeAttribute>())
+        if (type.TryGetAttributeSafe(out RpcGeneratedProxyTypeAttribute generatedProxyAttribute))
         {
             if (!typeof(IRpcGeneratedProxyType).IsAssignableFrom(type))
             {
                 throw new ArgumentException(Properties.Exceptions.GeneratedProxyTypeNotProperlyImplemented, nameof(type));
+            }
+
+            if (generatedProxyAttribute.TypeSetupMethodName != null)
+            {
+                MethodInfo? method = type.GetMethod(
+                    generatedProxyAttribute.TypeSetupMethodName,
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                    null,
+                    CallingConventions.Any,
+                    GeneratedTypeSetupMethodArgs,
+                    null);
+
+                if (method == null)
+                {
+                    throw new ArgumentException(Properties.Exceptions.GeneratedProxyTypeNotProperlyImplemented, nameof(type));
+                }
+
+                method.Invoke(null, _generatedTypeBuilderArgs);
             }
 
             info.IsGenerated = true;

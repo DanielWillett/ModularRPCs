@@ -1,8 +1,6 @@
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Text;
-using System.Text;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
 
@@ -11,55 +9,35 @@ internal readonly struct ReceiveMethodSnippetGenerator
     public readonly SourceProductionContext Context;
     public readonly RpcMethodDeclaration Method;
     public readonly RpcReceiveAttribute Receive;
+    public readonly ReceiveMethodInfo Info;
 
-    internal ReceiveMethodSnippetGenerator(SourceProductionContext context, RpcMethodDeclaration method)
+    internal ReceiveMethodSnippetGenerator(SourceProductionContext context, ReceiveMethodInfo method)
     {
         Context = context;
-        Method = method;
-        Receive = (RpcReceiveAttribute)method.Target;
+        Method = method.Method;
+        Receive = (RpcReceiveAttribute)method.Method.Target;
+        Info = method;
     }
 
 
-    public void GenerateClassSnippet()
+    public void GenerateMethodBodySnippetBytes(SourceStringBuilder bldr)
     {
         Context.CancellationToken.ThrowIfCancellationRequested();
+    }
+    public void GenerateMethodBodySnippetStream(SourceStringBuilder bldr)
+    {
+        Context.CancellationToken.ThrowIfCancellationRequested();
+    }
+}
 
-        StringBuilder sb = new StringBuilder(2048);
+internal struct ReceiveMethodInfo
+{
+    public RpcMethodDeclaration Method;
+    public int Overload;
 
-        string ns = NamespaceHelper.SanitizeNamespace(Method.Type.Namespace);
-
-        sb.Append(    "namespace ").AppendLine(ns);
-        sb.AppendLine("{");
-        sb.Append(    "    partial ")
-            .Append(Method.Type.IsStruct ? "struct" : "class")
-            .Append(" @")
-            .Append(Method.Name)
-            .Append(" : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType");
-        sb.AppendLine("    {");
-        sb.Append(     """
-                               [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
-                               private global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo _modularRpcsGeneratedProxyTypeInfo;
-                               
-                               [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
-                               private global::DanielWillett.ModularRpcs.Reflection.ProxyContext _modularRpcsGeneratedProxyContext;
-                               
-                               
-                               [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
-                               void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(
-                                   global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)
-                               {
-                                   this._modularRpcsGeneratedProxyTypeInfo = info;
-                                   info.Router.GetDefaultProxyContext(typeof(
-                       
-                       """).Append(Method.Name).AppendLine("), out this._modularRpcsGeneratedProxyContext);")
-          .Append(    "        }");
-        sb.AppendLine("    }");
-        sb.AppendLine("}");
-
-        Context.AddSource(Method.Type.Namespace == null
-                ? $"{Method.Type.Name}.Receive_{Method.Name}"
-                : $"{Method.Type.Namespace}.{Method.Type.Name}.Receive_{Method.Name}",
-            SourceText.From(sb.ToString())
-        );
+    public ReceiveMethodInfo(RpcMethodDeclaration method, int overload)
+    {
+        Method = method;
+        Overload = overload;
     }
 }
