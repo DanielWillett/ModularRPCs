@@ -81,7 +81,7 @@ internal readonly struct ClassSnippetGenerator
         }
         bldr.String(")]");
         
-        const string receiveInvokeNamePrefix = "ModularRpcsGeneratedInvokeReceiveOvl";
+        const string receiveInvokeNamePrefix = "ModularRpcsGeneratedInvoke";
         const string callMethodInfoFieldPrefix = "_modularRpcsGeneratedCallMethodInfo";
 
         foreach (ReceiveMethodInfo recvMethod in recvMethods)
