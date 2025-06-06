@@ -183,7 +183,7 @@ internal readonly struct ClassSnippetGenerator
                         .String(")").Out()
                     .String("),")
                     .String("false").Out()
-                .String(");");
+                .String(");").Out();
 
             bldr.Empty()
                 .String("/// <summary>")
