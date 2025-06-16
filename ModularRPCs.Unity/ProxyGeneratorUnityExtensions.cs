@@ -42,7 +42,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)comp;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -101,7 +101,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            ProxyGenerator.Instance.SetupGeneratedProxyInfo(genType, new GeneratedProxyTypeInfo(router));
+            proxyGenerator.SetupGeneratedProxyInfo(genType, new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -143,7 +143,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -197,7 +197,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -240,7 +240,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -256,7 +256,7 @@ public static class ProxyGeneratorUnityExtensions
             Component component = workingComponentList[i];
             Type compType = component.GetType();
 
-            if (!proxyGenerator.IsProxyType(compType))
+            if (!proxyGenerator.HasProxyType(compType))
                 continue;
 
             ProxyGenerator.ProxyTypeInfo typeInfo = proxyGenerator.GetProxyTypeInfo(compType.BaseType!);
@@ -266,7 +266,7 @@ public static class ProxyGeneratorUnityExtensions
             if (typeInfo.IsGenerated)
             {
                 IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)component;
-                genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router));
+                genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
             }
             else
             {

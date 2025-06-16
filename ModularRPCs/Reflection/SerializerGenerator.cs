@@ -29,6 +29,7 @@ using System.Threading;
 namespace DanielWillett.ModularRpcs.Reflection;
 internal sealed class SerializerGenerator
 {
+    // update source generator when updating this
     private static readonly Type[] AutoInjectedTypes =
     [
         typeof(IRpcInvocationPoint),
@@ -204,7 +205,7 @@ internal sealed class SerializerGenerator
 #endif
     }
     [UsedImplicitly]
-    private static void InitTypeStatic(Type thisType, Type[] genTypes)
+    internal static void InitTypeStatic(Type thisType, Type[] genTypes)
     {
         ProxyGenerator.Instance.SerializerGenerator.InitType(thisType, genTypes);
     }
@@ -1039,7 +1040,7 @@ internal sealed class SerializerGenerator
         {
             ParameterInfo parameterInfo = parameters[i];
 
-            bool isInjected = Array.Exists(AutoInjectedTypes, x => x.IsAssignableFrom(parameterInfo.ParameterType))
+            bool isInjected = Array.Exists(AutoInjectedTypes, x => x != typeof(object) && x != typeof(ValueType) && x.IsAssignableFrom(parameterInfo.ParameterType))
                               || parameterInfo.IsDefinedSafe<RpcInjectAttribute>();
 
             injectionMask[i] = isInjected;

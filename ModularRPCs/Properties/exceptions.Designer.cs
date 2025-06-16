@@ -358,6 +358,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Expected a value of type &quot;{0}&quot;..
+        /// </summary>
+        internal static string ObjectNotOfType {
+            get {
+                return ResourceManager.GetString("ObjectNotOfType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Given object is not a proxy implementation of &quot;{0}&quot;..
+        /// </summary>
+        internal static string ObjectNotProxyType {
+            get {
+                return ResourceManager.GetString("ObjectNotProxyType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The given output buffer is not big enough to put all elements in after reading in the binary type parser: &apos;{0}&apos;..
         /// </summary>
         internal static string OutputListOutOfRangeIBinaryParser {

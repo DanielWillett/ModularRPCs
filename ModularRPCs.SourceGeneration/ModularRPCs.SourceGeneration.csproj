@@ -15,6 +15,8 @@
 		<FileVersion>$(Version).0</FileVersion>
 		<AssemblyVersion>$(Version).0</AssemblyVersion>
 
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<IncludeBuildOutput>false</IncludeBuildOutput>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -46,8 +48,14 @@
 
 	<ItemGroup>
 
-		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <Compile Remove="build/**" />
+    <EmbeddedResource Remove="build/**" />
+    <None Remove="build/**" />
 
-	</ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+    <None Include="$(SolutionDir)\README.md" Pack="true" PackagePath="/" />
+    <None Include="build\DanielWillett.ModularRPCs.SourceGeneration.props" Pack="true" PackagePath="buildTransitive" />
+
+  </ItemGroup>
 
 </Project>

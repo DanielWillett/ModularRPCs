@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Reflection;
 using System;
 
 namespace DanielWillett.ModularRpcs.Protocol;
@@ -11,7 +11,7 @@ public static class RpcObjectExtensions
     /// <returns><see langword="true"/> if the object was found and released, otherwise <see langword="false"/>.</returns>
     public static bool Release<T>(this IRpcObject<T> obj)
     {
-        return ProxyGenerator.Instance.ReleaseObject(obj.GetType(), obj);
+        return ProxyGenerator.Instance.ReleaseObject(obj);
     }
 
     /// <summary>

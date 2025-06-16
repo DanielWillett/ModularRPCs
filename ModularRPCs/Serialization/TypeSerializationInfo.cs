@@ -46,15 +46,15 @@ internal readonly struct TypeSerializationInfo
                 {
                     Type = TypeSerializationInfoType.NullableCollectionSerializableCollection;
                     SerializableType = t;
+                    UnderlyingType = nullableType;
                 }
             }
             else
             {
                 Type = TypeSerializationInfoType.NullableValue;
                 SerializableType = type;
+                UnderlyingType = nullableType;
             }
-
-            UnderlyingType = nullableType;
         }
         else
         {

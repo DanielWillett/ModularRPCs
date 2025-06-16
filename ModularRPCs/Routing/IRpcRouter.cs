@@ -1,16 +1,15 @@
 using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.Contracts;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Annotations;
 
 namespace DanielWillett.ModularRpcs.Routing;
 
@@ -28,7 +27,7 @@ public interface IRpcRouter
     /// Get a saved <see cref="IRpcInvocationPoint"/> from it's Id.
     /// </summary>
     /// <param name="endpointSharedId">Unique shared ID for the rpc endpoint.</param>
-    [Pure]
+    [System.Diagnostics.Contracts.Pure]
     IRpcInvocationPoint? FindSavedRpcEndpoint(uint endpointSharedId);
 
     /// <summary>
@@ -40,14 +39,14 @@ public interface IRpcRouter
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    [Pure]
+    [System.Diagnostics.Contracts.Pure]
     IRpcInvocationPoint ResolveEndpoint(uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier);
 
     /// <summary>
     /// Resolve an endpoint from the read information.
     /// </summary>
     /// <param name="knownRpcShortcutId">Unique known RPC ID from the server. 0 means unknown.</param>
-    [Pure]
+    [System.Diagnostics.Contracts.Pure]
     IRpcInvocationPoint ResolveEndpoint(IRpcSerializer serializer, uint knownRpcShortcutId, string typeName, string methodName, string[] args, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation, int byteSize, object? identifier);
 
     /// <summary>
@@ -69,13 +68,14 @@ public interface IRpcRouter
     /// <summary>
     /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.
     /// </summary>
-    [Pure]
+    [System.Diagnostics.Contracts.Pure]
     uint GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
     /// Get the default interface implementations for a proxy class.
     /// </summary>
-    void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
+    [UsedImplicitly]
+    void GetDefaultProxyContext(ProxyGenerator generator, Type proxyType, out ProxyContext context);
 
     /// <summary>
     /// Sends a cancellation of a message if supported, otherwise does nothing.

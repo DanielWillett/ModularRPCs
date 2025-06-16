@@ -75,12 +75,23 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                         error = ClassError.Nested;
                     else if (!symbol.CanBeReferencedByName)
                         error = ClassError.Invalid;
+                    else if (symbol.IsValueType)
+                        error = ClassError.Struct;
 
-                    INamedTypeSymbol? rpcObjectInterface = symbol.Interfaces.FirstOrDefault(
-                        x => x.IsGenericType && x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcObject`1")
+                    INamedTypeSymbol? rpcObjectInterface = symbol.GetImplementation(
+                        x => x.IsGenericType && x.ConstructedFrom.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcObject<T>")
                     );
 
                     ITypeSymbol? idType = rpcObjectInterface?.TypeArguments[0];
+
+                    bool explicitId = false;
+                    if (rpcObjectInterface != null)
+                    {
+                        IPropertySymbol? id = rpcObjectInterface.GetMembers(nameof(IRpcObject<>.Identifier)).OfType<IPropertySymbol>().FirstOrDefault();
+                        explicitId = id != null
+                                     && (symbol.FindImplementationForInterfaceMember(id) as IPropertySymbol) is { } prop
+                                     && prop.ExplicitInterfaceImplementations.Any(x => x.Equals(id));
+                    }
 
                     bool isUnityType = false;
 
@@ -93,15 +104,25 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                         }
                     }
 
+                    TypeCode idTypeCode = TypeHelper.GetTypeCode(idType);
+
                     return (
                         Node: symbol,
                         Declaration: new RpcClassDeclaration
                         {
                             Error = error,
+                            Definition = symbol.ToDisplayString(CustomFormats.TypeDeclarationFormat),
                             IsValueType = symbol.IsValueType,
                             Type = new TypeSymbolInfo(symbol),
-                            IdType = idType == null ? default : new TypeSymbolInfo(idType),
-                            IsUnityType = isUnityType
+                            IdType = idType == null ? null : new TypeSymbolInfo(idType),
+                            IdTypeCode = idTypeCode,
+                            IdPrimitiveLikeType = idTypeCode is TypeCode.Empty or TypeCode.Object ? TypeHelper.PrimitiveLikeType.None : TypeHelper.GetPrimitiveLikeType(idType as INamedTypeSymbol),
+                            IdQuickSerialize = TypeHelper.CanQuickSerializeType(idType),
+                            IdAssemblyQualifiedName = idTypeCode == TypeCode.Object ? TypeHelper.GetAssemblyQualifiedNameNoVersion(idType!) : null,
+                            IdIsExplicit = explicitId,
+                            IsUnityType = isUnityType,
+                            IsSingleConnectionObject = symbol.AllInterfaces.Any(x => x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject")), 
+                            IsMultipleConnectionObject = symbol.AllInterfaces.Any(x => x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject"))
                         }
                     );
                 })
@@ -116,6 +137,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
 
         IncrementalValuesProvider<(RpcClassDeclaration Declaration, EquatableList<RpcMethodDeclaration> Methods)> compositedClasses =
             symbolsAndClassDefs
+                .Where(x => x.Declaration.Error == ClassError.None)
                 .Select((x, token) => (x.Declaration, new EquatableList<RpcMethodDeclaration>(EnumerateMethods(x, token))))
                 .WithTrackingName("ModularRPCs_FilteredGeneratedRpcClassesAndMethods");
 
@@ -135,6 +157,19 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 continue;
             
             token.ThrowIfCancellationRequested();
+
+            bool isFireAndForget = false;
+            if (method.ReturnType.IsEqualTo("global::DanielWillett.ModularRpcs.Async.RpcTask"))
+            {
+                isFireAndForget = method.GetAttributes().Any(
+                    x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcFireAndForgetAttribute")
+                );
+            }
+            else if (method.ReturnType.IsEqualTo("global::System.Void"))
+            {
+                isFireAndForget = true;
+            }
+
             yield return new RpcMethodDeclaration
             {
                 Type = decl,
@@ -144,20 +179,26 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 Definition = CustomFormats.InsertPartial(method.ToDisplayString(CustomFormats.MethodDeclarationFormat)),
                 XmlDocs = CustomFormats.GetXmlDocReference(method),
                 Parameters = new EquatableList<RpcParameterDeclaration>(method.Parameters.Select(GetRpcParameter).Where(x => x != null)),
-                ReturnType = new TypeSymbolInfo(method.ReturnType)
+                ReturnType = new TypeSymbolInfo(method.ReturnType),
+                IsFireAndForget = isFireAndForget
             };
         }
     }
 
     private static RpcParameterDeclaration GetRpcParameter(IParameterSymbol arg, int index)
     {
-        // todo injections
+        TypeSymbolInfo symbolInfo = new TypeSymbolInfo(arg.Type, createInfo: true);
         return new RpcParameterDeclaration
         {
             Index = index,
             Name = arg.Name,
-            Type = new TypeSymbolInfo(arg.Type),
-            DisplayString = arg.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            Type = symbolInfo,
+            InjectType = ParameterHelper.GetAutoInjectType(arg.Type as INamedTypeSymbol),
+            IsManualInjected = arg.GetAttributes().Any(
+                x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
+            ),
+            PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type as INamedTypeSymbol),
+            Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat)
         };
     }
 
@@ -205,7 +246,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             }
 
             string? typeName = declaringType.Kind == TypedConstantKind.Type
-                ? ((ITypeSymbol?)declaringType.Value)?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                ? ((ITypeSymbol?)declaringType.Value)?.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat)
                 : (string)declaringType.Value!;
 
             string? methodNameStr = (string?)methodName.Value;
@@ -246,7 +287,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             ImmutableArray<TypedConstant> arr = parameterTypes.Value.Values;
             attribute.ParameterTypeNames = arr
                 .Where(x => x is { Kind: TypedConstantKind.Type, Value: ITypeSymbol })
-                .Select(x => ((ITypeSymbol)x.Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                .Select(x => ((ITypeSymbol)x.Value!).ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat))
                 .ToArray();
         }
 
@@ -278,20 +319,29 @@ internal enum ClassError
     None,
     Static,
     Nested,
-    Invalid
+    Invalid,
+    Struct
 }
 
 internal record RpcClassDeclaration
 {
     public required TypeSymbolInfo Type { get; init; }
+    public required string Definition { get; init; }
     public required ClassError Error { get; init; }
     public required bool IsValueType { get; init; }
+    public required bool IsSingleConnectionObject { get; init; }
+    public required bool IsMultipleConnectionObject { get; init; }
 
     public bool IsUnityType { get; init; }
 
 
     /// <summary>
-    /// <see langword="default"/> if not an <see cref="IRpcObject{T}"/>.
+    /// <see langword="null"/> if not an <see cref="IRpcObject{T}"/>.
     /// </summary>
-    public TypeSymbolInfo IdType { get; init; }
+    public TypeSymbolInfo? IdType { get; init; }
+    public bool IdIsExplicit { get; init; }
+    public TypeCode IdTypeCode { get; init; }
+    public TypeHelper.PrimitiveLikeType IdPrimitiveLikeType { get; init; }
+    public TypeHelper.QuickSerializeMode IdQuickSerialize { get; init; }
+    public string? IdAssemblyQualifiedName { get; init; }
 }

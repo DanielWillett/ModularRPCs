@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 // ReSharper disable UnusedParameter.Local
 // ReSharper disable RedundantNameQualifier
 
-namespace ModularRpcs.Test.SourceGen;
+namespace ModularRPCs.Test.SourceGen;
 public class TestManualExplicitProxyClass
 {
     private static int _invokedMethod;
@@ -122,7 +122,7 @@ public class TestManualExplicitProxyClass
     [IgnoreGenerateRpcSource, GenerateRpcSource]
 
     [global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyTypeAttribute(
-        TypeSetupMethodName = nameof(@TestClass.ModularRpcsGeneratedSetupStaticGeneratedProxy)
+        TypeSetupMethodName = nameof(@TestClass.__ModularRpcsGeneratedSetupStaticGeneratedProxy)
     )]
     [global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyReceiveMethodAttribute(
         nameof(@TestClass.Receive),
@@ -136,23 +136,19 @@ public class TestManualExplicitProxyClass
     {
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-        private global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo _modularRpcsGeneratedProxyTypeInfo;
-        [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
-        [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         private global::DanielWillett.ModularRpcs.Reflection.ProxyContext _modularRpcsGeneratedProxyContext;
 
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(
-            global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)
+            in global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)
         {
-            this._modularRpcsGeneratedProxyTypeInfo = info;
-            info.Router.GetDefaultProxyContext(typeof(@TestClass), out this._modularRpcsGeneratedProxyContext);
+            info.Router.GetDefaultProxyContext(info.Generator, typeof(@TestClass), out this._modularRpcsGeneratedProxyContext);
         }
 
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-        private static void ModularRpcsGeneratedSetupStaticGeneratedProxy(
+        public static void __ModularRpcsGeneratedSetupStaticGeneratedProxy(
             global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder state)
         {
             state.AddCallGetter(static () => ref _modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0);
@@ -406,7 +402,7 @@ public class TestManualExplicitProxyClass
                 false
             );
 
-        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldName(nameof(_modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0))]
+        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldNameAttribute(nameof(_modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0))]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         public partial global::DanielWillett.ModularRpcs.Async.RpcTask @InvokeFromClient()
         {
@@ -476,7 +472,7 @@ public class TestManualExplicitProxyClass
             false
         );
 
-        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldName(nameof(_modularRpcsGeneratedCallMethodInfoInvokeFromServerOvl0))]
+        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldNameAttribute(nameof(_modularRpcsGeneratedCallMethodInfoInvokeFromServerOvl0))]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         public partial global::DanielWillett.ModularRpcs.Async.RpcTask @InvokeFromServer(
             global::DanielWillett.ModularRpcs.Abstractions.IModularRpcRemoteConnection connection)
@@ -548,7 +544,7 @@ public class TestManualExplicitProxyClass
                 false
             );
 
-        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldName(nameof(_modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromClientOvl0))]
+        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldNameAttribute(nameof(_modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromClientOvl0))]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         public partial global::DanielWillett.ModularRpcs.Async.RpcTask @InvokeWithParamsFromClient(int primitiveLikeValue, string nonPrimitiveLikeValue)
         {
@@ -642,7 +638,7 @@ public class TestManualExplicitProxyClass
             false
         );
 
-        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldName(nameof(_modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromServerOvl0))]
+        [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldNameAttribute(nameof(_modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromServerOvl0))]
         [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         public partial global::DanielWillett.ModularRpcs.Async.RpcTask @InvokeWithParamsFromServer(int primitiveLikeValue, string nonPrimitiveLikeValue,
             global::DanielWillett.ModularRpcs.Abstractions.IModularRpcRemoteConnection connection)

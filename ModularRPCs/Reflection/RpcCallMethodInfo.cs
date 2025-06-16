@@ -1,4 +1,5 @@
 using DanielWillett.ReflectionTools.Emit;
+using JetBrains.Annotations;
 using System;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -16,6 +17,7 @@ public struct RpcCallMethodInfo
     /// <remarks>
     /// Only saved for source-generated methods.
     /// </remarks>>
+    [UsedImplicitly]
     public RuntimeMethodHandle MethodHandle;
 
     private static readonly FieldInfo HasIdentifierField = typeof(RpcCallMethodInfo).GetField(nameof(HasIdentifier), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;

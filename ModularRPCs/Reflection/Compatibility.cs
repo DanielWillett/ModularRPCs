@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Threading;
 
@@ -50,7 +50,7 @@ public static class Compatibility
     }
 
     /// <summary>
-    /// The current runtime is unable to use <see cref="T:System.Runtime.CompilerServices.IgnoresAccessChecksToAttribute"/> to access private members.
+    /// The current runtime is unable to use <see cref="T:IgnoresAccessChecksToAttribute"/> to access private members.
     /// </summary>
     /// <remarks>All Mono implementations except the dotnet fork, which isn't easily distinguishable from the official Mono runtime.</remarks>
     public static bool IncompatibleWithIgnoresAccessChecksToAttribute => MonoImpl.MonoVersion != null;

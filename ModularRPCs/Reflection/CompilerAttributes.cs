@@ -1,8 +1,11 @@
-﻿// ReSharper disable once CheckNamespace
-namespace System.Runtime.CompilerServices;
+using System;
+// ReSharper disable once CheckNamespace
 
-[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
-public class IgnoresAccessChecksToAttribute(string assemblyName) : Attribute
+namespace DanielWillett.ModularRpcs.Reflection
 {
-    public string AssemblyName { get; } = assemblyName;
+    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+    internal class IgnoresAccessChecksToAttribute(string assemblyName) : Attribute
+    {
+        public string AssemblyName { get; } = assemblyName;
+    }
 }

@@ -11,6 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using JetBrains.Annotations;
 using MethodInfo = System.Reflection.MethodInfo;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
@@ -22,11 +23,19 @@ internal static class TypeUtility
     private static readonly ConcurrentDictionary<Type, Type[]> ServiceInterfaces = new ConcurrentDictionary<Type, Type[]>();
     private static readonly ConcurrentDictionary<Type, Type?> SerializableEnumerableTypes = new ConcurrentDictionary<Type, Type?>();
     private static readonly ConcurrentDictionary<Type, Type?> EnumerableTypes = new ConcurrentDictionary<Type, Type?>();
-    public const TypeCode MaxUsedTypeCode = (TypeCode)20;
+    public const TypeCode MaxUsedTypeCode = (TypeCode)22;
+    [UsedImplicitly]
     public const TypeCode TypeCodeTimeSpan = (TypeCode)17;
+    [UsedImplicitly]
     public const TypeCode TypeCodeGuid = (TypeCode)19;
+    [UsedImplicitly]
     public const TypeCode TypeCodeDateTimeOffset = (TypeCode)20;
-    public const TypeCode TypeCodeNullable = (TypeCode)21;
+    [UsedImplicitly]
+    public const TypeCode TypeCodeIntPtr = (TypeCode)21;
+    [UsedImplicitly]
+    public const TypeCode TypeCodeUIntPtr = (TypeCode)22;
+    [UsedImplicitly]
+    public const TypeCode TypeCodeNullable = (TypeCode)30;
 
     // NOTE: Extension methods are not supported.
     public static bool IsAwaitable(Type valueType, bool useConfigureAwait,
@@ -449,6 +458,10 @@ internal static class TypeUtility
                 return TypeCodeGuid;
             if (tc == typeof(DateTimeOffset))
                 return TypeCodeDateTimeOffset;
+            if (tc == typeof(nint))
+                return TypeCodeIntPtr;
+            if (tc == typeof(nuint))
+                return TypeCodeUIntPtr;
         }
         else if (tc == typeof(string))
             return TypeCode.String;
@@ -488,6 +501,8 @@ internal static class TypeUtility
             TypeCode.String => typeof(string),
             TypeCodeGuid => typeof(Guid),
             TypeCodeDateTimeOffset => typeof(DateTimeOffset),
+            TypeCodeIntPtr => typeof(nint),
+            TypeCodeUIntPtr => typeof(nuint),
             _ => throw new ArgumentOutOfRangeException(nameof(tc))
         };
     }
@@ -513,6 +528,7 @@ internal static class TypeUtility
             TypeCodeTimeSpan => sizeof(long),
             TypeCode.String => 2,
             TypeCodeGuid => 16,
+            TypeCodeIntPtr or TypeCodeUIntPtr => 8,
             _ => throw new ArgumentOutOfRangeException(nameof(tc), tc, null)
         };
     }
@@ -949,6 +965,57 @@ internal static class TypeUtility
                 else
                     index += (uint)serializer.WriteObject((DateTimeOffset)value, ptr + index, size - index);
                 break;
+
+            case TypeCodeIntPtr:
+                if (canFastRead)
+                {
+                    long ui64 = (nint)value;
+                    if (BitConverter.IsLittleEndian)
+                        Unsafe.WriteUnaligned(ptr + index, ui64);
+                    else
+                    {
+                        ptr[index + 7] = unchecked((byte)ui64);
+                        ptr[index + 6] = unchecked((byte)(ui64 >>> 8));
+                        ptr[index + 5] = unchecked((byte)(ui64 >>> 16));
+                        ptr[index + 4] = unchecked((byte)(ui64 >>> 24));
+                        ptr[index + 3] = unchecked((byte)(ui64 >>> 32));
+                        ptr[index + 2] = unchecked((byte)(ui64 >>> 40));
+                        ptr[index + 1] = unchecked((byte)(ui64 >>> 48));
+                        ptr[index] = unchecked((byte)(ui64 >>> 56));
+                    }
+
+                    index += 8;
+                }
+                else
+                    index += (uint)serializer.WriteObject((nint)value, ptr + index, size - index);
+
+                break;
+
+            case TypeCodeUIntPtr:
+                if (canFastRead)
+                {
+                    ulong ui64 = (nuint)value;
+                    if (BitConverter.IsLittleEndian)
+                        Unsafe.WriteUnaligned(ptr + index, ui64);
+                    else
+                    {
+                        ptr[index + 7] = unchecked((byte)ui64);
+                        ptr[index + 6] = unchecked((byte)(ui64 >>> 8));
+                        ptr[index + 5] = unchecked((byte)(ui64 >>> 16));
+                        ptr[index + 4] = unchecked((byte)(ui64 >>> 24));
+                        ptr[index + 3] = unchecked((byte)(ui64 >>> 32));
+                        ptr[index + 2] = unchecked((byte)(ui64 >>> 40));
+                        ptr[index + 1] = unchecked((byte)(ui64 >>> 48));
+                        ptr[index] = unchecked((byte)(ui64 >>> 56));
+                    }
+
+                    index += 8;
+                }
+                else
+                    index += (uint)serializer.WriteObject((nuint)value, ptr + index, size - index);
+
+                break;
+
         }
     }
 
@@ -1018,6 +1085,12 @@ internal static class TypeUtility
 
                 case TypeCodeDateTimeOffset:
                     return serializer.ReadObject<DateTimeOffset>(stream, out bytesRead);
+
+                case TypeCodeIntPtr:
+                    return serializer.ReadObject<nint>(stream, out bytesRead);
+
+                case TypeCodeUIntPtr:
+                    return serializer.ReadObject<nuint>(stream, out bytesRead);
 
                 default:
                     bytesRead = 0;
@@ -1193,6 +1266,35 @@ internal static class TypeUtility
 
                     rtnValue = new DateTimeOffset(z64, TimeSpan.FromMinutes(offset));
                     bytesRead = 10;
+                    break;
+
+                case TypeCodeIntPtr:
+                    z64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
+                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+
+                    if (IntPtr.Size < 8)
+                    {
+                        if (z64 is > int.MaxValue or < int.MinValue)
+                            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, "UIntPtr"));
+                    }
+                    rtnValue = (nint)z64;
+                    bytesRead = 8;
+                    break;
+
+                case TypeCodeUIntPtr:
+                    ulong u64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<ulong>(ref buffer[0])
+                        : ((ulong)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+
+                    if (IntPtr.Size < 8)
+                    {
+                        if (u64 > uint.MaxValue)
+                            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, "UIntPtr"));
+                    }
+                    rtnValue = (nuint)u64;
+
+                    bytesRead = 8;
                     break;
 
                 default:
@@ -1480,6 +1582,45 @@ internal static class TypeUtility
 
                 rtnValue = new DateTimeOffset(z64, TimeSpan.FromMinutes(offset));
                 bytesRead = 10;
+                break;
+
+            case TypeCodeIntPtr:
+                if (canFastRead)
+                {
+                    z64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<long>(data + index)
+                        : unchecked( ((long)((uint)data[index] << 24 | (uint)data[index + 1] << 16 | (uint)data[index + 2] << 8 | data[index + 3]) << 32) | ((uint)data[index + 4] << 24 | (uint)data[index + 5] << 16 | (uint)data[index + 6] << 8 | data[index + 7]) );
+                    bytesRead = 8;
+                    if (IntPtr.Size < 8)
+                    {
+                        if (z64 is > int.MaxValue or < int.MinValue)
+                            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, "UIntPtr"));
+                    }
+
+                    rtnValue = (nint)z64;
+                }
+                else
+                    rtnValue = serializer.ReadObject<nint>(data + index, (uint)maxSize - index, out bytesRead);
+                break;
+
+            case TypeCodeUIntPtr:
+                if (canFastRead)
+                {
+                    ulong u64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<ulong>(data + index)
+                        : unchecked( ((ulong)((uint)data[index] << 24 | (uint)data[index + 1] << 16 | (uint)data[index + 2] << 8 | data[index + 3]) << 32) | ((uint)data[index + 4] << 24 | (uint)data[index + 5] << 16 | (uint)data[index + 6] << 8 | data[index + 7]) );
+                    bytesRead = 8;
+                    if (IntPtr.Size < 8)
+                    {
+                        if (u64 > uint.MaxValue)
+                            throw new RpcOverheadParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, "UIntPtr"));
+                    }
+
+                    rtnValue = (nuint)u64;
+                }
+                else
+                    rtnValue = serializer.ReadObject<nuint>(data + index, (uint)maxSize - index, out bytesRead);
+
                 break;
 
             default:
@@ -1833,6 +1974,76 @@ internal static class TypeUtility
         }
 
         return true;
+    }
+
+    public static PropertyInfo? GetImplementedProperty(Type type, PropertyInfo interfaceProperty)
+    {
+        MethodInfo? accessor = interfaceProperty.GetMethod;
+        bool isSet;
+        if (accessor == null)
+        {
+            accessor = interfaceProperty.SetMethod;
+            isSet = true;
+
+            if (accessor == null)
+            {
+                return null;
+            }
+        }
+        else
+        {
+            isSet = false;
+        }
+
+        MethodInfo? declaredAccessor = Accessor.GetImplementedMethod(type, accessor);
+        if (declaredAccessor == null)
+        {
+            return accessor.IsVirtual && (isSet || interfaceProperty.SetMethod is not { IsVirtual: false }) ? interfaceProperty : null;
+        }
+
+        if (declaredAccessor.Name.StartsWith(isSet ? "set_" : "get_"))
+        {
+            string likelyPropertyName = declaredAccessor.Name.Substring(4);
+            if (likelyPropertyName.Length != 0)
+            {
+                Type[] indexProperties = Type.EmptyTypes;
+                ParameterInfo[] parameters = interfaceProperty.GetIndexParameters();
+                if (parameters.Length > 0)
+                {
+                    indexProperties = new Type[parameters.Length];
+                    for (int i = 0; i < indexProperties.Length; ++i)
+                        indexProperties[i] = parameters[i].ParameterType;
+                }
+
+                PropertyInfo? property = type.GetProperty(
+                    likelyPropertyName,
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
+                    null,
+                    interfaceProperty.PropertyType,
+                    indexProperties,
+                    null
+                );
+                if (property != null && (isSet ? property.SetMethod : property.GetMethod) == declaredAccessor)
+                {
+                    return property;
+                }
+            }
+        }
+
+        PropertyInfo[] allProperties = type.GetProperties(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance
+        );
+
+        for (int i = 0; i < allProperties.Length; ++i)
+        {
+            PropertyInfo property = allProperties[i];
+            if ((isSet ? property.SetMethod : property.GetMethod) == declaredAccessor)
+            {
+                return property;
+            }
+        }
+
+        return null;
     }
 
 

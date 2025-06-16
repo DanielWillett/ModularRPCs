@@ -456,4 +456,10 @@
   <data name="RpcParseExceptionBufferRunOutFastRead" xml:space="preserve">
     <value>The RpcOverhead failed to parse a message because the buffer was too short while reading parameter: "{0} {1}".</value>
   </data>
+  <data name="ObjectNotOfType" xml:space="preserve">
+    <value>Expected a value of type "{0}".</value>
+  </data>
+  <data name="ObjectNotProxyType" xml:space="preserve">
+    <value>Given object is not a proxy implementation of "{0}".</value>
+  </data>
 </root>

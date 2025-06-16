@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
@@ -7,6 +7,7 @@ using ModularRPCs.Test.CodeGen;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
+using DanielWillett.ModularRpcs.Protocol;
 
 namespace ModularRPCs.Test.SourceGen;
 
@@ -54,7 +55,7 @@ internal class SourceGenPlayground
 
         SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
 
-        await proxy.InvokeWithParamsFromServer(Val1, Val2, connection);
+        await proxy.InvokeWithParamsFromServer(Val1, Val2, connection, null);
 
         Assert.That(DidInvokeMethod, Is.EqualTo(1));
     }
@@ -68,13 +69,14 @@ internal class SourceGenPlayground
 
         SourceGenPlaygroundTestClass proxy = client.GetRequiredService<SourceGenPlaygroundTestClass>();
 
-        await proxy.InvokeWithParamsFromClient(Val1, Val2);
+        await proxy.InvokeWithParamsFromClient(Val1, Val2, null);
 
         Assert.That(DidInvokeMethod, Is.EqualTo(1));
     }
 }
 
 
+#nullable enable
 [RpcClass, GenerateRpcSource]
 public sealed partial class SourceGenPlaygroundTestClass
 {
@@ -91,13 +93,13 @@ public sealed partial class SourceGenPlaygroundTestClass
     }
 
     [RpcSend(nameof(ReceiveWithParams))]
-    public partial RpcTask InvokeWithParamsFromClient(int primitiveLikeValue, string nonPrimitiveLikeValue);
+    public partial RpcTask InvokeWithParamsFromClient(int primitiveLikeValue, string? nonPrimitiveLikeValue, DateTime? nullableParam);
 
     [RpcSend(nameof(ReceiveWithParams))]
-    public partial RpcTask InvokeWithParamsFromServer(int primitiveLikeValue, string nonPrimitiveLikeValue, IModularRpcRemoteConnection connection);
+    public partial RpcTask InvokeWithParamsFromServer(int primitiveLikeValue, string? nonPrimitiveLikeValue, IModularRpcRemoteConnection connection, DateTime? nullableParam);
 
     [RpcReceive]
-    private async Task ReceiveWithParams(int primitiveLikeValue, string nonPrimitiveLikeValue)
+    private async Task ReceiveWithParams(int primitiveLikeValue, string? nonPrimitiveLikeValue, DateTime? nullableParam)
     {
         await Task.Delay(5);
         SourceGenPlayground.DidInvokeMethod = 1;

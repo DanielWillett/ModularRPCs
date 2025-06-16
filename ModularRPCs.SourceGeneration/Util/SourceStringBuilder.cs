@@ -1,4 +1,4 @@
-﻿using JetBrains.Annotations;
+using JetBrains.Annotations;
 using System;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -91,6 +91,21 @@ internal sealed class SourceStringBuilder
         StartLine();
         UnderlyingBuilder.Append(singleLine);
         _hasNewLine = false;
+        return this;
+    }
+
+    /// <summary>
+    /// Append a single line.
+    /// </summary>
+    public SourceStringBuilder Preprocessor(string singleLine)
+    {
+        _isNewLine = true;
+        int indent = _indent;
+        _indent = 0;
+        StartLine();
+        UnderlyingBuilder.Append(singleLine);
+        _hasNewLine = false;
+        _indent = indent;
         return this;
     }
 

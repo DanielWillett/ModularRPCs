@@ -9,6 +9,7 @@ internal record RpcMethodDeclaration
     public required string Name { get; init; }
     public required string Definition { get; init; }
     public required string XmlDocs { get; init; }
+    public required bool IsFireAndForget { get; init; }
     public bool IsReceive => Target is RpcReceiveAttribute;
     public bool IsSend => Target is RpcSendAttribute;
     public required Accessibility Visibility { get; init; }

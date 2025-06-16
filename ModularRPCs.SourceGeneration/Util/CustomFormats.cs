@@ -1,23 +1,9 @@
-﻿using System;
 using Microsoft.CodeAnalysis;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+
 public static class CustomFormats
 {
-    public static readonly SymbolDisplayFormat ClassDeclarationFormat = new SymbolDisplayFormat(
-        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
-        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameOnly,
-        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters | SymbolDisplayGenericsOptions.IncludeTypeConstraints | SymbolDisplayGenericsOptions.IncludeVariance,
-        memberOptions: SymbolDisplayMemberOptions.IncludeRef,
-        delegateStyle: SymbolDisplayDelegateStyle.NameAndSignature,
-        parameterOptions: SymbolDisplayParameterOptions.IncludeDefaultValue | SymbolDisplayParameterOptions.IncludeExtensionThis | SymbolDisplayParameterOptions.IncludeModifiers | SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeType,
-        extensionMethodStyle: SymbolDisplayExtensionMethodStyle.StaticMethod,
-        propertyStyle: SymbolDisplayPropertyStyle.ShowReadWriteDescriptor,
-        localOptions: SymbolDisplayLocalOptions.IncludeModifiers | SymbolDisplayLocalOptions.IncludeType,
-        kindOptions: SymbolDisplayKindOptions.IncludeMemberKeyword | SymbolDisplayKindOptions.IncludeNamespaceKeyword | SymbolDisplayKindOptions.IncludeTypeKeyword,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
-    );
-
     public static readonly SymbolDisplayFormat TypeDeclarationFormat = new SymbolDisplayFormat(
         globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Included,
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameOnly,
@@ -43,7 +29,7 @@ public static class CustomFormats
         propertyStyle: SymbolDisplayPropertyStyle.ShowReadWriteDescriptor,
         localOptions: SymbolDisplayLocalOptions.IncludeModifiers | SymbolDisplayLocalOptions.IncludeType,
         kindOptions: SymbolDisplayKindOptions.IncludeMemberKeyword | SymbolDisplayKindOptions.IncludeNamespaceKeyword | SymbolDisplayKindOptions.IncludeTypeKeyword,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes | SymbolDisplayMiscellaneousOptions.ExpandNullable | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
     );
 
     public static readonly SymbolDisplayFormat XmlDocsFormat = new SymbolDisplayFormat(
@@ -77,7 +63,7 @@ public static class CustomFormats
     public static readonly SymbolDisplayFormat FullTypeNameFormat = new SymbolDisplayFormat(
         globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
-        genericsOptions: SymbolDisplayGenericsOptions.None,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         memberOptions: SymbolDisplayMemberOptions.IncludeContainingType,
         delegateStyle: SymbolDisplayDelegateStyle.NameOnly,
         parameterOptions: SymbolDisplayParameterOptions.None,
@@ -85,7 +71,21 @@ public static class CustomFormats
         propertyStyle: SymbolDisplayPropertyStyle.NameOnly,
         localOptions: SymbolDisplayLocalOptions.None,
         kindOptions: SymbolDisplayKindOptions.None,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.ExpandNullable | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+    );
+
+    public static readonly SymbolDisplayFormat FullTypeNameWithGlobalFormat = new SymbolDisplayFormat(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Included,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeContainingType,
+        delegateStyle: SymbolDisplayDelegateStyle.NameOnly,
+        parameterOptions: SymbolDisplayParameterOptions.None,
+        extensionMethodStyle: SymbolDisplayExtensionMethodStyle.Default,
+        propertyStyle: SymbolDisplayPropertyStyle.NameOnly,
+        localOptions: SymbolDisplayLocalOptions.None,
+        kindOptions: SymbolDisplayKindOptions.None,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.ExpandNullable | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
     );
 
     public static readonly SymbolDisplayFormat NamespaceWithoutGlobalFormat = new SymbolDisplayFormat(

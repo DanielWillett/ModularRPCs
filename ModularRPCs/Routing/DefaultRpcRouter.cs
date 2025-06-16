@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using JetBrains.Annotations;
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Runtime.InteropServices;
 #endif
@@ -2158,11 +2159,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
 
     /// <inheritdoc />
-    public void GetDefaultProxyContext(Type proxyType, out ProxyContext context)
+    [UsedImplicitly]
+    public void GetDefaultProxyContext(ProxyGenerator generator, Type proxyType, out ProxyContext context)
     {
         context = default;
         context.DefaultSerializer = _defaultSerializer;
         context.Router = this;
+        context.Generator = generator;
     }
     private static uint GetPrefixSize(IRpcSerializer serializer)
     {

@@ -8,16 +8,21 @@ namespace DanielWillett.ModularRpcs.Reflection;
 [EditorBrowsable(EditorBrowsableState.Advanced)]
 public interface IRpcGeneratedProxyType
 {
-    void SetupGeneratedProxyInfo(GeneratedProxyTypeInfo info);
+    void SetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
+#if NET7_0_OR_GREATER
+    static abstract void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state);
+#endif
 }
 
 [EditorBrowsable(EditorBrowsableState.Advanced)]
 public readonly struct GeneratedProxyTypeInfo
 {
     public IRpcRouter Router { get; }
-    public GeneratedProxyTypeInfo(IRpcRouter router)
+    public ProxyGenerator Generator { get; }
+    public GeneratedProxyTypeInfo(IRpcRouter router, ProxyGenerator generator)
     {
         Router = router;
+        Generator = generator;
     }
 }
 

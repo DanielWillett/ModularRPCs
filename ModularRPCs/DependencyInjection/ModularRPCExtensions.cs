@@ -191,7 +191,7 @@ public static class ModularRpcExtensions
         {
             object instance = _factory(serviceProvider, Array.Empty<object>());
             ((IRpcGeneratedProxyType)instance).SetupGeneratedProxyInfo(
-                new GeneratedProxyTypeInfo(serviceProvider.GetRequiredService<IRpcRouter>()));
+                new GeneratedProxyTypeInfo(serviceProvider.GetRequiredService<IRpcRouter>(), ProxyGenerator.Instance));
 
             return instance;
         }

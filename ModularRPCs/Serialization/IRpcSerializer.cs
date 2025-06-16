@@ -3,6 +3,7 @@ using DanielWillett.ModularRpcs.Exceptions;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using JetBrains.Annotations;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
@@ -19,6 +20,7 @@ public interface IRpcSerializer
     /// Should primitive-like types be read from and written to the buffer directly instead of calling the read, write, and get size methods on them?
     /// </summary>
     /// <remarks>Primitive types also include some fixed-size system types like DateTime[Offset], TimeSpan, Guid, etc.</remarks>
+    [UsedImplicitly]
     bool CanFastReadPrimitives { get; }
 
     /// <summary>

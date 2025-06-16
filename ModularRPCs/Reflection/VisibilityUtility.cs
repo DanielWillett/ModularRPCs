@@ -1,4 +1,4 @@
-﻿using DanielWillett.ReflectionTools;
+using DanielWillett.ReflectionTools;
 using System;
 using System.Linq;
 using System.Reflection;
@@ -81,5 +81,16 @@ internal static class VisibilityUtility
         }
 
         return true;
+    }
+
+    public static bool IsAccessibleFromParentType(MemberVisibility vis, bool typeGivesInternalAccess)
+    {
+        if (vis is MemberVisibility.Protected or MemberVisibility.ProtectedInternal or MemberVisibility.Public)
+            return true;
+
+        if (typeGivesInternalAccess && vis is MemberVisibility.Internal or MemberVisibility.PrivateProtected)
+            return true;
+
+        return false;
     }
 }
