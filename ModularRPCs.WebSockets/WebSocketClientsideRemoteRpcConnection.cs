@@ -15,6 +15,7 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
     internal ClientWebSocket WebSocket;
     private int _disp;
 
+    /// <inheritdoc />
     public override bool IsClosed => Local.IsClosed;
 
     /// <summary>
@@ -75,6 +76,8 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
             Local.LogError(ex, "Exception caught from handler for WebSocketClientsideRemoteRpcConnection.OnReconnected.");
         }
     }
+
+    /// <inheritdoc />
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
         await Semaphore.WaitAsync(10000, token);

@@ -17,16 +17,22 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
     /// Includes '<c>global::</c>'.
     /// </summary>
     public string GloballyQualifiedName { get; }
+    public string AssemblyQualifiedName { get; }
     public string FileName { get; }
     public bool IsNullable { get; }
+    public bool IsValueType { get; }
+
+    public TypeHelper.PrimitiveLikeType PrimitiveLikeType { get; }
+    public TypeHelper.PrimitiveLikeType PrimitiveType { get; }
 
 #nullable disable
     public TypeSerializationInfo Info { get; }
 #nullable restore
 
-    public TypeSymbolInfo(ITypeSymbol typeSymbol, bool createInfo = false)
+    public TypeSymbolInfo(Compilation compilation, ITypeSymbol typeSymbol, bool createInfo = false)
     {
-        IsNullable = typeSymbol.IsNullable();
+        IsValueType = typeSymbol.IsValueType;
+        IsNullable = typeSymbol.IsNullable(out ITypeSymbol nullableUnderlyingType);
         Name = typeSymbol.Name;
         string? nameSpace = typeSymbol.ContainingNamespace?.ToDisplayString(CustomFormats.NamespaceWithoutGlobalFormat);
         if (string.IsNullOrEmpty(nameSpace))
@@ -40,6 +46,11 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
         NamespaceDeclaration = typeSymbol.ContainingNamespace?.ToDisplayString(CustomFormats.NamespaceDeclarationFormat);
         FullyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameFormat);
         GloballyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameWithGlobalFormat);
+        AssemblyQualifiedName = TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, typeSymbol);
+
+        // easy way to detect enum underlying type changes
+        PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(typeSymbol);
+        PrimitiveType = TypeHelper.GetPrimitiveType(typeSymbol);
 
         // for some reason it ignores keyword preferences for these two types
         if (GloballyQualifiedName.Equals("nint", StringComparison.Ordinal)
@@ -58,7 +69,7 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
         }
 
         if (createInfo)
-            Info = new TypeSerializationInfo(typeSymbol);
+            Info = new TypeSerializationInfo(compilation, typeSymbol);
     }
 
     public bool Equals(string fullyQualifiedName)
@@ -68,9 +79,10 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
 
     public override bool Equals(object? obj) => obj is TypeSymbolInfo other && Equals(other);
 
-    public bool Equals(TypeSymbolInfo? other) => other != null && string.Equals(FullyQualifiedName, other.FullyQualifiedName, StringComparison.Ordinal)
+    public bool Equals(TypeSymbolInfo? other) => other != null && string.Equals(AssemblyQualifiedName, other.AssemblyQualifiedName, StringComparison.Ordinal)
                                                                && IsNullable == other.IsNullable
-                                                               && string.Equals(NamespaceDeclaration, other.NamespaceDeclaration, StringComparison.Ordinal);
+                                                               && string.Equals(NamespaceDeclaration, other.NamespaceDeclaration, StringComparison.Ordinal)
+                                                               && PrimitiveLikeType == other.PrimitiveLikeType;
 
-    public override int GetHashCode() => HashCode.Combine(Name, FullyQualifiedName);
+    public override int GetHashCode() => HashCode.Combine(Name, AssemblyQualifiedName);
 }

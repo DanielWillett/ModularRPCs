@@ -65,6 +65,8 @@ public class RpcOverhead
     /// Various bitwise settings for an RPC call.
     /// </summary>
     public RpcFlags Flags { get; }
+
+
     internal RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, RpcFlags flags, uint messageSize, ulong messageId, byte subMsgId)
         : this(sendingConnection, rpc, flags, messageSize, messageSize, messageId, subMsgId, CalculateOverheadSize(rpc)) { }
     private RpcOverhead(IModularRpcRemoteConnection sendingConnection, IRpcInvocationPoint rpc, RpcFlags flags, uint messageSize, uint size2Check, ulong messageId, byte subMsgId, uint overheadSize)

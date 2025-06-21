@@ -14,22 +14,22 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
     public readonly TypeSymbolInfo CollectionType;
 #nullable restore
 
-    public TypeSerializationInfo(ITypeSymbol type)
+    public TypeSerializationInfo(Compilation compilation, ITypeSymbol type)
     {
         string name = type.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat);
         if (name.Equals("global::System.Void"))
         {
             Type = TypeSerializationInfoType.Void;
-            SerializableType = new TypeSymbolInfo(type);
+            SerializableType = new TypeSymbolInfo(compilation, type);
             return;
         }
 
         if (type.IsNullable(out ITypeSymbol nullableType))
         {
-            if (IsRpcSerializableType(type))
+            if (IsRpcSerializableType(nullableType))
             {
                 Type = TypeSerializationInfoType.NullableSerializableValue;
-                SerializableType = new TypeSymbolInfo(nullableType);
+                SerializableType = new TypeSymbolInfo(compilation, nullableType);
                 UnderlyingType = SerializableType;
                 return;
             }
@@ -38,24 +38,24 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
             ITypeSymbol? t = GetSerializableEnumerableType(nullableType, name, out bool isNullable);
             if (t != null)
             {
-                CollectionType = new TypeSymbolInfo(nullableType);
+                CollectionType = new TypeSymbolInfo(compilation, nullableType);
                 if (isNullable)
                 {
                     Type = TypeSerializationInfoType.NullableCollectionNullableSerializableCollection;
-                    UnderlyingType = t.IsNullable(out ITypeSymbol s) ? new TypeSymbolInfo(s) : null;
+                    UnderlyingType = t.IsNullable(out ITypeSymbol s) ? new TypeSymbolInfo(compilation, s) : null;
                 }
                 else
                 {
                     Type = TypeSerializationInfoType.NullableCollectionSerializableCollection;
-                    UnderlyingType = new TypeSymbolInfo(nullableType);
+                    UnderlyingType = new TypeSymbolInfo(compilation, nullableType);
                 }
-                SerializableType = new TypeSymbolInfo(t);
+                SerializableType = new TypeSymbolInfo(compilation, t);
             }
             else
             {
                 Type = TypeSerializationInfoType.NullableValue;
-                SerializableType = new TypeSymbolInfo(type);
-                UnderlyingType = new TypeSymbolInfo(nullableType);
+                SerializableType = new TypeSymbolInfo(compilation, type);
+                UnderlyingType = new TypeSymbolInfo(compilation, nullableType);
             }
         }
         else
@@ -64,12 +64,12 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
             if (PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
             {
                 Type = TypeSerializationInfoType.PrimitiveLike;
-                SerializableType = new TypeSymbolInfo(type);
+                SerializableType = new TypeSymbolInfo(compilation, type);
             }
             else if (IsRpcSerializableType(type))
             {
                 Type = TypeSerializationInfoType.SerializableValue;
-                SerializableType = new TypeSymbolInfo(type);
+                SerializableType = new TypeSymbolInfo(compilation, type);
             }
             else
             {
@@ -77,23 +77,23 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
 
                 if (t != null)
                 {
-                    CollectionType = new TypeSymbolInfo(type);
+                    CollectionType = new TypeSymbolInfo(compilation, type);
                     if (isNullable)
                     {
                         Type = TypeSerializationInfoType.NullableSerializableCollection;
-                        SerializableType = new TypeSymbolInfo(t);
-                        UnderlyingType = t.IsNullable(out ITypeSymbol s) ? new TypeSymbolInfo(s) : null;
+                        SerializableType = new TypeSymbolInfo(compilation, t);
+                        UnderlyingType = t.IsNullable(out ITypeSymbol s) ? new TypeSymbolInfo(compilation, s) : null;
                     }
                     else
                     {
                         Type = TypeSerializationInfoType.SerializableCollection;
-                        SerializableType = new TypeSymbolInfo(t);
+                        SerializableType = new TypeSymbolInfo(compilation, t);
                     }
                 }
                 else
                 {
                     Type = TypeSerializationInfoType.Value;
-                    SerializableType = new TypeSymbolInfo(type);
+                    SerializableType = new TypeSymbolInfo(compilation, type);
                 }
             }
         }

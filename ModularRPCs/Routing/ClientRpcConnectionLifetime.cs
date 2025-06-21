@@ -1,10 +1,11 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Routing;
-public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLoggable
+
+public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbackCheck, IRefSafeLoggable
 {
     private readonly object _sync = new object();
     private IModularRpcRemoteConnection? _remoteConnection;
@@ -20,6 +21,23 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
 
     /// <inheritdoc />
     public event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionRemoved;
+
+    /// <inheritdoc />
+    public int GetLoopbackCount(out bool areAllLoopbacks)
+    {
+        IModularRpcRemoteConnection? remote = _remoteConnection;
+
+        try
+        {
+            areAllLoopbacks = remote is { IsClosed: false, IsLoopback: true };
+            return areAllLoopbacks ? 1 : 0;
+        }
+        catch (ObjectDisposedException)
+        {
+            areAllLoopbacks = false;
+            return 0;
+        }
+    }
 
     /// <summary>
     /// Exchange the current connection for a new one.
@@ -85,7 +103,7 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         {
             try
             {
-#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
                 else
@@ -129,7 +147,7 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         {
             try
             {
-#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
                 else
@@ -147,7 +165,8 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
 
         return true;
     }
-#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public async ValueTask DisposeAsync()
     {
         IModularRpcRemoteConnection? existing;
@@ -172,7 +191,7 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         {
             try
             {
-#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
                 else

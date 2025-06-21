@@ -4,12 +4,21 @@
     <TargetFrameworks>net481;netcoreapp3.1;net5.0;net7.0;net8.0;net9.0</TargetFrameworks>
 
     <IsPackable>false</IsPackable>
-    <LangVersion>12.0</LangVersion>
+    
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>DanielWillett.ModularRPCs.Test</AssemblyName>
 
+    <SuppressTfmSupportBuildErrors>true</SuppressTfmSupportBuildErrors>
+
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <!--<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>-->
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net7.0' Or '$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net9.0'">
+    <LangVersion>11.0</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="!('$(TargetFramework)' == 'net7.0' Or '$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net9.0')">
+    <LangVersion>9.0</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,7 +36,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="[3.1.0,)" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="[3.1.0,)" />
     <PackageReference Include="DanielWillett.SpeedBytes" Version="[1.1.2,)" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.3.3" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NUnit" Version="3.14.0" />
     <PackageReference Include="NUnit3TestAdapter" version="4.3.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />

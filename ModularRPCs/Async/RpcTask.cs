@@ -6,7 +6,6 @@ using JetBrains.Annotations;
 using System;
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 
@@ -62,12 +61,15 @@ public class RpcTask
 
     /// <summary>
     /// The unique (to the sender) id of this message.
+    /// <para>Tasks that complete instantly may not include a message ID, instead opting to return <see cref="CompletedTask"/> for performance.</para>
     /// </summary>
     public ulong MessageId { get; internal set; }
-    
+
     /// <summary>
     /// The sub-message id used to differentiate between the original message and it's responses.
+    /// <para>Tasks that complete instantly may not include a message ID, instead opting to return <see cref="CompletedTask"/> for performance.</para>
     /// </summary>
+    /// <remarks>Will be 0 if a response isn't expected (Overhead flags will also include IsFireAndForget).</remarks>
     public byte SubMessageId { get; internal set; }
 
     /// <summary>

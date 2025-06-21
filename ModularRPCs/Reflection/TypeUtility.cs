@@ -6,10 +6,12 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using JetBrains.Annotations;
 using MethodInfo = System.Reflection.MethodInfo;
@@ -581,10 +583,69 @@ internal static class TypeUtility
 
     public static string GetAssemblyQualifiedNameNoVersion(Type type)
     {
+        if (type.IsConstructedGenericType || type.IsNested)
+        {
+            return CreateAssemblyQualifiedNameSlow(type);
+        }
+
         if (type.Assembly == Accessor.MSCoreLib)
             return type.FullName ?? type.Name;
 
         return Assembly.CreateQualifiedName(type.Assembly.GetName().Name, type.FullName ?? type.Name);
+    }
+
+    private static string CreateAssemblyQualifiedNameSlow(Type type)
+    {
+        Type[] args = type.GetGenericArguments();
+        StringBuilder bldr = new StringBuilder((args.Length + 1) * 32);
+        CreateAssemblyQualifiedNameSlow(type, bldr, args);
+        return bldr.ToString();
+    }
+
+    private static void CreateAssemblyQualifiedNameSlow(Type type, StringBuilder bldr, Type[]? args, bool nested = false)
+    {
+        if (!nested && !string.IsNullOrEmpty(type.Namespace))
+        {
+            bldr.Append(type.Namespace)
+                .Append('.');
+        }
+
+        if (type.DeclaringType != null)
+        {
+            CreateAssemblyQualifiedNameSlow(type.DeclaringType, bldr, null, nested: true);
+            bldr.Append('+');
+        }
+
+        bldr.Append(type.Name);
+
+        if (nested || !type.IsConstructedGenericType)
+            return;
+
+        args ??= type.GetGenericArguments();
+        bldr.Append('[');
+
+        for (int i = 0; i < args.Length; ++i)
+        {
+            if (i != 0)
+                bldr.Append(',');
+
+            bldr.Append('[');
+
+            CreateAssemblyQualifiedNameSlow(args[i], bldr, null);
+
+            bldr.Append(']');
+        }
+
+        bldr.Append(']');
+
+        Assembly? asm = type.Assembly;
+        if (asm == Accessor.MSCoreLib || asm == null)
+        {
+            return;
+        }
+
+        bldr.Append(", ")
+            .Append(asm.GetName().Name);
     }
 
     public static bool CompareAssemblyQualifiedNameNoVersion(Type type, string asmQualifiedName)

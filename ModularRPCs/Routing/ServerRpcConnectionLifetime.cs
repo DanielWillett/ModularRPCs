@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,11 +6,12 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Routing;
-public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLoggable
+public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbackCheck, IRefSafeLoggable
 {
     private readonly List<IModularRpcRemoteConnection> _connections = new List<IModularRpcRemoteConnection>();
     public bool IsSingleConnection => false;
     private object? _logger;
+    private int? _loopbackCountCached;
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }
 
@@ -19,6 +20,37 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
 
     /// <inheritdoc />
     public event Action<IRpcConnectionLifetime, IModularRpcRemoteConnection>? ConnectionRemoved;
+
+    /// <inheritdoc />
+    public int GetLoopbackCount(out bool areAllLoopbacks)
+    {
+        lock (_connections)
+        {
+            if (_loopbackCountCached.HasValue)
+            {
+                int ct = _loopbackCountCached.Value;
+                areAllLoopbacks = ct > 0 && _connections.Count == ct;
+                return ct;
+            }
+
+            areAllLoopbacks = true;
+            int count = 0;
+            int i = 0;
+            for (; i < _connections.Count; ++i)
+            {
+                IModularRpcRemoteConnection conn = _connections[i];
+                if (conn is { IsClosed: false, IsLoopback: true })
+                    ++count;
+                else
+                    areAllLoopbacks = false;
+            }
+
+            if (i == 0)
+                areAllLoopbacks = false;
+            _loopbackCountCached = count;
+            return count;
+        }
+    }
 
     public int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false, bool openOnly = true)
     {
@@ -53,8 +85,6 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
                     IModularRpcRemoteConnection conn = _connections[i];
                     if (conn.IsClosed)
                         continue;
-                    if (openOnly && conn.IsClosed)
-                        continue;
                     ++ct;
                     bool result = callback(conn);
                     if (!result)
@@ -85,6 +115,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             }
 
             _connections.Add(connection);
+            _loopbackCountCached = null;
 
             InvokeAdd(connection);
         }
@@ -105,6 +136,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
 
                 removed = conn;
                 _connections.RemoveAt(i);
+                _loopbackCountCached = null;
                 break;
             }
         }
@@ -125,7 +157,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         {
             try
             {
-#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (removed is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
                 else
@@ -144,13 +176,14 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
         return true;
     }
 
-#if !NETFRAMEWORK && (!NETSTANDARD || NETSTANDARD2_1_OR_GREATER)
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public async ValueTask DisposeAsync()
     {
         IModularRpcRemoteConnection[] connections;
         lock (_connections)
         {
             connections = _connections.ToArray();
+            _connections.Clear();
         }
 
         Task[] tasks = new Task[connections.Length];
@@ -177,6 +210,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetime, IRefSafeLogga
             {
                 IModularRpcRemoteConnection conn = _connections[i];
                 _connections.RemoveAt(i);
+                _loopbackCountCached = null;
 
                 allTasks[i] = conn.CloseAsync().AsTask();
             }

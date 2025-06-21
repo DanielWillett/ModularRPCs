@@ -3,6 +3,7 @@ using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.SourceGeneration.Generators;
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System;
@@ -104,8 +105,6 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                         }
                     }
 
-                    TypeCode idTypeCode = TypeHelper.GetTypeCode(idType);
-
                     return (
                         Node: symbol,
                         Declaration: new RpcClassDeclaration
@@ -113,12 +112,9 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                             Error = error,
                             Definition = symbol.ToDisplayString(CustomFormats.TypeDeclarationFormat),
                             IsValueType = symbol.IsValueType,
-                            Type = new TypeSymbolInfo(symbol),
-                            IdType = idType == null ? null : new TypeSymbolInfo(idType),
-                            IdTypeCode = idTypeCode,
-                            IdPrimitiveLikeType = idTypeCode is TypeCode.Empty or TypeCode.Object ? TypeHelper.PrimitiveLikeType.None : TypeHelper.GetPrimitiveLikeType(idType as INamedTypeSymbol),
-                            IdQuickSerialize = TypeHelper.CanQuickSerializeType(idType),
-                            IdAssemblyQualifiedName = idTypeCode == TypeCode.Object ? TypeHelper.GetAssemblyQualifiedNameNoVersion(idType!) : null,
+                            Type = new TypeSymbolInfo(n.SemanticModel.Compilation, symbol),
+                            IdType = idType == null ? null : new TypeSymbolInfo(n.SemanticModel.Compilation, idType, createInfo: true),
+                            IdTypeCode = TypeHelper.GetTypeCode(idType),
                             IdIsExplicit = explicitId,
                             IsUnityType = isUnityType,
                             IsSingleConnectionObject = symbol.AllInterfaces.Any(x => x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject")), 
@@ -135,19 +131,20 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 })
                 .WithTrackingName("ModularRPCs_FilteredGeneratedRpcClasses");
 
-        IncrementalValuesProvider<(RpcClassDeclaration Declaration, EquatableList<RpcMethodDeclaration> Methods)> compositedClasses =
+        IncrementalValuesProvider<(RpcClassDeclaration Declaration, EquatableList<RpcMethodDeclaration> Methods, Compilation Compilation)> compositedClasses =
             symbolsAndClassDefs
                 .Where(x => x.Declaration.Error == ClassError.None)
-                .Select((x, token) => (x.Declaration, new EquatableList<RpcMethodDeclaration>(EnumerateMethods(x, token))))
+                .Combine(context.CompilationProvider)
+                .Select((x, token) => (x.Left.Declaration, new EquatableList<RpcMethodDeclaration>(EnumerateMethods(x.Right, x.Left, token)), x.Right))
                 .WithTrackingName("ModularRPCs_FilteredGeneratedRpcClassesAndMethods");
 
         context.RegisterSourceOutput(compositedClasses, static (n, c) =>
         {
-            new ClassSnippetGenerator(n, c.Declaration, c.Methods).GenerateClassSnippet();
+            new ClassSnippetGenerator(n, (CSharpCompilation)c.Compilation, c.Declaration, c.Methods).GenerateClassSnippet();
         });
     }
 
-    private static IEnumerable<RpcMethodDeclaration> EnumerateMethods((ITypeSymbol symbol, RpcClassDeclaration Declaration) info, CancellationToken token)
+    private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, (ITypeSymbol symbol, RpcClassDeclaration Declaration) info, CancellationToken token)
     {
         (ITypeSymbol symbol, RpcClassDeclaration decl) = info;
         foreach (IMethodSymbol method in symbol.GetMembers().OfType<IMethodSymbol>())
@@ -178,28 +175,26 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 Name = method.Name,
                 Definition = CustomFormats.InsertPartial(method.ToDisplayString(CustomFormats.MethodDeclarationFormat)),
                 XmlDocs = CustomFormats.GetXmlDocReference(method),
-                Parameters = new EquatableList<RpcParameterDeclaration>(method.Parameters.Select(GetRpcParameter).Where(x => x != null)),
-                ReturnType = new TypeSymbolInfo(method.ReturnType),
+                Parameters = new EquatableList<RpcParameterDeclaration>(method.Parameters.Select((arg, index) =>
+                {
+                    TypeSymbolInfo symbolInfo = new TypeSymbolInfo(compilation, arg.Type, createInfo: true);
+                    return new RpcParameterDeclaration
+                    {
+                        Index = index,
+                        Name = arg.Name,
+                        Type = symbolInfo,
+                        InjectType = ParameterHelper.GetAutoInjectType(arg.Type as INamedTypeSymbol),
+                        IsManualInjected = arg.GetAttributes().Any(
+                            x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
+                        ),
+                        PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type as INamedTypeSymbol),
+                        Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat)
+                    };
+                }).Where(x => x != null)),
+                ReturnType = new TypeSymbolInfo(compilation, method.ReturnType),
                 IsFireAndForget = isFireAndForget
             };
         }
-    }
-
-    private static RpcParameterDeclaration GetRpcParameter(IParameterSymbol arg, int index)
-    {
-        TypeSymbolInfo symbolInfo = new TypeSymbolInfo(arg.Type, createInfo: true);
-        return new RpcParameterDeclaration
-        {
-            Index = index,
-            Name = arg.Name,
-            Type = symbolInfo,
-            InjectType = ParameterHelper.GetAutoInjectType(arg.Type as INamedTypeSymbol),
-            IsManualInjected = arg.GetAttributes().Any(
-                x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
-            ),
-            PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type as INamedTypeSymbol),
-            Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat)
-        };
     }
 
     private static RpcTargetAttribute? GetRpcTypeAttribute(AttributeData attributeData)
@@ -341,7 +336,4 @@ internal record RpcClassDeclaration
     public TypeSymbolInfo? IdType { get; init; }
     public bool IdIsExplicit { get; init; }
     public TypeCode IdTypeCode { get; init; }
-    public TypeHelper.PrimitiveLikeType IdPrimitiveLikeType { get; init; }
-    public TypeHelper.QuickSerializeMode IdQuickSerialize { get; init; }
-    public string? IdAssemblyQualifiedName { get; init; }
 }

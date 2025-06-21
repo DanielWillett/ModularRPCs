@@ -19,10 +19,17 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
     internal SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
     private readonly int _bufferSize;
     private byte[]? _buffer;
+
+    /// <inheritdoc cref="IModularRpcRemoteConnection.Endpoint" />
     public WebSocketEndpoint Endpoint { get; }
+
+    /// <inheritdoc />
     public abstract bool IsClosed { get; }
+
+    /// <inheritdoc cref="IModularRpcRemoteConnection.Local" />
     public TLocalConnection Local { get; internal set; } = null!;
     public IRpcConnectionLifetime Lifetime { get; }
+
     protected internal WebSocketRemoteRpcConnection(WebSocket webSocket, WebSocketEndpoint endpoint, IRpcConnectionLifetime lifetime, int bufferSize)
     {
         _bufferSize = bufferSize;
@@ -30,6 +37,8 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
         WebSocketIntl = webSocket;
         Endpoint = endpoint;
     }
+
+    /// <inheritdoc />
     public ValueTask SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
         if (IsClosed)
@@ -43,6 +52,8 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
         Task task = SendDataArrayIntl(new ArraySegment<byte>(arr), token);
         return new ValueTask(task);
     }
+
+    /// <inheritdoc />
     public ValueTask SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {
         if (IsClosed)
@@ -111,7 +122,9 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
         }
     }
 
+    /// <inheritdoc />
     public abstract ValueTask CloseAsync(CancellationToken token = default);
     IModularRpcLocalConnection IModularRpcRemoteConnection.Local => Local;
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
+    bool IModularRpcRemoteConnection.IsLoopback => false;
 }

@@ -2,14 +2,18 @@ using DanielWillett.ModularRpcs.Routing;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using DanielWillett.ModularRpcs.Serialization;
+using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
-[EditorBrowsable(EditorBrowsableState.Advanced)]
+[EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]
 public interface IRpcGeneratedProxyType
 {
+    [UsedImplicitly]
     void SetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
 #if NET7_0_OR_GREATER
+    [UsedImplicitly]
     static abstract void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state);
 #endif
 }
@@ -44,4 +48,23 @@ public class GeneratedProxyTypeBuilder
     {
         CallInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
     }
+}
+
+/// <summary>
+/// Used by source generator, should not be used in user code.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never), UsedImplicitly]
+public unsafe struct GeneratedSendMethodState
+{
+    [UsedImplicitly] public byte* Buffer;
+    [UsedImplicitly] public uint Size;
+    [UsedImplicitly] public uint OverheadSize;
+    [UsedImplicitly] public uint PreOverheadSize;
+    [UsedImplicitly] public bool HasKnownTypeId;
+    [UsedImplicitly] public bool PreCalc;
+    [UsedImplicitly] public uint KnownTypeId;
+    [UsedImplicitly] public uint IdTypeSize;
+    [UsedImplicitly] public uint IdSize;
+    [UsedImplicitly] public IRpcSerializer Serializer;
+    [UsedImplicitly] public IRpcRouter Router;
 }

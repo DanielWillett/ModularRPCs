@@ -33,7 +33,7 @@
 
   <ItemGroup>
     <!-- Generator dependencies -->
-    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease11, 2.0.0)" PrivateAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease12, 2.0.0)" PrivateAssets="all" GeneratePathProperty="true" />
   </ItemGroup>
 	
   <PropertyGroup>

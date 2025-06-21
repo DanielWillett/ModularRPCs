@@ -1,27 +1,33 @@
+using DanielWillett.ModularRpcs.Reflection;
 using Microsoft.CodeAnalysis;
 using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using System.Text;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 
 public static class TypeHelper
 {
-    private static readonly string[] PrimitiveTypes =
+    private static readonly string?[] PrimitiveTypes =
     [
         "global::System.Boolean",
         "global::System.Byte",
         "global::System.Char",
         "global::System.Double",
+        null,
         "global::System.Int16",
         "global::System.Int32",
         "global::System.Int64",
-        "global::System.Int128",
+        null,
         "global::System.IntPtr",
         "global::System.SByte",
         "global::System.Single",
         "global::System.UInt16",
         "global::System.UInt32",
         "global::System.UInt64",
-        "global::System.UInt128",
+        null,
         "global::System.UIntPtr"
     ];
 
@@ -51,6 +57,19 @@ public static class TypeHelper
         "global::System.Guid",
         "global::System.TimeSpan",
     ];
+
+    public static string ToTypeCodeString(this TypeCode tc)
+    {
+        return tc switch
+        {
+            TypeUtility.TypeCodeTimeSpan => "TimeSpan",
+            TypeUtility.TypeCodeGuid => "Guid",
+            TypeUtility.TypeCodeDateTimeOffset => "DateTimeOffset",
+            TypeUtility.TypeCodeIntPtr => "IntPtr",
+            TypeUtility.TypeCodeUIntPtr => "UIntPtr",
+            _ => tc.ToString()
+        };
+    }
 
     [Flags]
     public enum PrimitiveLikeType
@@ -92,27 +111,25 @@ public static class TypeHelper
 
         if (type is INamedTypeSymbol { EnumUnderlyingType: { } underlying })
         {
-            return GetPrimitiveLikeType(underlying) | PrimitiveLikeType.Enum;
+            return underlying.EnumUnderlyingType == null ? GetPrimitiveLikeType(underlying) | PrimitiveLikeType.Enum : PrimitiveLikeType.None;
         }
 
         string name = FixNativeIntName(type.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat), type);
         int index = Array.IndexOf(PrimitiveTypes, name);
         if (index < 0)
             return PrimitiveLikeType.None;
-        if (index > 3)
-            ++index; // account for Half
 
         return (PrimitiveLikeType)(index + 1);
     }
 
-    public static PrimitiveLikeType GetPrimitiveLikeType(INamedTypeSymbol? type)
+    public static PrimitiveLikeType GetPrimitiveLikeType(ITypeSymbol? type)
     {
         if (type == null)
             return PrimitiveLikeType.None;
 
-        if (type.EnumUnderlyingType != null)
+        if (type is INamedTypeSymbol { EnumUnderlyingType: { } underlying })
         {
-            return GetPrimitiveLikeType(type.EnumUnderlyingType) | PrimitiveLikeType.Enum;
+            return underlying.EnumUnderlyingType == null ? GetPrimitiveLikeType(underlying) | PrimitiveLikeType.Enum : PrimitiveLikeType.None;
         }
 
         string name = FixNativeIntName(type.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat), type);
@@ -177,15 +194,14 @@ public static class TypeHelper
 
         string name = FixNativeIntName(type.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat), type);
         if (string.Equals(name, "global::System.Byte", StringComparison.Ordinal)
-            || string.Equals(name, "global::System.SByte", StringComparison.Ordinal))
+            || string.Equals(name, "global::System.SByte", StringComparison.Ordinal)
+            || string.Equals(name, "global::System.Boolean", StringComparison.Ordinal))
         {
             return QuickSerializeMode.Always;
         }
 
         if (string.Equals(name, "global::System.IntPtr", StringComparison.Ordinal)
-            || string.Equals(name, "global::System.UIntPtr", StringComparison.Ordinal)
-            || string.Equals(name, "global::nint", StringComparison.Ordinal)
-            || string.Equals(name, "global::nuint", StringComparison.Ordinal))
+            || string.Equals(name, "global::System.UIntPtr", StringComparison.Ordinal))
         {
             return QuickSerializeMode.If64Bit;
         }
@@ -195,15 +211,14 @@ public static class TypeHelper
             string underlyingName = FixNativeIntName(underlying.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat), underlying);
 
             if (string.Equals(underlyingName, "global::System.Byte", StringComparison.Ordinal)
-                || string.Equals(underlyingName, "global::System.SByte", StringComparison.Ordinal))
+                || string.Equals(underlyingName, "global::System.SByte", StringComparison.Ordinal)
+                || string.Equals(name, "global::System.Boolean", StringComparison.Ordinal))
             {
                 return QuickSerializeMode.Always;
             }
 
             if (string.Equals(underlyingName, "global::System.IntPtr", StringComparison.Ordinal)
-                || string.Equals(underlyingName, "global::System.UIntPtr", StringComparison.Ordinal)
-                || string.Equals(name, "global::nint", StringComparison.Ordinal)
-                || string.Equals(name, "global::nuint", StringComparison.Ordinal))
+                || string.Equals(underlyingName, "global::System.UIntPtr", StringComparison.Ordinal))
             {
                 return QuickSerializeMode.If64Bit;
             }
@@ -286,32 +301,165 @@ public static class TypeHelper
         }
     }
 
-    public static string GetAssemblyQualifiedNameNoVersion(ITypeSymbol type)
+    private static string GetMetadataNameStr(Compilation compilation, ITypeSymbol type)
     {
-        string dispString = type.ToDisplayString(CustomFormats.FullTypeNameFormat);
-
-        // for some reason it ignores keyword preferences for these two types
-        if (dispString.Equals("nint", StringComparison.Ordinal) && type is { Name: "IntPtr", ContainingNamespace.Name: "System" })
+        if (type.ContainingType != null)
         {
-            dispString = "System.IntPtr";
-        }
-        else if (dispString.Equals("nuint", StringComparison.Ordinal) && type is { Name: "UIntPtr", ContainingNamespace.Name: "System" })
-        {
-            dispString = "System.UIntPtr";
+            return GetMetadataNameSlow(compilation, type);
         }
 
-        return EscapeAssemblyQualifiedName(dispString) + ", " + EscapeAssemblyQualifiedName(type.ContainingAssembly.Name);
+        string metaName = EscapeAssemblyQualifiedName(type.MetadataName);
+        IAssemblySymbol asm = type.ContainingAssembly;
+
+        if (type.ContainingNamespace != null)
+        {
+            string ns = EscapeAssemblyQualifiedName(type.ContainingNamespace.ToDisplayString(CustomFormats.FullTypeNameFormat));
+            metaName = ns + "." + metaName;
+        }
+        
+        if (IsAssemblyMscorlib(compilation, type))
+        {
+            return metaName;
+        }
+
+        string asmName = EscapeAssemblyQualifiedName(asm.Name);
+        return metaName + ", " + asmName;
+    }
+
+    public static string GetAssemblyQualifiedNameNoVersion(Compilation compilation, ITypeSymbol type)
+    {
+        if (type is not INamedTypeSymbol n || !n.IsGenericType || n.IsUnboundGenericType)
+            return GetMetadataNameStr(compilation, type);
+
+        if (n.TypeArguments.Any(x => x is IErrorTypeSymbol))
+            return GetMetadataNameStr(compilation, n);
+
+        return GetMetadataNameSlow(compilation, type);
+    }
+
+    private static string GetMetadataNameSlow(Compilation compilation, ITypeSymbol type)
+    {
+        StringBuilder sb = new StringBuilder(32 * (((type as INamedTypeSymbol)?.TypeArguments.Length ?? 0) + 1));
+        GetMetadataName(compilation, type, sb);
+        return sb.ToString();
+    }
+
+    private static readonly string[] MscorlibAssemblies =
+    [
+        "mscorlib", "System.Private.CoreLib"
+    ];
+
+    private static readonly string[] MaybeMscorlibAssemblies =
+    [
+        "netstandard", "System.Runtime"
+    ];
+
+    private static bool IsAssemblyMscorlib(Compilation compilation, ITypeSymbol type)
+    {
+        type = type.OriginalDefinition;
+        IAssemblySymbol asm = type.ContainingAssembly;
+        if (Array.IndexOf(MscorlibAssemblies, asm.Name) >= 0)
+            return true;
+
+        if (Array.IndexOf(MaybeMscorlibAssemblies, asm.Name) < 0)
+            return false;
+
+        if (type is INamedTypeSymbol { IsGenericType: true } n)
+            type = n.ConstructedFrom;
+
+        while (type.ContainingType != null)
+            type = type.ContainingType;
+
+        string metaName = type.MetadataName;
+        if (type.ContainingNamespace != null)
+            metaName = type.ContainingNamespace.ToDisplayString(CustomFormats.FullTypeNameFormat) + "." + metaName;
+
+        INamedTypeSymbol? foundType = compilation.GetTypeByMetadataName(metaName);
+        return foundType != null;
+    }
+
+    private static void GetMetadataName(Compilation compilation, ITypeSymbol type, StringBuilder bldr, bool nested = false)
+    {
+        if (!nested && type.ContainingNamespace != null)
+            bldr.Append(EscapeAssemblyQualifiedName(type.ContainingNamespace.ToDisplayString(CustomFormats.FullTypeNameFormat)))
+                .Append('.');
+        
+        if (type.ContainingType != null)
+        {
+            GetMetadataName(compilation, type.ContainingType, bldr, nested: true);
+            bldr.Append('+');
+        }
+        
+        bldr.Append(EscapeAssemblyQualifiedName(type.MetadataName));
+
+        if (nested)
+            return;
+
+        if (type is INamedTypeSymbol n && n.IsGenericType && !n.IsUnboundGenericType)
+        {
+            ImmutableArray<ITypeSymbol> typeArgs = n.TypeArguments;
+            if (!typeArgs.Any(x => x is IErrorTypeSymbol))
+            {
+                bldr.Append('[');
+
+                int ct = 0;
+                // nested types
+                if (type.ContainingType != null)
+                {
+                    Stack<INamedTypeSymbol> stack = new Stack<INamedTypeSymbol>(4);
+                    for (INamedTypeSymbol c = type.ContainingType; c != null; c = c.ContainingType)
+                        stack.Push(c);
+
+                    while (stack.Count > 0)
+                    {
+                        INamedTypeSymbol nestedType = stack.Pop();
+
+                        ImmutableArray<ITypeSymbol> nestedTypeArgs = nestedType.TypeArguments;
+
+                        foreach (ITypeSymbol s in nestedTypeArgs)
+                        {
+                            if (ct != 0)
+                                bldr.Append(',');
+
+                            bldr.Append('[');
+                            GetMetadataName(compilation, s, bldr);
+                            bldr.Append(']');
+                            ++ct;
+                        }
+                    }
+                }
+
+                foreach (ITypeSymbol s in typeArgs)
+                {
+                    if (ct != 0)
+                        bldr.Append(',');
+
+                    bldr.Append('[');
+                    GetMetadataName(compilation, s, bldr);
+                    bldr.Append(']');
+                    ++ct;
+                }
+
+                bldr.Append(']');
+            }
+        }
+
+        if (IsAssemblyMscorlib(compilation, type))
+            return;
+
+        bldr.Append(", ")
+            .Append(EscapeAssemblyQualifiedName(type.ContainingAssembly.Name));
     }
 
     private static readonly char[] Escapables = [ '\n', '\r', '\t', '\v', '\\', '\"', '\'' ];
-    private static readonly char[] AssemblyQualifiedEscapables = [ '\n', '\r', '\t', '\v', '\\', ',', '+' ];
+    private static readonly char[] AssemblyQualifiedEscapables = [ '\n', '\r', '\t', '\v', '\\', ',', '+', '[', ']'];
     public static string Escape(string value)
     {
         int c = 0;
         string s = value;
         for (int i = 0; i < s.Length; ++i)
         {
-            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or '\"' or '\'')
+            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or '\"' or '\'' or '[' or ']')
                 ++c;
         }
 

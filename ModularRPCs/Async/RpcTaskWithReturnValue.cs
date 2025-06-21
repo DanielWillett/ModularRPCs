@@ -1,10 +1,10 @@
+using DanielWillett.ModularRpcs.Data;
 using DanielWillett.ModularRpcs.Exceptions;
 using JetBrains.Annotations;
 using System;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using DanielWillett.ModularRpcs.Data;
 
 namespace DanielWillett.ModularRpcs.Async;
 
@@ -60,12 +60,6 @@ public class RpcTask<T> : RpcTask
     public new ConfiguredRpcTaskAwaitable<T> ConfigureAwait(bool continueOnCapturedContext)
     {
         return new ConfiguredRpcTaskAwaitable<T>((RpcTaskAwaiter<T>)Awaiter, continueOnCapturedContext);
-    }
-
-    internal void TriggerComplete(Exception? exception, T value)
-    {
-        Exception = exception;
-        Awaiter.TriggerComplete();
     }
 
     protected internal override bool TrySetResult(object? value)

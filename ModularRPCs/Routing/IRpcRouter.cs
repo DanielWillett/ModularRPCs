@@ -24,6 +24,18 @@ public interface IRpcRouter
     IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
 
     /// <summary>
+    /// The connection lifetime used by this router.
+    /// </summary>
+    [UsedImplicitly]
+    IRpcConnectionLifetime ConnectionLifetime { get; }
+
+    /// <summary>
+    /// The serializer used by this router.
+    /// </summary>
+    [UsedImplicitly]
+    IRpcSerializer Serializer { get; }
+
+    /// <summary>
     /// Get a saved <see cref="IRpcInvocationPoint"/> from it's Id.
     /// </summary>
     /// <param name="endpointSharedId">Unique shared ID for the rpc endpoint.</param>
@@ -53,7 +65,7 @@ public interface IRpcRouter
     /// Invoke an RPC from a 'call' method. Expects that there will be a blank space at the beginning of the buffer for the overhead to be written to. Use <see cref="GetOverheadSize"/> to help calculate that.
     /// </summary>
     /// <param name="connections">A <see cref="IModularRpcRemoteConnection"/>, <see cref="IEnumerable{T}"/> of <see cref="IModularRpcRemoteConnection"/>, or <see langword="null"/> for all connections.</param>
-    unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, byte* bytesSt, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo);
+    unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, byte* bytesSt, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo, RpcInvokeOptions options = RpcInvokeOptions.Default);
 
     /// <summary>
     /// Invoke an RPC from a 'call' method. Using this to send data to multiple connections is not recommended over <see cref="InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,byte*,int,uint,ref RpcCallMethodInfo)"/>, as the data will be copied to a buffer anyways.
@@ -63,7 +75,7 @@ public interface IRpcRouter
     /// <param name="leaveOpen">If this function should not dispose of <paramref name="dataStream"/>, otherwise this method can be trusted to dispose of <paramref name="dataStream"/>.</param>
     /// <param name="dataCt">Number of bytes in the data portion of the message. Usually this would be <c><paramref name="dataStream"/>.Length - <paramref name="dataStream"/>.Position</c>.</param>
     /// <param name="connections">A <see cref="IModularRpcRemoteConnection"/>, <see cref="IEnumerable{T}"/> of <see cref="IModularRpcRemoteConnection"/>, or <see langword="null"/> for all connections.</param>
-    RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, ArraySegment<byte> overheadBuffer, Stream dataStream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo);
+    RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, ArraySegment<byte> overheadBuffer, Stream dataStream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo, RpcInvokeOptions options = RpcInvokeOptions.Default);
 
     /// <summary>
     /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.

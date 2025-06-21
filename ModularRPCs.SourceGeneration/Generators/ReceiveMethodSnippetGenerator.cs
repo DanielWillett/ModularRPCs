@@ -1,22 +1,25 @@
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
 
 internal readonly struct ReceiveMethodSnippetGenerator
 {
     public readonly SourceProductionContext Context;
+    public readonly CSharpCompilation Compilation;
     public readonly RpcMethodDeclaration Method;
     public readonly RpcReceiveAttribute Receive;
     public readonly ReceiveMethodInfo Info;
 
-    internal ReceiveMethodSnippetGenerator(SourceProductionContext context, ReceiveMethodInfo method)
+    internal ReceiveMethodSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, ReceiveMethodInfo method)
     {
         Context = context;
         Method = method.Method;
         Receive = (RpcReceiveAttribute)method.Method.Target;
         Info = method;
+        Compilation = compilation;
     }
 
 

@@ -3,7 +3,7 @@
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease09</VersionSuffix>
+    <VersionSuffix>prerelease13</VersionSuffix>
 
     <PackageReleaseNotes>Initial pre-release.</PackageReleaseNotes>
 
@@ -28,7 +28,7 @@
     <PackageIcon></PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
-    <PackageTags>RPCs;Networking;Remote;Netcall;Web Sockets;Routing;IRpcRouter;IRpcConnection</PackageTags>
+    <PackageTags>RPC;Networking;Unity;Remote;Netcall;RemoteProcedureCall;Netcode;Multiplayer;IRpcConnection;IModularRpcConnection;Sockets;WebSockets;HTTPS;WSS</PackageTags>
 
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>
@@ -63,8 +63,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[3.1.0,)" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease09, 2)" />
-    <!--<ProjectReference Include="../ModularRPCs/ModularRPCs.csproj"/>-->
+    <ProjectReference Include="../ModularRPCs/ModularRPCs.csproj"/>
   </ItemGroup>
 
   <!-- Build Configurations -->

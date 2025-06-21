@@ -19,6 +19,8 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
 
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }
+    bool IModularRpcRemoteConnection.IsLoopback => AdvertiseLoopback;
+
 
     public LoopbackRpcServersideRemoteConnection Server { get; }
     public LoopbackRpcClientsideLocalConnection Local { get; internal set; }
@@ -27,7 +29,8 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
     public bool UseStreams { get; }
     public IRpcConnectionLifetime? Lifetime { get; }
     public bool UseContiguousBuffer { get; set; }
-    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcSerializer serializer, IRpcConnectionLifetime? lifetime, LoopbackRpcServersideRemoteConnection server, bool useStreams)
+    public bool AdvertiseLoopback { get; }
+    internal LoopbackRpcClientsideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcSerializer serializer, IRpcConnectionLifetime? lifetime, LoopbackRpcServersideRemoteConnection server, bool useStreams, bool advertiseLoopback = true)
     {
         if (endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedClientsideEndpoint, nameof(endPoint));
@@ -38,6 +41,7 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
         server.Client = this;
         Server = server;
         UseStreams = useStreams;
+        AdvertiseLoopback = advertiseLoopback;
         _callback = HandleContiguousBufferCallback;
     }
 

@@ -1,5 +1,6 @@
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
@@ -14,9 +15,11 @@ internal readonly struct ClassSnippetGenerator
     public readonly SourceProductionContext Context;
     public readonly RpcClassDeclaration Class;
     public readonly EquatableList<RpcMethodDeclaration> MethodDeclarations;
+    public readonly CSharpCompilation Compilation;
 
-    internal ClassSnippetGenerator(SourceProductionContext context, RpcClassDeclaration @class, EquatableList<RpcMethodDeclaration> methodDeclarations)
+    internal ClassSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, RpcClassDeclaration @class, EquatableList<RpcMethodDeclaration> methodDeclarations)
     {
+        Compilation = compilation;
         Context = context;
         Class = @class;
         MethodDeclarations = methodDeclarations;
@@ -202,7 +205,7 @@ internal readonly struct ClassSnippetGenerator
             bldr.Build($"{method.Method.Definition}")
                 .String("{").In();
 
-            new SendMethodSnippetGenerator(Context, method)
+            new SendMethodSnippetGenerator(Context, Compilation, method)
                 .GenerateMethodBodySnippet(bldr);
 
             bldr.Out()
@@ -238,7 +241,7 @@ internal readonly struct ClassSnippetGenerator
                     .String("global::System.Threading.CancellationToken token)").Out()
                 .String("{").In();
 
-            new ReceiveMethodSnippetGenerator(Context, method)
+            new ReceiveMethodSnippetGenerator(Context, Compilation, method)
                 .GenerateMethodBodySnippetBytes(bldr);
 
             bldr.Out()
@@ -263,7 +266,7 @@ internal readonly struct ClassSnippetGenerator
                     .String("global::System.Threading.CancellationToken token)").Out()
                 .String("{").In();
 
-            new ReceiveMethodSnippetGenerator(Context, method)
+            new ReceiveMethodSnippetGenerator(Context, Compilation, method)
                 .GenerateMethodBodySnippetStream(bldr);
 
             bldr.Out()

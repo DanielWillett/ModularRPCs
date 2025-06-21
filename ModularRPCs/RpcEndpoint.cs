@@ -971,7 +971,40 @@ public class RpcEndpoint : IRpcInvocationPoint
             }
 
             Type type = DetermineIdentifierType(serializer, typeName, knownTypeId);
-            object? identifier = serializer.ReadObject(type, bytes, maxCt - (uint)size, out bytesRead);
+
+            object? identifier;
+            
+            if ((flags & IdentifierFlags.IsSerializableType) != 0)
+            {
+                if ((flags & IdentifierFlags.IsNullableSerializableCollectionElementType) == IdentifierFlags.IsNullableSerializableCollectionElementType && type.IsValueType)
+                {
+                    identifier = serializer.ReadSerializableObjects(typeof(Nullable<>).MakeGenericType(type),
+                        type.MakeArrayType(),
+                        bytes,
+                        maxCt - (uint)size,
+                        (flags & IdentifierFlags.NullCollectionValueAmbiguousCase) == IdentifierFlags.NullCollectionValueAmbiguousCase,
+                        out bytesRead
+                    );
+                }
+                else if ((flags & IdentifierFlags.IsSerializableCollectionType) == IdentifierFlags.IsSerializableCollectionType)
+                {
+                    identifier = serializer.ReadSerializableObjects(type,
+                        type.MakeArrayType(),
+                        bytes,
+                        maxCt - (uint)size,
+                        (flags & IdentifierFlags.NullCollectionValueAmbiguousCase) == IdentifierFlags.NullCollectionValueAmbiguousCase,
+                        out bytesRead
+                    );
+                }
+                else
+                {
+                    identifier = serializer.ReadSerializableObject(type, bytes, maxCt - (uint)size, out bytesRead);
+                }
+            }
+            else
+            {
+                identifier = serializer.ReadObject(type, bytes, maxCt - (uint)size, out bytesRead);
+            }
 
             bytesRead += size;
             return identifier;
@@ -1135,7 +1168,37 @@ public class RpcEndpoint : IRpcInvocationPoint
             }
 
             Type type = DetermineIdentifierType(serializer, typeName, knownTypeId);
-            object? identifier = serializer.ReadObject(type, stream, out bytesRead);
+            object? identifier;
+
+            if ((flags & IdentifierFlags.IsSerializableType) != 0)
+            {
+                if ((flags & IdentifierFlags.IsNullableSerializableCollectionElementType) == IdentifierFlags.IsNullableSerializableCollectionElementType && type.IsValueType)
+                {
+                    identifier = serializer.ReadSerializableObjects(typeof(Nullable<>).MakeGenericType(type),
+                        type.MakeArrayType(),
+                        stream,
+                        (flags & IdentifierFlags.NullCollectionValueAmbiguousCase) == IdentifierFlags.NullCollectionValueAmbiguousCase,
+                        out bytesRead
+                    );
+                }
+                else if ((flags & IdentifierFlags.IsSerializableCollectionType) == IdentifierFlags.IsSerializableCollectionType)
+                {
+                    identifier = serializer.ReadSerializableObjects(type,
+                        type.MakeArrayType(),
+                        stream,
+                        (flags & IdentifierFlags.NullCollectionValueAmbiguousCase) == IdentifierFlags.NullCollectionValueAmbiguousCase,
+                        out bytesRead
+                    );
+                }
+                else
+                {
+                    identifier = serializer.ReadSerializableObject(type, stream, out bytesRead);
+                }
+            }
+            else
+            {
+                identifier = serializer.ReadObject(type, stream, out bytesRead);
+            }
 
             bytesRead += size;
             return identifier;
@@ -1146,7 +1209,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (!IsBroadcast)
             throw new InvalidOperationException();
 
-        if (!router.BroadcastTargets.TryGetValue(DeclaringTypeName, out IReadOnlyList<RpcEndpointTarget> targets))
+        if (!router.BroadcastTargets.TryGetValue(DeclaringTypeName, out IReadOnlyList<RpcEndpointTarget>? targets))
             return Array.Empty<MethodInfo>();
 
         MethodInfo? match = null;
@@ -1203,10 +1266,11 @@ public class RpcEndpoint : IRpcInvocationPoint
     private static Type DetermineIdentifierType(IRpcSerializer serializer, string? typeName, uint? knownTypeId)
     {
         Type? type = null;
+        bool success = false;
         if (knownTypeId.HasValue)
-            serializer.TryGetKnownType(knownTypeId.Value, out type);
+            success = serializer.TryGetKnownType(knownTypeId.Value, out type);
 
-        if (type != null)
+        if (success && type != null)
             return type;
 
         if (typeName != null)
@@ -1230,7 +1294,11 @@ public class RpcEndpoint : IRpcInvocationPoint
         IsTypeNameOnly = 1 << 1,
         IsSerializableType = 1 << 2,
         IsSerializableCollectionType = (1 << 3) | IsSerializableType,
-        IsNullableSerializableCollectionElementType = 1 << 4 | IsSerializableCollectionType,
+        IsNullableSerializableCollectionElementType = (1 << 4) | IsSerializableCollectionType,
+
+        /// <summary>
+        /// Indicates whether the value type being read can be a nullable value type.
+        /// </summary>
         NullCollectionValueAmbiguousCase = 1 << 5
     }
 

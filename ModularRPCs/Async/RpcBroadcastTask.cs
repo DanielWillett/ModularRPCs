@@ -1,4 +1,4 @@
-﻿namespace DanielWillett.ModularRpcs.Async;
+namespace DanielWillett.ModularRpcs.Async;
 public class RpcBroadcastTask : RpcTask
 {
     internal int ConnectionCountIntl;

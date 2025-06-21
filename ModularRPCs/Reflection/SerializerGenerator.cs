@@ -1700,6 +1700,17 @@ internal sealed class SerializerGenerator
                     // }
                     
                     contIl.MarkLabel(lblExitTry);
+
+                    contIl.CommentIfDebug("if ((_overhead.Flags & RpcFlags.FireAndForget) != 0)");
+                    contIl.CommentIfDebug("    return;");
+                    contIl.Emit(OpCodes.Ldarg_0);
+                    contIl.Emit(OpCodes.Ldfld, overheadField);
+                    contIl.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcOverheadGetFlags);
+                    contIl.Emit(OpCodes.Ldc_I4, (int)RpcFlags.FireAndForget);
+                    contIl.Emit(OpCodes.And);
+                    contIl.Emit(OpCodes.Ldc_I4_0);
+                    contIl.Emit(OpCodes.Bgt_Un, lblContRtn);
+
                     contIl.Emit(OpCodes.Ldarg_0);
                     contIl.Emit(OpCodes.Ldfld, routerField);
                     if (lclResult2 != null)
@@ -1807,6 +1818,15 @@ internal sealed class SerializerGenerator
         }
         
         il.TryMarkLabel(lblReturnType);
+
+        il.CommentIfDebug("if ((_overhead.Flags & RpcFlags.FireAndForget) != 0)");
+        il.CommentIfDebug("    return;");
+        il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(RpcOverhead)) ));
+        il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcOverheadGetFlags);
+        il.Emit(OpCodes.Ldc_I4, (int)RpcFlags.FireAndForget);
+        il.Emit(OpCodes.And);
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Bgt_Un, lblRtn);
 
         il.Emit(OpCodes.Ldarg, checked( (ushort)Array.IndexOf(methodParameters, typeof(IRpcRouter)) ));
         if (lclResult != null)

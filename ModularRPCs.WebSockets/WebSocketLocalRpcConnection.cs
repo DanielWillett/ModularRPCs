@@ -16,6 +16,9 @@ namespace DanielWillett.ModularRpcs.WebSockets;
 /// Base class for the listening portion of a <see cref="System.Net.WebSockets.WebSocket"/> connection.
 /// </summary>
 public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, IContiguousBufferProgressUpdateDispatcher, IRefSafeLoggable
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+    , IAsyncDisposable
+#endif
 {
     protected readonly CancellationTokenSource CancellationTokenSource;
     protected readonly ContiguousBuffer Buffer;
@@ -26,6 +29,7 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     private int _taskRunning;
     private object? _logger;
     internal bool IsClosedIntl;
+
     /// <inheritdoc />
     public event ContiguousBufferProgressUpdate BufferProgressUpdated
     {
@@ -33,12 +37,18 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         remove => Buffer.BufferProgressUpdated -= value;
     }
 
+    /// <inheritdoc />
     public bool IsClosed => WebSocket.State != WebSocketState.Open || IsClosedIntl;
+
+    /// <inheritdoc cref="IModularRpcLocalConnection.Router" />
     public IRpcRouter Router { get; }
+
     public WebSocketEndpoint Endpoint { get; }
     protected internal abstract WebSocket WebSocket { get; }
     protected internal abstract bool CanReconnect { get; }
     protected internal abstract SemaphoreSlim Semaphore { get; }
+
+    /// <inheritdoc cref="IModularRpcLocalConnection.Tags" />
     public IDictionary<string, object> Tags { get; } = new ConcurrentDictionary<string, object>();
     protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketEndpoint endpoint, int bufferSize, bool autoReconnect, PlateauingDelay delaySettings)
     {
@@ -266,7 +276,11 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
 
         CancellationTokenSource.Dispose();
     }
+
+    /// <inheritdoc />
     public abstract ValueTask DisposeAsync();
+
+    /// <inheritdoc />
     public abstract ValueTask CloseAsync(CancellationToken token = default);
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }

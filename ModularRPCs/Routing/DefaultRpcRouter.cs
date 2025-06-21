@@ -826,7 +826,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
 
     /// <inheritdoc />
-    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, byte* bytes, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
+    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, byte* bytes, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo, RpcInvokeOptions options = RpcInvokeOptions.Default)
     {
         ulong messageId = GetNewMessageId();
         int ovhSize = (int)((uint)byteCt - dataCt);
@@ -835,6 +835,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         RpcTask? rpcTask = null;
         CombinedTokenSources tokens = token.CombineTokensIfNeeded(_cancelTokenSource.Token);
+        bool skipLoopback = (options & RpcInvokeOptions.SkipLoopback) == RpcInvokeOptions.SkipLoopback;
         if (connections == null)
         {
             // ReSharper disable once RedundantSuppressNullableWarningExpression
@@ -844,6 +845,13 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
             }
 
+            if (skipLoopback)
+            {
+                _connectionLifetime.GetLoopbackCount(out bool areAllLoopbacks);
+                if (areAllLoopbacks)
+                    return CreateRpcTask(sourceMethodHandle, messageId, completed: true);
+            }
+
             rpcTask = !callMethodInfo.IsFireAndForget
                 ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId) 
                 : new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
@@ -851,6 +859,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             rpcTask.CombinedTokensToDisposeOnComplete = tokens;
             int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
             {
+                if (skipLoopback && connection.IsLoopback)
+                    return true;
+
                 Interlocked.CompareExchange(ref rpcTask.ConnectionIntl, connection, null);
 
                 Interlocked.Increment(ref rpcTask.CompleteCount);
@@ -897,6 +908,12 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         
         if (connections is IModularRpcRemoteConnection remote1)
         {
+            if (skipLoopback && remote1.IsLoopback)
+            {
+                tokens.Dispose();
+                return CreateRpcTask(sourceMethodHandle, messageId, completed: true);
+            }
+
             rpcTask = !callMethodInfo.IsFireAndForget
                 ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
                 : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
@@ -942,6 +959,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         foreach (IModularRpcRemoteConnection connection in remotes)
         {
+            if (skipLoopback && connection.IsLoopback)
+                continue;
+
             if (rpcTask == null)
             {
                 rpcTask = new RpcBroadcastTask(true) { CompleteCount = 1, MessageId = messageId, SubMessageId = 0 };
@@ -968,7 +988,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         if (rpcTask == null)
         {
             tokens.Dispose();
-            return RpcTask.CompletedTask;
+            return CreateRpcTask(sourceMethodHandle, messageId, completed: true);
         }
 
         if (token.CanBeCanceled)
@@ -983,7 +1003,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     }
 
     /// <inheritdoc />
-    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, ArraySegment<byte> overheadBuffer, Stream stream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo)
+    public unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, ArraySegment<byte> overheadBuffer, Stream stream, bool leaveOpen, uint dataCt, ref RpcCallMethodInfo callMethodInfo, RpcInvokeOptions options = RpcInvokeOptions.Default)
     {
         bool isDisposed = false;
         try
@@ -1004,6 +1024,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             ArraySegment<byte> nonSingle;
             RpcTask? rpcTask = null;
             CombinedTokenSources tokens = token.CombineTokensIfNeeded(_cancelTokenSource.Token);
+            bool skipLoopback = (options & RpcInvokeOptions.SkipLoopback) == RpcInvokeOptions.SkipLoopback;
             if (connections == null)
             {
                 // ReSharper disable once RedundantSuppressNullableWarningExpression
@@ -1012,6 +1033,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     tokens.Dispose();
                     throw new RpcFireAndForgetException(string.Format(Properties.Exceptions.RpcFireAndForgetExceptionMultipleConnections, Accessor.ExceptionFormatter.Format(MethodBase.GetMethodFromHandle(sourceMethodHandle)!)));
                 }
+
+                if (skipLoopback)
+                {
+                    _connectionLifetime.GetLoopbackCount(out bool areAllLoopbacks);
+                    if (areAllLoopbacks)
+                        return CreateRpcTask(sourceMethodHandle, messageId, completed: true);
+                }
+
 
                 rpcTask = !callMethodInfo.IsFireAndForget
                     ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
@@ -1036,6 +1065,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
                 int ct = _connectionLifetime.ForEachRemoteConnection(connection =>
                 {
+                    if (skipLoopback && connection.IsLoopback)
+                        return true;
+
                     Interlocked.CompareExchange(ref rpcTask.ConnectionIntl, connection, null);
 
                     Interlocked.Increment(ref rpcTask.CompleteCount);
@@ -1095,6 +1127,12 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
             if (connections is IModularRpcRemoteConnection remote1)
             {
+                if (skipLoopback && remote1.IsLoopback)
+                {
+                    tokens.Dispose();
+                    return CreateRpcTask(sourceMethodHandle, messageId, completed: true);
+                }
+
                 rpcTask = !callMethodInfo.IsFireAndForget
                     ? CreateRpcTaskListener(in callMethodInfo, sourceMethodHandle, messageId)
                     : new RpcTask(true) { MessageId = messageId, SubMessageId = 0 };
@@ -1158,6 +1196,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             int ind = 0;
             foreach (IModularRpcRemoteConnection connection in remotes)
             {
+                if (skipLoopback && connection.IsLoopback)
+                    continue;
+
                 if (nonSingle.Array == null && ind > 0)
                     break;
 
@@ -1201,7 +1242,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             if (rpcTask == null)
             {
                 tokens.Dispose();
-                return RpcTask.CompletedTask;
+                return CreateRpcTask(sourceMethodHandle, messageId, completed: true);
             }
 
             if (token.CanBeCanceled)
@@ -1254,7 +1295,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         };
     }
-    private RpcTask CreateRpcTaskListener(in RpcCallMethodInfo callInfo, RuntimeMethodHandle sourceMethodHandle, ulong messageId)
+    private static RpcTask CreateRpcTask(RuntimeMethodHandle sourceMethodHandle, ulong messageId, bool completed = false)
     {
         MethodInfo method = (MethodBase.GetMethodFromHandle(sourceMethodHandle) as MethodInfo)!;
 
@@ -1266,9 +1307,18 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         
         rpcTask.MessageId = messageId;
         rpcTask.SubMessageId = 1;
+        if (completed)
+            rpcTask.TriggerComplete(null);
+        return rpcTask;
+    }
+
+    private RpcTask CreateRpcTaskListener(in RpcCallMethodInfo callInfo, RuntimeMethodHandle sourceMethodHandle, ulong messageId)
+    {
+        RpcTask rpcTask = CreateRpcTask(sourceMethodHandle, messageId);
         StartListening(rpcTask, messageId, callInfo.Timeout);
         return rpcTask;
     }
+
     private static void FinishListening(RpcTask? rpcTask)
     {
         if (rpcTask == null)
@@ -1907,7 +1957,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             if (type == null)
                 return null;
 
-            if ((f & RpcEndpoint.IdentifierFlags.IsNullableSerializableCollectionElementType) == RpcEndpoint.IdentifierFlags.IsNullableSerializableCollectionElementType)
+            if ((f & RpcEndpoint.IdentifierFlags.IsNullableSerializableCollectionElementType) == RpcEndpoint.IdentifierFlags.IsNullableSerializableCollectionElementType && type.IsValueType)
             {
                 Type nullableType = typeof(Nullable<>).MakeGenericType(type);
                 Type? rtnType = task?.ValueType;

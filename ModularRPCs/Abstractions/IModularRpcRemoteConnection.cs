@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +11,13 @@ namespace DanielWillett.ModularRpcs.Abstractions;
 /// </summary>
 public interface IModularRpcRemoteConnection : IModularRpcConnection
 {
+    /// <summary>
+    /// If this connection exhibits a loopback behavior.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException"/>
+    /// <remarks>Setting this to <see langword="true"/> may result in RPCs skipping the serialization/deserialization step and calling the receive method directly.</remarks>
+    bool IsLoopback { get; }
+
     /// <summary>
     /// The local side of this connection.
     /// </summary>

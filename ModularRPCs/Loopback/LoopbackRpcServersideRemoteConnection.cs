@@ -1,13 +1,13 @@
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Data;
 using DanielWillett.ModularRpcs.Exceptions;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Protocol;
 
 namespace DanielWillett.ModularRpcs.Loopback;
 public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection, IModularRpcServersideConnection, IRefSafeLoggable
@@ -18,6 +18,7 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
     
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }
+    bool IModularRpcRemoteConnection.IsLoopback => AdvertiseLoopback;
 
     public LoopbackRpcServersideLocalConnection Local { get; internal set; }
     public LoopbackRpcClientsideRemoteConnection Client { get; internal set; } = null!;
@@ -26,7 +27,8 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
     public IRpcConnectionLifetime? Lifetime { get; }
     public bool UseStreams { get; }
     public bool UseContiguousBuffer { get; set; }
-    internal LoopbackRpcServersideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcSerializer serializer, IRpcConnectionLifetime? lifetime, bool useStreams)
+    public bool AdvertiseLoopback { get; }
+    internal LoopbackRpcServersideRemoteConnection(LoopbackEndpoint endPoint, IRpcRouter router, IRpcSerializer serializer, IRpcConnectionLifetime? lifetime, bool useStreams, bool advertiseLoopback = true)
     {
         if (!endPoint.IsServer)
             throw new ArgumentException(Properties.Exceptions.LoopbackRemoteConnectionExpectedServersideEndpoint, nameof(endPoint));
@@ -35,6 +37,7 @@ public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection
         IsClosed = true;
         Endpoint = endPoint;
         Local = new LoopbackRpcServersideLocalConnection(this, router, serializer);
+        AdvertiseLoopback = advertiseLoopback;
         _callback = HandleContiguousBufferCallback;
     }
 
