@@ -1,4 +1,5 @@
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
+using Microsoft.CodeAnalysis;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration;
 
@@ -11,4 +12,5 @@ public record RpcParameterDeclaration
     public required TypeHelper.PrimitiveLikeType PrimitiveLikeType { get; init; }
     public required bool IsManualInjected { get; init; }
     public required string Definition { get; init; }
+    public required RefKind RefKind { get; init; }
 }

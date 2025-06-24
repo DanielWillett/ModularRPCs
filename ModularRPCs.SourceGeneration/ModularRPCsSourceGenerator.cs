@@ -82,17 +82,18 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                     INamedTypeSymbol? rpcObjectInterface = symbol.GetImplementation(
                         x => x.IsGenericType && x.ConstructedFrom.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcObject<T>")
                     );
+                    INamedTypeSymbol? singleConnectionInterface = symbol.GetImplementation(
+                        x => !x.IsGenericType && x.ConstructedFrom.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject")
+                    );
+                    INamedTypeSymbol? multiConnectionInterface = symbol.GetImplementation(
+                        x => !x.IsGenericType && x.ConstructedFrom.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject")
+                    );
 
                     ITypeSymbol? idType = rpcObjectInterface?.TypeArguments[0];
 
-                    bool explicitId = false;
-                    if (rpcObjectInterface != null)
-                    {
-                        IPropertySymbol? id = rpcObjectInterface.GetMembers(nameof(IRpcObject<>.Identifier)).OfType<IPropertySymbol>().FirstOrDefault();
-                        explicitId = id != null
-                                     && (symbol.FindImplementationForInterfaceMember(id) as IPropertySymbol) is { } prop
-                                     && prop.ExplicitInterfaceImplementations.Any(x => x.Equals(id));
-                    }
+                    bool explicitId = rpcObjectInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcObject<object>.Identifier));
+                    bool explicitSingle = singleConnectionInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcSingleConnectionObject.Connection));
+                    bool explicitMulti = multiConnectionInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcMultipleConnectionsObject.Connections));
 
                     bool isUnityType = false;
 
@@ -117,8 +118,10 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                             IdTypeCode = TypeHelper.GetTypeCode(idType),
                             IdIsExplicit = explicitId,
                             IsUnityType = isUnityType,
-                            IsSingleConnectionObject = symbol.AllInterfaces.Any(x => x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject")), 
-                            IsMultipleConnectionObject = symbol.AllInterfaces.Any(x => x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject"))
+                            IsSingleConnectionObject = singleConnectionInterface != null, 
+                            IsSingleConnectionExplicit = explicitSingle,
+                            IsMultipleConnectionObject = multiConnectionInterface != null,
+                            IsMultipleConnectionExplicit = explicitMulti
                         }
                     );
                 })
@@ -188,7 +191,8 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                             x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
                         ),
                         PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type as INamedTypeSymbol),
-                        Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat)
+                        Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat),
+                        RefKind = arg.RefKind
                     };
                 }).Where(x => x != null)),
                 ReturnType = new TypeSymbolInfo(compilation, method.ReturnType),
@@ -325,7 +329,9 @@ internal record RpcClassDeclaration
     public required ClassError Error { get; init; }
     public required bool IsValueType { get; init; }
     public required bool IsSingleConnectionObject { get; init; }
+    public required bool IsSingleConnectionExplicit { get; set; }
     public required bool IsMultipleConnectionObject { get; init; }
+    public required bool IsMultipleConnectionExplicit { get; set; }
 
     public bool IsUnityType { get; init; }
 

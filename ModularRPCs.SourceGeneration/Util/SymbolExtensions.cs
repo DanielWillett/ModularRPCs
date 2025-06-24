@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using IEventSymbol = Microsoft.CodeAnalysis.IEventSymbol;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 
@@ -19,6 +20,36 @@ internal static class SymbolExtensions
     {
         return type is { IsValueType: true, NullableAnnotation: NullableAnnotation.Annotated }
             or INamedTypeSymbol { ConstructedFrom.SpecialType: SpecialType.System_Nullable_T, TypeArguments.Length: 1 };
+    }
+
+    public static bool IsExplicitlyImplemented<TSymbol>(this INamedTypeSymbol? intx, ITypeSymbol declaringType, string name) where TSymbol : class, ISymbol
+    {
+        if (intx == null)
+            return false;
+
+        TSymbol? symbol = intx.GetMembers(name).OfType<TSymbol>().FirstOrDefault();
+        return symbol != null && symbol.IsExplicitlyImplemented(declaringType);
+    }
+
+    public static bool IsExplicitlyImplemented<TSymbol>(this TSymbol symbol, ITypeSymbol declaringType) where TSymbol : class, ISymbol
+    {
+        if (typeof(TSymbol) == typeof(IPropertySymbol))
+        {
+            return declaringType.FindImplementationForInterfaceMember(symbol) is IPropertySymbol prop
+                && prop.ExplicitInterfaceImplementations.Any(x => x.Equals(symbol));
+        }
+        if (typeof(TSymbol) == typeof(IEventSymbol))
+        {
+            return declaringType.FindImplementationForInterfaceMember(symbol) is IEventSymbol @event
+                && @event.ExplicitInterfaceImplementations.Any(x => x.Equals(symbol));
+        }
+        if (typeof(TSymbol) == typeof(IMethodSymbol))
+        {
+            return declaringType.FindImplementationForInterfaceMember(symbol) is IMethodSymbol method
+                && method.ExplicitInterfaceImplementations.Any(x => x.Equals(symbol));
+        }
+
+        return false;
     }
 
     public static bool IsNullable(this ITypeSymbol? type, out ITypeSymbol underlyingType)

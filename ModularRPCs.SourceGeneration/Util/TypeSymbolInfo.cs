@@ -32,7 +32,7 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
     public TypeSymbolInfo(Compilation compilation, ITypeSymbol typeSymbol, bool createInfo = false)
     {
         IsValueType = typeSymbol.IsValueType;
-        IsNullable = typeSymbol.IsNullable(out ITypeSymbol nullableUnderlyingType);
+        IsNullable = typeSymbol.IsNullable();
         Name = typeSymbol.Name;
         string? nameSpace = typeSymbol.ContainingNamespace?.ToDisplayString(CustomFormats.NamespaceWithoutGlobalFormat);
         if (string.IsNullOrEmpty(nameSpace))

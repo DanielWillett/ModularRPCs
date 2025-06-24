@@ -503,7 +503,7 @@ internal sealed class SerializerGenerator
                     break;
 
                 case TypeSerializationInfoType.NullableSerializableCollection:
-                    il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(in arg{i}, bytes + index, maxSize - index);");
+                    il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(arg{i}, bytes + index, maxSize - index);");
                     LoadFromRef(genType, il);
                     if (genType.IsValueType)
                         il.Emit(OpCodes.Box, genType);
@@ -517,7 +517,7 @@ internal sealed class SerializerGenerator
 
                     MethodInfo callGetValue = CommonReflectionCache.GetNullableValueGetter(genType);
 
-                    if (info.Type == TypeSerializationInfoType.NullableSerializableCollection)
+                    if (info.Type == TypeSerializationInfoType.NullableCollectionNullableSerializableCollection)
                         il.CommentIfDebug($"size += serializer.WriteNullableSerializableObjects<{info.UnderlyingType}>(arg{i} ?? null, bytes + index, maxSize - index);");
                     else
                         il.CommentIfDebug($"size += serializer.WriteSerializableObjects<{info.SerializableType}>(arg{i} ?? null, bytes + index, maxSize - index);");
