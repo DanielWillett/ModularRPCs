@@ -12,6 +12,8 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
     public readonly TypeSymbolInfo UnderlyingType;
     public readonly TypeSymbolInfo SerializableType;
     public readonly TypeSymbolInfo CollectionType;
+    public readonly bool IsMultipleConnections;
+    public readonly bool IsSingleConnection;
 #nullable restore
 
     public TypeSerializationInfo(Compilation compilation, ITypeSymbol type)
@@ -56,6 +58,8 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
                 Type = TypeSerializationInfoType.NullableValue;
                 SerializableType = new TypeSymbolInfo(compilation, type);
                 UnderlyingType = new TypeSymbolInfo(compilation, nullableType);
+                IsMultipleConnections = GetIsMultipleConnections(nullableType);
+                IsSingleConnection = GetIsSingleConnection(nullableType);
             }
         }
         else
@@ -94,9 +98,21 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
                 {
                     Type = TypeSerializationInfoType.Value;
                     SerializableType = new TypeSymbolInfo(compilation, type);
+                    IsMultipleConnections = GetIsMultipleConnections(type);
+                    IsSingleConnection = GetIsSingleConnection(type);
                 }
             }
         }
+    }
+
+    private static bool GetIsMultipleConnections(ITypeSymbol type)
+    {
+        return type.Implements("global::System.Collections.Generic.IEnumerable<global::DanielWillett.ModularRpcs.Abstractions.IModularRpcConnection>");
+    }
+
+    private static bool GetIsSingleConnection(ITypeSymbol type)
+    {
+        return type.Implements("global::DanielWillett.ModularRpcs.Abstractions.IModularRpcConnection");
     }
 
     private static ITypeSymbol? GetSerializableEnumerableType(ITypeSymbol type, string name, out bool isNullable)
@@ -127,7 +143,6 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
             {
                 if (namedType is { IsGenericType: true, TypeArguments.Length: 1 })
                 {
-                    
                     string cfrom = namedType.ConstructedFrom.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat);
                     if (string.Equals(cfrom, "global::System.Memory<T>")
                         || string.Equals(cfrom, "global::System.ReadOnlyMemory<T>")

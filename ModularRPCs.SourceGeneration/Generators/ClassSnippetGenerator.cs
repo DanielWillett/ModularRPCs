@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
@@ -37,7 +38,7 @@ internal readonly struct ClassSnippetGenerator
         List<SendMethodInfo> sendMethods = MethodDeclarations
             .Where(x => x.IsSend)
             .OrderBy(x => x.Name)
-            .Select(x => new SendMethodInfo(x, -1, null))
+            .Select(x => new SendMethodInfo(x, -1, null!))
             .ToList();
 
         List<ReceiveMethodInfo> recvMethods = MethodDeclarations
@@ -57,6 +58,8 @@ internal readonly struct ClassSnippetGenerator
                 ++overload;
 
             info.Overload = overload;
+            info.ReceiveMethodNameBytes = $"{receiveInvokeNamePrefix}{info.Method.Name}Ovl{info.Overload}Bytes";
+            info.ReceiveMethodNameStream = $"{receiveInvokeNamePrefix}{info.Method.Name}Ovl{info.Overload}Stream";
             recvMethods[i] = info;
         }
 
@@ -83,22 +86,13 @@ internal readonly struct ClassSnippetGenerator
 
         // class attributes
         bldr.String("[global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyTypeAttribute(");
-        if (sendMethods.Count > 0)
+        if (sendMethods.Count > 0 || recvMethods.Count > 0)
         {
             bldr.Preprocessor("#if !NET7_0_OR_GREATER");
             bldr.In().Build($"TypeSetupMethodName = nameof(@{Class.Type.Name}.__ModularRpcsGeneratedSetupStaticGeneratedProxy)").Out();
             bldr.Preprocessor("#endif");
         }
         bldr.String(")]");
-
-        foreach (ReceiveMethodInfo recvMethod in recvMethods)
-        {
-            bldr.String("[global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyReceiveMethodAttribute(")
-                .In().Build($"nameof(@{Class.Type.Name}.{recvMethod.Method.Name}),")
-                     .Build($"nameof(@{Class.Type.Name}.{receiveInvokeNamePrefix}{recvMethod.Method.Name}Ovl{recvMethod.Overload}Bytes),")
-                     .Build($"nameof(@{Class.Type.Name}.{receiveInvokeNamePrefix}{recvMethod.Method.Name}Ovl{recvMethod.Overload}Stream)").Out()
-                .String(")]");
-        }
 
         // class {
         bldr.Build($"partial {Class.Definition} : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType")
@@ -121,13 +115,13 @@ internal readonly struct ClassSnippetGenerator
                 .String("void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(").In()
                     .String("in global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)").Out()
                 .String("{").In()
-                    .Build($"info.Router.GetDefaultProxyContext(info.Generator, typeof(@{Class.Type.Name}), out this.__modularRpcsGeneratedProxyContext);").Out()
+                    .Build($"info.Router.GetDefaultProxyContext(typeof(@{Class.Type.Name}), out this.__modularRpcsGeneratedProxyContext);").Out()
                 .String("}")
                 .Empty();
 
         // static init method
 
-        if (sendMethods.Count == 0)
+        if (sendMethods.Count == 0 && recvMethods.Count == 0)
         {
             bldr.Preprocessor("#if NET7_0_OR_GREATER");
         }
@@ -139,7 +133,7 @@ internal readonly struct ClassSnippetGenerator
             .Preprocessor("#else")
             .String("private")
             .Preprocessor("#endif")
-            .String("static void __ModularRpcsGeneratedSetupStaticGeneratedProxy(").In()
+            .String("static unsafe void __ModularRpcsGeneratedSetupStaticGeneratedProxy(").In()
                 .String("global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder state)").Out()
             .String("{").In();
 
@@ -153,14 +147,71 @@ internal readonly struct ClassSnippetGenerator
             {
                 bldr.Build($"state.AddCallGetter(static () => ref @{Class.Type.Name}.{method.MethodInfoFieldName});");
             }
+            bldr.Build($"state.AddMethodSignatureHash(@{Class.Type.Name}.{method.MethodInfoFieldName}.MethodHandle, {method.Method.SignatureHash});");
+        }
+
+        if (recvMethods.Count > 0)
+        {
+            if (sendMethods.Count > 0)
+                bldr.Empty();
+
+            bldr.String("global::System.RuntimeMethodHandle workingHandle;");
+
+            foreach (ReceiveMethodInfo method in recvMethods)
+            {
+                bldr.Empty()
+                    .Build($"// Register {method.Method.Name}")
+                    .Build($"workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<{Class.Type.GloballyQualifiedName}>>(").In()
+                    .Build($"@{Class.Type.Name} => @{Class.Type.Name}.@{method.Method.Name}(").In();
+
+                bool needsComma = false;
+                foreach (RpcParameterDeclaration parameter in method.Method.Parameters)
+                {
+                    string comma = needsComma ? ", " : string.Empty;
+                    bldr.Build($"{comma}default({parameter.Type.GloballyQualifiedName})");
+                    needsComma = true;
+                }
+
+                bldr.Out()
+                    .String(")").Out()
+                    .String(").MethodHandle;");
+
+                bldr.String("state.AddReceiveMethod(").In()
+                        .String("workingHandle,")
+                        .String(method.Method.Target.Raw
+                            ? "global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.BytesRaw,"
+                            : "global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Bytes,")
+                        .String(method.Method.Target.Raw
+                            ? "new global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.RpcInvokeHandlerRawBytes("
+                            : "new global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.RpcInvokeHandlerBytes(").In()
+                            .Build($"@{Class.Type.Name}.{method.ReceiveMethodNameBytes}")
+                            .Out()
+                        .String(")")
+                        .Out()
+                    .String(");");
+
+                bldr.String("state.AddReceiveMethod(").In()
+                        .String("workingHandle,")
+                        .String(method.Method.Target.Raw
+                            ? "global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.StreamRaw,"
+                            : "global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Stream,")
+                        .String("new global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.RpcInvokeHandlerStream(").In()
+                            .Build($"@{Class.Type.Name}.{method.ReceiveMethodNameStream}")
+                            .Out()
+                        .String(")")
+                        .Out()
+                    .String(");");
+
+                bldr.Build($"state.AddMethodSignatureHash(workingHandle, {method.Method.SignatureHash});");
+            }
         }
 
         bldr.Out()
             .String("}");
 
-        if (sendMethods.Count == 0)
+        if (sendMethods.Count == 0 && recvMethods.Count == 0)
         {
-            bldr.Out().Out().String("#endif").In().In();
+            bldr.Preprocessor("#endif");
         }
 
         bldr.String("#endregion")
@@ -176,24 +227,64 @@ internal readonly struct ClassSnippetGenerator
                 .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
                 .Build($"private static global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo {method.MethodInfoFieldName}").In()
-                    .String("= global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo.FromCallMethod(").In()
-                        .String("global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.Instance,")
-                        .Build($"global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<{Class.Type.GloballyQualifiedName}>>(").In()
-                            .Build($"@{Class.Type.Name} => @{Class.Type.Name}.@{method.Method.Name}(").In();
+                    .String("= new global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo()")
+                    .String("{").In()
+                        .Build($"MethodHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<{Class.Type.GloballyQualifiedName}>>(").In()
+                            .Build($"@{Class.Type.Name} => @{Class.Type.Name}.@{method.Method.Name}({(method.Method.Parameters.Count == 0 ? ")" : string.Empty)}");
 
-            bool needsComma = false;
-            foreach (RpcParameterDeclaration parameter in method.Method.Parameters)
+            if (method.Method.Parameters.Count > 0)
             {
-                string comma = needsComma ? ", " : string.Empty;
-                bldr.Build($"{comma}default({parameter.Type.GloballyQualifiedName})");
-                needsComma = true;
+                bool needsComma = false;
+                foreach (RpcParameterDeclaration parameter in method.Method.Parameters)
+                {
+                    string comma = needsComma ? ", " : string.Empty;
+                    bldr.Build($"{comma}default({parameter.Type.GloballyQualifiedName})");
+                    needsComma = true;
+                }
+
+                bldr.Out()
+                    .String(")");
             }
 
-            bldr        .Out()
-                        .String(")").Out()
-                    .String("),")
-                    .String("false").Out()
-                .String(");").Out();
+            bldr.Out()
+                .String(").MethodHandle,")
+                .Build($"IsFireAndForget = {(method.Method.IsFireAndForget ? "true" : "false")},")
+                .Build($"SignatureHash = {method.Method.SignatureHash},")
+                .Build($"HasIdentifier = {(Class.IdType == null ? "false" : "true")},");
+            if (method.Method.Timeout.Ticks == 0)
+            {
+                bldr.Build($"Timeout = global::System.TimeSpan.Zero,");
+            }
+            else
+            {
+                bldr.Build($"Timeout = new global::System.TimeSpan({method.Method.Timeout.Ticks}),");
+            }
+            bldr.String("Endpoint = new global::DanielWillett.ModularRpcs.Reflection.RpcEndpointTarget()")
+                .String("{").In()
+                    .Build($"MethodName = \"{TypeHelper.Escape(string.IsNullOrEmpty(method.Method.Target.MethodName) ? method.Method.Name : method.Method.Target.MethodName!)}\",")
+                    .Build($"DeclaringTypeName = \"{TypeHelper.Escape(string.IsNullOrEmpty(method.Method.Target.TypeName) ? Class.Type.AssemblyQualifiedName : method.Method.Target.TypeName!)}\",")
+                    .Build($"SignatureHash = {method.Method.SignatureHash},")
+                    .String("IgnoreSignatureHash = false,")
+                    .Build($"ParameterTypesAreBindOnly = {(method.Method.Target.ParametersAreBindedParametersOnly ? "true" : "false")},");
+            if (method.Method.Target.ParameterTypeNames == null)
+            {
+                bldr.String("ParameterTypes = null,");
+            }
+            else if (method.Method.Target.ParameterTypeNames.Length == 0)
+            {
+                bldr.String("ParameterTypes = global::System.Array.Empty<string>(),");
+            }
+            else
+            {
+                string types = string.Join("\", \"", method.Method.Target.ParameterTypeNames.Select(TypeHelper.Escape));
+                bldr.Build($"ParameterTypes = new string[] {{ \"{types}\" }},");
+            }
+
+            bldr    .Build($"IsBroadcast = {(method.Method.IsBroadcast ? "true" : "false")},")
+                    .String("OwnerMethodInfo = null").Out()
+                .String("}")
+                .Out()
+                .String("};");
 
             bldr.Empty()
                 .String("/// <summary>")
@@ -230,7 +321,7 @@ internal readonly struct ClassSnippetGenerator
 
             bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .Build($"private static unsafe void {receiveInvokeNamePrefix}{method.Method.Name}Ovl{method.Overload}Bytes(").In()
+                .Build($"private static unsafe void {method.ReceiveMethodNameBytes}(").In()
                     .String("object serviceProvider,")
                     .String("object targetObject,")
                     .String("global::DanielWillett.ModularRpcs.Protocol.RpcOverhead overhead,")
@@ -242,7 +333,7 @@ internal readonly struct ClassSnippetGenerator
                 .String("{").In();
 
             new ReceiveMethodSnippetGenerator(Context, Compilation, method)
-                .GenerateMethodBodySnippetBytes(bldr);
+                .GenerateMethodBodySnippet(bldr, stream: false);
 
             bldr.Out()
                 .String("}");
@@ -256,7 +347,7 @@ internal readonly struct ClassSnippetGenerator
 
             bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .Build($"private static unsafe void {receiveInvokeNamePrefix}{method.Method.Name}Ovl{method.Overload}Stream(").In()
+                .Build($"private static unsafe void {method.ReceiveMethodNameStream}(").In()
                     .String("object serviceProvider,")
                     .String("object targetObject,")
                     .String("global::DanielWillett.ModularRpcs.Protocol.RpcOverhead overhead,")
@@ -267,7 +358,7 @@ internal readonly struct ClassSnippetGenerator
                 .String("{").In();
 
             new ReceiveMethodSnippetGenerator(Context, Compilation, method)
-                .GenerateMethodBodySnippetStream(bldr);
+                .GenerateMethodBodySnippet(bldr, stream: true);
 
             bldr.Out()
                 .String("}")

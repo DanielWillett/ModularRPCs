@@ -7,6 +7,7 @@ using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using DanielWillett.ModularRpcs.Async;
+using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Protocol;
 public class RpcOverhead
@@ -41,17 +42,20 @@ public class RpcOverhead
     /// <summary>
     /// The RPC invocation target to be called.
     /// </summary>
+    [UsedImplicitly]
     public IRpcInvocationPoint Rpc { get; }
 
     /// <summary>
     /// The remote side of the connections representing the remote client or server that sent the RPC.
     /// If this RPC is being broadcasted, <see cref="SendingConnections"/> will have a value instead.
     /// </summary>
+    [UsedImplicitly]
     public IModularRpcRemoteConnection? SendingConnection { get; internal set; }
 
     /// <summary>
-    /// The local size of the connection representing this client or server that the RPC is meant for.
+    /// The local side of the connection representing this client or server that the RPC is meant for.
     /// </summary>
+    [UsedImplicitly]
     public IModularRpcLocalConnection ReceivingConnection { get; }
 
     /// <summary>
@@ -64,6 +68,7 @@ public class RpcOverhead
     /// <summary>
     /// Various bitwise settings for an RPC call.
     /// </summary>
+    [UsedImplicitly]
     public RpcFlags Flags { get; }
 
 

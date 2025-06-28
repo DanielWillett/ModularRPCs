@@ -309,7 +309,7 @@ public static class TypeHelper
         }
 
         string metaName = EscapeAssemblyQualifiedName(type.MetadataName);
-        IAssemblySymbol asm = type.ContainingAssembly;
+        IAssemblySymbol asm = GetAssembly(type);
 
         if (type.ContainingNamespace != null)
         {
@@ -354,10 +354,25 @@ public static class TypeHelper
         "netstandard", "System.Runtime"
     ];
 
+    public static IAssemblySymbol GetAssembly(ITypeSymbol type)
+    {
+        switch (type)
+        {
+            case IArrayTypeSymbol array:
+                return array.ElementType.ContainingAssembly;
+
+            case IPointerTypeSymbol ptr:
+                return ptr.PointedAtType.ContainingAssembly;
+
+            default:
+                return type.ContainingAssembly;
+        }
+    }
+
     private static bool IsAssemblyMscorlib(Compilation compilation, ITypeSymbol type)
     {
         type = type.OriginalDefinition;
-        IAssemblySymbol asm = type.ContainingAssembly;
+        IAssemblySymbol asm = GetAssembly(type);
         if (Array.IndexOf(MscorlibAssemblies, asm.Name) >= 0)
             return true;
 
@@ -459,7 +474,7 @@ public static class TypeHelper
         string s = value;
         for (int i = 0; i < s.Length; ++i)
         {
-            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or '\"' or '\'' or '[' or ']')
+            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or '\"' or '\'')
                 ++c;
         }
 
@@ -519,7 +534,7 @@ public static class TypeHelper
         string s = value;
         for (int i = 0; i < s.Length; ++i)
         {
-            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+')
+            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+' or '[' or ']')
                 ++c;
         }
 
@@ -571,5 +586,178 @@ public static class TypeHelper
 
             return new string(newValue, 0, writeIndex);
         }
+    }
+
+
+    /// <summary>
+    /// Compare two assembly-qualified type names.
+    /// </summary>
+    /// <remarks>Stolen from <see href="https://github.com/DanielWillett/unturned-asset-file-vscode/blob/master/UnturnedAssetSpec/QualifiedType.cs"/>.</remarks>
+    public static bool TypesEqual(ReadOnlySpan<char> left, ReadOnlySpan<char> right, bool caseInsensitive = false)
+    {
+        StringComparison c = caseInsensitive ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (left.Equals(right, c))
+            return true;
+
+        if (left.IsEmpty || right.IsEmpty)
+            return false;
+
+        if (!ExtractParts(left, out ReadOnlySpan<char> typeNameLeft, out ReadOnlySpan<char> assemblyNameLeft)
+            || !ExtractParts(right, out ReadOnlySpan<char> typeNameRight, out ReadOnlySpan<char> assemblyNameRight))
+        {
+            return false;
+        }
+
+        return typeNameLeft.Equals(typeNameRight, c) && assemblyNameLeft.Equals(assemblyNameRight, c);
+    }
+
+
+    /// <summary>
+    /// Extract the type name and assembly name from an assembly-qualified full type name.
+    /// </summary>
+    public static bool ExtractParts(ReadOnlySpan<char> assemblyQualifiedTypeName, out ReadOnlySpan<char> fullTypeName, out ReadOnlySpan<char> assemblyName)
+    {
+        bool isLookingForAssemblyName = false;
+        if (assemblyQualifiedTypeName.IndexOfAny('[', ']') != -1)
+        {
+            fullTypeName = default;
+            assemblyName = default;
+
+            int genericDepth = 0;
+            int escapeDepth = 0;
+
+            // more advanced check taking generic types into consideration
+            // ex: System.Collections.Generic.Dictionary`2[[System.String, mscorlib],[System.Int32, mscorlib]], mscorlib
+            for (int i = 0; i < assemblyQualifiedTypeName.Length; ++i)
+            {
+                char c = assemblyQualifiedTypeName[i];
+
+                if (c is '[' or ']')
+                {
+                    if (escapeDepth > 0 && escapeDepth % 2 == 1)
+                    {
+                        escapeDepth = 0;
+                        continue;
+                    }
+
+                    escapeDepth = 0;
+                    if (!fullTypeName.IsEmpty)
+                    {
+                        fullTypeName = default;
+                        return false;
+                    }
+
+                    if (c == '[')
+                    {
+                        ++genericDepth;
+                        continue;
+                    }
+
+                    --genericDepth;
+                    if (genericDepth < 0)
+                    {
+                        fullTypeName = default;
+                        assemblyName = default;
+                        return false;
+                    }
+                }
+
+                if (c == '\\')
+                {
+                    ++escapeDepth;
+                    continue;
+                }
+
+                if (genericDepth != 0 || c != ',')
+                {
+                    escapeDepth = 0;
+                    continue;
+                }
+
+                if (escapeDepth > 0 && escapeDepth % 2 == 1)
+                {
+                    escapeDepth = 0;
+                    continue;
+                }
+
+                escapeDepth = 0;
+
+                if (isLookingForAssemblyName)
+                {
+                    assemblyName = assemblyName.Slice(0, i).TrimEnd();
+                    return !assemblyName.IsEmpty;
+                }
+
+                fullTypeName = assemblyQualifiedTypeName.Slice(0, i).Trim();
+                if (fullTypeName.IsEmpty)
+                    return false;
+                assemblyQualifiedTypeName = assemblyQualifiedTypeName.Slice(i + 1).Trim();
+                assemblyName = assemblyQualifiedTypeName;
+                isLookingForAssemblyName = true;
+            }
+
+            if (genericDepth > 0)
+            {
+                fullTypeName = default;
+                assemblyName = default;
+            }
+        }
+        else
+        {
+            fullTypeName = default;
+            assemblyName = default;
+            if (assemblyQualifiedTypeName.Length == 0)
+                return false;
+
+            int lastIndex = -1;
+            while (true)
+            {
+                ++lastIndex;
+                if (lastIndex >= assemblyQualifiedTypeName.Length)
+                    break;
+                int nextInd = assemblyQualifiedTypeName.Slice(lastIndex).IndexOf(',');
+                if (nextInd <= 0)
+                    break;
+
+                nextInd += lastIndex;
+
+                if (IsEscaped(assemblyQualifiedTypeName, nextInd))
+                {
+                    lastIndex = nextInd;
+                    continue;
+                }
+
+                if (isLookingForAssemblyName)
+                {
+                    assemblyName = assemblyName.Slice(0, nextInd).TrimEnd();
+                    return !assemblyName.IsEmpty;
+                }
+
+                fullTypeName = assemblyQualifiedTypeName.Slice(0, nextInd).Trim();
+                if (fullTypeName.IsEmpty)
+                    return false;
+                assemblyQualifiedTypeName = assemblyQualifiedTypeName.Slice(nextInd + 1).Trim();
+                assemblyName = assemblyQualifiedTypeName;
+                isLookingForAssemblyName = true;
+                lastIndex = 0;
+            }
+        }
+
+        return !assemblyName.IsEmpty;
+    }
+
+    private static bool IsEscaped(ReadOnlySpan<char> text, int index)
+    {
+        if (index == 0)
+            return false;
+
+        int slashCt = 0;
+        while (index > 0 && text[index - 1] == '\\')
+        {
+            ++slashCt;
+            --index;
+        }
+
+        return slashCt % 2 == 1;
     }
 }

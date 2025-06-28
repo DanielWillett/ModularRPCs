@@ -1,9 +1,9 @@
 using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using DanielWillett.ModularRpcs.Serialization;
-using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
@@ -30,23 +30,86 @@ public readonly struct GeneratedProxyTypeInfo
     }
 }
 
-[EditorBrowsable(EditorBrowsableState.Advanced)]
+[EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]
 public class GeneratedProxyTypeBuilder
 {
-    public IDictionary<RuntimeMethodHandle, Delegate?> CallInfoGetters { get; }
+    private readonly IDictionary<RuntimeMethodHandle, Delegate?> _callInfoGetters;
+    private readonly IDictionary<RuntimeMethodHandle, Delegate> _invokeStreamMethods;
+    private readonly IDictionary<RuntimeMethodHandle, Delegate> _invokeBytesMethods;
+    internal IDictionary<RuntimeMethodHandle, int>? MethodSignatures;
 
-    public GeneratedProxyTypeBuilder(IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters)
+    public GeneratedProxyTypeBuilder(IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters, IDictionary<RuntimeMethodHandle, Delegate> invokeStreamMethods, IDictionary<RuntimeMethodHandle, Delegate> invokeBytesMethods)
     {
-        CallInfoGetters = callInfoGetters;
+        _callInfoGetters = callInfoGetters;
+        _invokeStreamMethods = invokeStreamMethods;
+        _invokeBytesMethods = invokeBytesMethods;
     }
 
+
+    [UsedImplicitly]
+    public void AddMethodSignatureHash(RuntimeMethodHandle handle, int signature)
+    {
+        if (MethodSignatures == null)
+            throw new InvalidOperationException();
+        MethodSignatures.Add(handle, signature);
+    }
+
+    [UsedImplicitly]
     public void AddCallGetter(SourceGenerationServices.GetCallInfo getCallInfo)
     {
-        CallInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
+        if (getCallInfo == null)
+            throw new ArgumentNullException(nameof(getCallInfo));
+        _callInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
     }
+
+    [UsedImplicitly]
     public void AddCallGetter(SourceGenerationServices.GetCallInfoByVal getCallInfo)
     {
-        CallInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
+        if (getCallInfo == null)
+            throw new ArgumentNullException(nameof(getCallInfo));
+        _callInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
+    }
+
+    [UsedImplicitly]
+    public void AddReceiveMethod(RuntimeMethodHandle handle, ReceiveMethodInvokerType type, ProxyGenerator.RpcInvokeHandlerBytes invoker)
+    {
+        if (invoker == null)
+            throw new ArgumentNullException(nameof(invoker));
+        if (type != ReceiveMethodInvokerType.Bytes)
+            throw new ArgumentOutOfRangeException(nameof(type));
+
+        _invokeBytesMethods.Add(handle, invoker);
+    }
+
+    [UsedImplicitly]
+    public void AddReceiveMethod(RuntimeMethodHandle handle, ReceiveMethodInvokerType type, ProxyGenerator.RpcInvokeHandlerRawBytes invoker)
+    {
+        if (invoker == null)
+            throw new ArgumentNullException(nameof(invoker));
+        if (type != ReceiveMethodInvokerType.BytesRaw)
+            throw new ArgumentOutOfRangeException(nameof(type));
+
+        _invokeBytesMethods.Add(handle, invoker);
+    }
+
+    [UsedImplicitly]
+    public void AddReceiveMethod(RuntimeMethodHandle handle, ReceiveMethodInvokerType type, ProxyGenerator.RpcInvokeHandlerStream invoker)
+    {
+        if (invoker == null)
+            throw new ArgumentNullException(nameof(invoker));
+        if (type is not ReceiveMethodInvokerType.Stream and not ReceiveMethodInvokerType.StreamRaw)
+            throw new ArgumentOutOfRangeException(nameof(type));
+
+        _invokeStreamMethods.Add(handle, invoker);
+    }
+
+    [EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]
+    public enum ReceiveMethodInvokerType
+    {
+        [UsedImplicitly] Stream,
+        [UsedImplicitly] Bytes,
+        [UsedImplicitly] StreamRaw,
+        [UsedImplicitly] BytesRaw
     }
 }
 

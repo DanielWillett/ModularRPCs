@@ -61,13 +61,17 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             );
         });
 
-        IncrementalValuesProvider<(ITypeSymbol Node, RpcClassDeclaration Declaration)> symbolsAndClassDefs =
-            context.SyntaxProvider.ForAttributeWithMetadataName(
+        IncrementalValuesProvider<(INamedTypeSymbol Node, RpcClassDeclaration Declaration)> symbolsAndClassDefs =
+            context.SyntaxProvider.ForAttributeWithMetadataName<(INamedTypeSymbol? Node, RpcClassDeclaration? Declaration)>(
                 "DanielWillett.ModularRpcs.Annotations.GenerateRpcSourceAttribute",
                 static (n, _) => n is ClassDeclarationSyntax or StructDeclarationSyntax,
                 static (n, _) =>
                 {
-                    ITypeSymbol symbol = (ITypeSymbol)n.TargetSymbol;
+                    INamedTypeSymbol? symbol = n.TargetSymbol as INamedTypeSymbol;
+                    if (symbol == null)
+                    {
+                        return (null, null);
+                    }
 
                     ClassError error = ClassError.None;
                     if (symbol.IsStatic)
@@ -128,11 +132,11 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 .WithTrackingName("ModularRPCs_AllGeneratedRpcClasses")
                 .Where(info =>
                 {
-                    return info.Node.GetAttributes().All(x => !x.AttributeClass.IsEqualTo(
+                    return info.Node != null && info.Node.GetAttributes().All(x => !x.AttributeClass.IsEqualTo(
                         "global::DanielWillett.ModularRpcs.Annotations.IgnoreGenerateRpcSourceAttribute"
                     ));
-                })
-                .WithTrackingName("ModularRPCs_FilteredGeneratedRpcClasses");
+                })!
+                .WithTrackingName<(INamedTypeSymbol Node, RpcClassDeclaration Declaration)>("ModularRPCs_FilteredGeneratedRpcClasses");
 
         IncrementalValuesProvider<(RpcClassDeclaration Declaration, EquatableList<RpcMethodDeclaration> Methods, Compilation Compilation)> compositedClasses =
             symbolsAndClassDefs
@@ -147,12 +151,14 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
         });
     }
 
-    private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, (ITypeSymbol symbol, RpcClassDeclaration Declaration) info, CancellationToken token)
+    private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, (INamedTypeSymbol Symbol, RpcClassDeclaration Declaration) info, CancellationToken token)
     {
         (ITypeSymbol symbol, RpcClassDeclaration decl) = info;
         foreach (IMethodSymbol method in symbol.GetMembers().OfType<IMethodSymbol>())
         {
-            RpcTargetAttribute? attribute = method.GetAttributes().Select(GetRpcTypeAttribute).FirstOrDefault(x => x != null);
+            RpcTargetAttribute? attribute = method.GetAttributes()
+                                                  .Select(a => GetRpcTypeAttribute(compilation, a, info.Symbol))
+                                                  .FirstOrDefault(x => x != null);
             if (attribute == null)
                 continue;
             
@@ -170,43 +176,120 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 isFireAndForget = true;
             }
 
+            EquatableList<RpcParameterDeclaration> parameters = new EquatableList<RpcParameterDeclaration>(method.Parameters.Select((arg, index) =>
+            {
+                TypeSymbolInfo symbolInfo = new TypeSymbolInfo(compilation, arg.Type, createInfo: true);
+                return new RpcParameterDeclaration
+                {
+                    Index = index,
+                    Name = arg.Name,
+                    Type = symbolInfo,
+                    InjectType = ParameterHelper.GetAutoInjectType(arg.Type),
+                    IsManualInjected = arg.GetAttributes().Any(
+                        x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
+                    ),
+                    PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type),
+                    Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat),
+                    RefKind = arg.RefKind
+                };
+            }).Where(x => x != null));
+
+            bool isBroadcast = string.IsNullOrEmpty(attribute.MethodName);
+            
+            // check if targets self
+            if (!isBroadcast)
+            {
+                if ((attribute.TypeName == null || TypeHelper.TypesEqual(attribute.TypeName, decl.Type.AssemblyQualifiedName))
+                    && string.Equals(attribute.MethodName, method.Name, StringComparison.Ordinal)
+                    && (attribute.ParameterTypeNames == null || ParametersMatchMethod(attribute.ParameterTypeNames, parameters, attribute.ParametersAreBindedParametersOnly)))
+                {
+                    isBroadcast = true;
+                }
+            }
+
             yield return new RpcMethodDeclaration
             {
                 Type = decl,
                 Target = attribute,
                 Visibility = method.DeclaredAccessibility,
+                IsStatic = method.IsStatic,
                 Name = method.Name,
                 Definition = CustomFormats.InsertPartial(method.ToDisplayString(CustomFormats.MethodDeclarationFormat)),
                 XmlDocs = CustomFormats.GetXmlDocReference(method),
-                Parameters = new EquatableList<RpcParameterDeclaration>(method.Parameters.Select((arg, index) =>
-                {
-                    TypeSymbolInfo symbolInfo = new TypeSymbolInfo(compilation, arg.Type, createInfo: true);
-                    return new RpcParameterDeclaration
-                    {
-                        Index = index,
-                        Name = arg.Name,
-                        Type = symbolInfo,
-                        InjectType = ParameterHelper.GetAutoInjectType(arg.Type as INamedTypeSymbol),
-                        IsManualInjected = arg.GetAttributes().Any(
-                            x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
-                        ),
-                        PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type as INamedTypeSymbol),
-                        Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat),
-                        RefKind = arg.RefKind
-                    };
-                }).Where(x => x != null)),
+                DisplayString = method.ToDisplayString(CustomFormats.MethodDisplayFormat),
+                Parameters = parameters,
                 ReturnType = new TypeSymbolInfo(compilation, method.ReturnType),
-                IsFireAndForget = isFireAndForget
+                IsFireAndForget = isFireAndForget,
+                IsBroadcast = isBroadcast,
+                SignatureHash = ParameterHelper.GetMethodSignatureHash(compilation, method, parameters),
+                ForceSignatureCheck = method.HasAttribute("global::DanielWillett.ModularRpcs.Annotations.RpcForceSignatureCheckAttribute"),
+                Timeout = GetTimeout(method)
             };
         }
     }
 
-    private static RpcTargetAttribute? GetRpcTypeAttribute(AttributeData attributeData)
+    private static bool ParametersMatchMethod(string[] parameterTypeNames, EquatableList<RpcParameterDeclaration> parameters, bool parametersAreBindedParametersOnly)
+    {
+        IList<RpcParameterDeclaration> toBind;
+        if (parametersAreBindedParametersOnly)
+        {
+            ParameterHelper.BindParameters(parameters, out _, out RpcParameterDeclaration[] toBindArr);
+            toBind = toBindArr;
+        }
+        else
+            toBind = parameters;
+
+        for (int i = 0; i < toBind.Count; ++i)
+        {
+            RpcParameterDeclaration p = toBind[i];
+            string typeName = parameterTypeNames[i];
+            
+            if (TypeHelper.TypesEqual(typeName, p.Type.AssemblyQualifiedName))
+                continue;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    [RpcSend]
+    private static TimeSpan GetTimeout(IMethodSymbol method)
+    {
+        AttributeData? attribute = method.GetAttribute("global::DanielWillett.ModularRpcs.Annotations.RpcTimeoutAttribute");
+        if (attribute == null || attribute.ConstructorArguments.Length == 0 || attribute.ConstructorArguments[0].Value is not int i)
+            return TimeSpan.Zero;
+
+        return TimeSpan.FromMilliseconds(i);
+    }
+
+    private static RpcTargetAttribute? GetRpcTypeAttribute(Compilation compilation, AttributeData attributeData, INamedTypeSymbol owner)
     {
         bool isSend = attributeData.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcSendAttribute");
         bool isReceive = attributeData.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcReceiveAttribute");
         if (!isSend && !isReceive)
             return null;
+
+        AttributeData? rpcClassAttribute = owner.GetAttribute("global::DanielWillett.ModularRpcs.Annotations.RpcClassAttribute");
+        string? defaultType = null;
+        if (rpcClassAttribute != null)
+        {
+            KeyValuePair<string, TypedConstant> defaultTypeName = rpcClassAttribute.NamedArguments.FirstOrDefault(
+                x => x.Key.Equals(nameof(RpcClassAttribute.DefaultTypeName), StringComparison.Ordinal)
+            );
+            if (defaultTypeName.Key is not null && defaultTypeName.Value is { Kind: TypedConstantKind.Primitive, Value: string defaultTypeNameValue })
+            {
+                defaultType = defaultTypeNameValue;
+            }
+
+            KeyValuePair<string, TypedConstant> defaultTypeProp = rpcClassAttribute.NamedArguments.FirstOrDefault(
+                x => x.Key.Equals(nameof(RpcClassAttribute.DefaultType), StringComparison.Ordinal)
+            );
+            if (defaultTypeProp.Key is not null && defaultTypeProp.Value is { Kind: TypedConstantKind.Type, Value: ITypeSymbol defaultTypePropValue })
+            {
+                defaultType = TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, defaultTypePropValue);
+            }
+        }
 
         RpcTargetAttribute attribute;
         if (attributeData.AttributeConstructor == null || attributeData.AttributeConstructor.Parameters.Length == 0)
@@ -216,7 +299,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
         else if (attributeData.AttributeConstructor.Parameters.Length == 1)
         {
             TypedConstant methodName = attributeData.ConstructorArguments[0];
-            if (methodName.Kind != TypedConstantKind.Primitive && methodName.Type.IsEqualTo("global::System.String"))
+            if (methodName.Kind != TypedConstantKind.Primitive || methodName.Type is not { SpecialType: SpecialType.System_String })
             {
                 return null;
             }
@@ -228,34 +311,38 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 return null;
             }
 
-            attribute = isSend ? new RpcSendAttribute(methodNameStr) : new RpcReceiveAttribute(methodNameStr);
+            if (!string.IsNullOrEmpty(defaultType))
+                attribute = isSend ? new RpcSendAttribute(defaultType!, methodNameStr) : new RpcReceiveAttribute(defaultType!, methodNameStr);
+            else
+                attribute = isSend ? new RpcSendAttribute(methodNameStr) : new RpcReceiveAttribute(methodNameStr);
         }
         else if (attributeData.AttributeConstructor.Parameters.Length == 2)
         {
             TypedConstant declaringType = attributeData.ConstructorArguments[0];
             TypedConstant methodName = attributeData.ConstructorArguments[1];
-            if (methodName.Kind != TypedConstantKind.Primitive && methodName.Type.IsEqualTo("global::System.String"))
+            if (methodName.Kind != TypedConstantKind.Primitive || methodName.Type is not { SpecialType: SpecialType.System_String })
             {
                 return null;
             }
-            if (declaringType.Kind != TypedConstantKind.Primitive && declaringType.Type.IsEqualTo("global::System.String"))
+            if (declaringType.Kind != TypedConstantKind.Primitive || declaringType.Type is not { SpecialType: SpecialType.System_String })
             {
                 if (declaringType.Kind != TypedConstantKind.Type)
                     return null;
             }
 
             string? typeName = declaringType.Kind == TypedConstantKind.Type
-                ? ((ITypeSymbol?)declaringType.Value)?.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat)
+                ? TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, (ITypeSymbol)declaringType.Value!)
                 : (string)declaringType.Value!;
 
             string? methodNameStr = (string?)methodName.Value;
 
-            if (typeName == null || methodNameStr == null)
+            typeName ??= defaultType;
+            if (string.IsNullOrEmpty(typeName) || string.IsNullOrEmpty(methodNameStr))
             {
                 return null;
             }
 
-            attribute = isSend ? new RpcSendAttribute(typeName, methodNameStr) : new RpcReceiveAttribute(typeName, methodNameStr);
+            attribute = isSend ? new RpcSendAttribute(typeName!, methodNameStr!) : new RpcReceiveAttribute(typeName!, methodNameStr!);
         }
         else
         {
@@ -286,7 +373,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             ImmutableArray<TypedConstant> arr = parameterTypes.Value.Values;
             attribute.ParameterTypeNames = arr
                 .Where(x => x is { Kind: TypedConstantKind.Type, Value: ITypeSymbol })
-                .Select(x => ((ITypeSymbol)x.Value!).ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat))
+                .Select(x => TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, (ITypeSymbol)x.Value!))
                 .ToArray();
         }
 

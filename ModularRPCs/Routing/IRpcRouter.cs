@@ -68,7 +68,7 @@ public interface IRpcRouter
     unsafe RpcTask InvokeRpc(object? connections, IRpcSerializer serializer, RuntimeMethodHandle sourceMethodHandle, CancellationToken token, byte* bytesSt, int byteCt, uint dataCt, ref RpcCallMethodInfo callMethodInfo, RpcInvokeOptions options = RpcInvokeOptions.Default);
 
     /// <summary>
-    /// Invoke an RPC from a 'call' method. Using this to send data to multiple connections is not recommended over <see cref="InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,byte*,int,uint,ref RpcCallMethodInfo)"/>, as the data will be copied to a buffer anyways.
+    /// Invoke an RPC from a 'call' method. Using this to send data to multiple connections is not recommended over <see cref="InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,byte*,int,uint,ref RpcCallMethodInfo,RpcInvokeOptions)"/>, as the data will be copied to a buffer anyways.
     /// </summary>
     /// <param name="overheadBuffer">Existing buffer for overhead to be written to. This allows identifiers to be written beforehand.</param>
     /// <param name="dataStream">Stream of the data portion of the message.</param>
@@ -87,7 +87,7 @@ public interface IRpcRouter
     /// Get the default interface implementations for a proxy class.
     /// </summary>
     [UsedImplicitly]
-    void GetDefaultProxyContext(ProxyGenerator generator, Type proxyType, out ProxyContext context);
+    void GetDefaultProxyContext(Type proxyType, out ProxyContext context);
 
     /// <summary>
     /// Sends a cancellation of a message if supported, otherwise does nothing.

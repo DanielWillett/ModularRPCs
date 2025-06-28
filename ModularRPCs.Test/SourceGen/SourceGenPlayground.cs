@@ -2,16 +2,20 @@ using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
+using DanielWillett.ModularRpcs.Protocol;
+using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using ModularRPCs.Test.CodeGen;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Protocol;
-using DanielWillett.ModularRpcs.Serialization;
+using DanielWillett.ModularRpcs;
+using DanielWillett.ModularRpcs.Routing;
 
 namespace ModularRPCs.Test.SourceGen
 {
@@ -21,6 +25,23 @@ namespace ModularRPCs.Test.SourceGen
 
         internal const int Val1 = 32;
         internal const string Val2 = "test string";
+        
+        [Test]
+        public async Task TestConsistantMethodSignatures()
+        {
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, false);
+
+            SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
+
+            MethodInfo method = typeof(SourceGenPlaygroundTestClass).GetMethod("InvokeWithParamsFromClient");
+            Assert.That(method, Is.Not.Null);
+
+            int generated = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
+            int created = ProxyGenerator.Instance.SerializerGenerator.CreateMethodSignature(method.MethodHandle);
+
+            Assert.That(generated, Is.EqualTo(created));
+            Assert.That(generated, Is.Not.Zero);
+        }
 
         [Test]
         public async Task ServerToClientVoid([Values(true, false)] bool useStreams)
@@ -111,7 +132,7 @@ namespace ModularRPCs.Test.SourceGen
 
             public int GetSize(IRpcSerializer serializer)
             {
-                return sizeof(int);
+                return Unsafe.SizeOf<TId>();
             }
 
             public int Write(Span<byte> writeTo, IRpcSerializer serializer)
@@ -130,11 +151,8 @@ namespace ModularRPCs.Test.SourceGen
 
 #nullable enable
     [RpcClass, GenerateRpcSource]
-    public sealed partial class SourceGenPlaygroundTestClass : IRpcObject<Nested<int>.TestIdType<double>>
+    public sealed partial class SourceGenPlaygroundTestClass
     {
-        /// <inheritdoc />
-        public Nested<int>.TestIdType<double> Identifier { get; private set; }
-    
         [RpcSend(nameof(Receive))]
         public partial RpcTask InvokeFromClient();
 
@@ -160,6 +178,37 @@ namespace ModularRPCs.Test.SourceGen
             SourceGenPlayground.DidInvokeMethod = 1;
             Assert.That(primitiveLikeValue, Is.EqualTo(SourceGenPlayground.Val1));
             Assert.That(nonPrimitiveLikeValue, Is.EqualTo(SourceGenPlayground.Val2));
+        }
+
+        [RpcSend(nameof(ReceiveComprehensive))]
+        public partial RpcTask InvokeComprehensiveFromServer(int value1, string? value2, DateTime value3, FixedRpcSerializable fixedType, FixedRpcSerializable? fixedTypeNullable, IModularRpcRemoteConnection connection, CancellationToken token = default);
+
+        [RpcReceive]
+        private async Task ReceiveComprehensive(
+            IModularRpcLocalConnection local,
+            IModularRpcRemoteConnection connection,
+            IRpcInvocationPoint rpc,
+            RpcEndpoint endpoint2,
+            int value1,
+            RpcOverhead overhead,
+            string? value2,
+            DateTime value3,
+            IRpcRouter router,
+            DefaultRpcRouter router2,
+            FixedRpcSerializable fixedType, FixedRpcSerializable? fixedTypeNullable,
+            CancellationToken token,
+            IModularRpcConnection connectionBasic,
+            List<IModularRpcRemoteConnection> remoteConnections,
+            IModularRpcLocalConnection[] localConnections,
+            RpcFlags flags,
+            IServiceProvider serviceProvider,
+            CollectionImpl<IServiceProvider> serviceProviders,
+            IServiceProvider[] serviceProvidersArray,
+            IList<IServiceProvider> serviceProvidersList,
+            ArraySegment<IServiceProvider> serviceProvidersSegment)
+        {
+            await Task.Delay(5);
+            SourceGenPlayground.DidInvokeMethod = 1;
         }
     }
 }

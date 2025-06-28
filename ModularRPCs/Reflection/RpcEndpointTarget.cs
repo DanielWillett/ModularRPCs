@@ -1,4 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
 using System;
@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
+using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 public struct RpcEndpointTarget
@@ -14,20 +15,33 @@ public struct RpcEndpointTarget
     /// Normally, the send method specifies the receive method, which must be marked with a <see cref="RpcReceiveAttribute"/>.
     /// In some cases, however, the receive method can specify the send method, acting as a listener.
     /// </summary>
+    [UsedImplicitly]
     public bool IsBroadcast;
 
     private RpcEndpoint? _endpoint;
 
+    [UsedImplicitly]
     public string MethodName;
+
+    [UsedImplicitly]
     public string DeclaringTypeName;
+
+    [UsedImplicitly]
     public string[]? ParameterTypes;
+
+    [UsedImplicitly]
     public bool ParameterTypesAreBindOnly;
+
+    [UsedImplicitly]
     public bool IgnoreSignatureHash;
 
     /// <summary>
     /// May sometimes be a false positive.
     /// </summary>
+    [UsedImplicitly]
     public bool InjectsCancellationToken;
+
+    [UsedImplicitly]
     public int SignatureHash;
     internal MethodInfo? OwnerMethodInfo;
 

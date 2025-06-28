@@ -407,7 +407,9 @@ internal readonly struct SendMethodSnippetGenerator
             else
                 bldr.Build($"#region Write Parameters ({toBind.Length} parameters)");
 
-            bldr.String("uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedIdPos;");
+            bldr.String(Method.Type.IdType == null
+                ? "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedState.PreOverheadSize + 1u;"
+                : "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedIdPos;");
 
             foreach (RpcParameterDeclaration param in toBind)
             {
@@ -424,28 +426,78 @@ internal readonly struct SendMethodSnippetGenerator
             bldr.String("// There are no parameters to write.");
         }
 
-        string? injectedConnectionArg = null;
-        string? cancellationTokenArg = null;
-        foreach (RpcParameterDeclaration param in toInject)
+        int injectedConnectionArg = -1;
+        int cancellationTokenArg = -1;
+        for (int i = 0; i < toInject.Length; i++)
         {
+            RpcParameterDeclaration param = toInject[i];
             if (param.RefKind == RefKind.Out)
                 continue;
 
             if (param.Type.Equals("global::System.Threading.CancellationToken"))
             {
-                cancellationTokenArg = param.Name;
+                cancellationTokenArg = i;
                 continue;
             }
 
-            //if (param.Type.Info.Type)
-            //{
-            //
-            //}
+            if (injectedConnectionArg == -1 && (param.Type.Info.IsMultipleConnections || param.Type.Info.IsSingleConnection))
+            {
+                injectedConnectionArg = i;
+            }
         }
 
-        bldr.String("");
+        string? thisConnection = null;
+        if (injectedConnectionArg == -1)
+        {
+            if (Method.Type.IsSingleConnectionObject)
+            {
+                thisConnection = Method.Type.IsSingleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject)this).Connection" : "this.Connection";
+            }
+            else if (Method.Type.IsMultipleConnectionObject)
+            {
+                thisConnection = Method.Type.IsMultipleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject)this).Connections" : "this.Connections";
+            }
+        }
 
-        bldr.String("return default;");
+        bldr.String(isReturningTask
+                ? "return __modularRpcsGeneratedState.Router.InvokeRpc("
+                : "__modularRpcsGeneratedState.Router.InvokeRpc(")
+            .In();
+
+        if (thisConnection != null)
+        {
+            bldr.Build($"{thisConnection},");
+        }
+        else if (injectedConnectionArg != -1)
+        {
+            RpcParameterDeclaration decl = toInject[injectedConnectionArg];
+            if (decl.Type.Info.IsMultipleConnections)
+                bldr.Build($"@{decl.Name} as global::System.Collections.Generic.IEnumerable<global::DanielWillett.ModularRpcs.Abstractions.IModularRpcConnection>,");
+            else
+                bldr.Build($"@{decl.Name} as global::DanielWillett.ModularRpcs.Abstractions.IModularRpcConnection,");
+        }
+        else
+        {
+            bldr.String("null,");
+        }
+        bldr    .String("__modularRpcsGeneratedState.Serializer,")
+                .Build($"@{Method.Type.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,");
+
+        if (cancellationTokenArg != -1)
+        {
+            bldr.Build($"@{toInject[cancellationTokenArg].Name},");
+        }
+        else
+        {
+            bldr.String("global::System.Threading.CancellationToken.None,");
+        }
+
+        bldr    .String("__modularRpcsGeneratedState.Buffer,")
+                .String("checked ( (int)__modularRpcsGeneratedState.Size ),")
+                .String("__modularRpcsGeneratedState.Size - __modularRpcsGeneratedState.OverheadSize,")
+                .Build($"ref @{Method.Type.Type.Name}.{Info.MethodInfoFieldName},")
+                .String("global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Default | global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Generated").Out()
+            .String(");");
 
         bldr.Out()
             .String("}");
@@ -485,7 +537,7 @@ internal readonly struct SendMethodSnippetGenerator
                     {
                         case TypeHelper.PrimitiveLikeType.Boolean:
                             if ((symbolInfo.PrimitiveLikeType & TypeHelper.PrimitiveLikeType.Enum) != 0)
-                                bldr.Build($"__modularRpcsGeneratedState.Buffer[{offsetVar}] = (bool){valueVar} ? (byte)1 : (byte)0;;");
+                                bldr.Build($"__modularRpcsGeneratedState.Buffer[{offsetVar}] = (bool){valueVar} ? (byte)1 : (byte)0;");
                             else
                                 bldr.Build($"__modularRpcsGeneratedState.Buffer[{offsetVar}] = {valueVar} ? (byte)1 : (byte)0;");
 
@@ -514,7 +566,16 @@ internal readonly struct SendMethodSnippetGenerator
                                 bldr.Build($"if ((nint){bufferName} % 8 == 0)");
                             else
                                 bldr.Build($"if ((nint){bufferName} % sizeof({symbolInfo.GloballyQualifiedName}) == 0)");
-                            bldr.In().Build($"*({symbolInfo.GloballyQualifiedName}*){bufferName} = {valueVar};").Out()
+                            bldr.String("{").In()
+                                .Build($"*({symbolInfo.GloballyQualifiedName}*){bufferName} = {valueVar};");
+
+                            if (idPrimType is TypeHelper.PrimitiveLikeType.IntPtr or TypeHelper.PrimitiveLikeType.UIntPtr)
+                                bldr.Build($"{offsetVar} += 8;");
+                            else
+                                bldr.Build($"{offsetVar} += sizeof({symbolInfo.GloballyQualifiedName});");
+
+                            bldr.Out()
+                                .String("}")
                                 .String("else")
                                 .String("{").In();
 

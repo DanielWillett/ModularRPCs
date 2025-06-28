@@ -4,8 +4,11 @@ using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
 using System.Threading;
+using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Abstractions;
+
+[UsedImplicitly]
 public interface IRpcInvocationPoint
 {
     uint? EndpointId { get; set; }

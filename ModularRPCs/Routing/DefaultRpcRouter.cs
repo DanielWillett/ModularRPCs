@@ -8,7 +8,6 @@ using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -30,6 +29,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 {
     private readonly IRpcSerializer _defaultSerializer;
     private readonly IRpcConnectionLifetime _connectionLifetime;
+    private readonly ProxyGenerator _proxyGenerator;
     private readonly CancellationTokenSource _cancelTokenSource = new CancellationTokenSource();
     private long _lastMsgId;
     private readonly ConcurrentDictionary<ulong, RpcTask> _listeningTasks = new ConcurrentDictionary<ulong, RpcTask>();
@@ -81,10 +81,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// <summary>
     /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in the given <paramref name="scannableAssemblies"/>.
     /// </summary>
-    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, IEnumerable<Assembly> scannableAssemblies)
+    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, IEnumerable<Assembly> scannableAssemblies)
     {
         _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
         _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+        _proxyGenerator = proxyGenerator;
         BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastListeners);
 
         foreach (Assembly asm in scannableAssemblies ?? throw new ArgumentNullException(nameof(scannableAssemblies)))
@@ -95,11 +96,12 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in all referenced assemblies to the one calling this method.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime) : this(defaultSerializer, lifetime, Assembly.GetCallingAssembly()) { }
-    protected internal DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, Assembly callingAssembly)
+    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator) : this(defaultSerializer, lifetime, proxyGenerator, Assembly.GetCallingAssembly()) { }
+    protected internal DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, Assembly callingAssembly)
     {
         _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
         _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+        _proxyGenerator = proxyGenerator;
         BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastListeners);
 
         ScanAssemblyForRpcClasses(callingAssembly);
@@ -1342,6 +1344,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     private void StartListening(RpcTask rpcTask, ulong messageId, TimeSpan timeout)
     {
         _listeningTasks.TryAdd(messageId, rpcTask);
+        if (timeout.Ticks == 0)
+            timeout = _proxyGenerator.DefaultTimeout;
         rpcTask.Timeout = timeout;
         if (timeout == Timeout.InfiniteTimeSpan || rpcTask.IsFireAndForget)
             return;
@@ -2210,12 +2214,12 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
     /// <inheritdoc />
     [UsedImplicitly]
-    public void GetDefaultProxyContext(ProxyGenerator generator, Type proxyType, out ProxyContext context)
+    public void GetDefaultProxyContext(Type proxyType, out ProxyContext context)
     {
         context = default;
         context.DefaultSerializer = _defaultSerializer;
         context.Router = this;
-        context.Generator = generator;
+        context.Generator = _proxyGenerator;
     }
     private static uint GetPrefixSize(IRpcSerializer serializer)
     {

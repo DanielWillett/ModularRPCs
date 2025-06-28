@@ -62,6 +62,12 @@ internal sealed class SerializerGenerator
     {
         _proxyGenerator = proxyGenerator;
     }
+
+    internal void InitializeGeneratedProxyBuilder(GeneratedProxyTypeBuilder builder)
+    {
+        builder.MethodSignatures = _methodSigHashCache;
+    }
+
     public Type GetSerializerType(int argCt)
     {
         if (_argBuilders.TryGetValue(argCt, out Type? t))
@@ -1114,7 +1120,7 @@ internal sealed class SerializerGenerator
             }
 
             Array.Copy(parameters, 0, halfArr, 0, swapIndex);
-            Array.Copy(parameters, swapIndex + lenWhole, halfArr, halfArr.Length - swapIndex, swapIndex);
+            Array.Copy(parameters, swapIndex + lenWhole, halfArr, swapIndex, halfArr.Length - swapIndex);
             if (isInjPart)
             {
                 toInject = new ArraySegment<ParameterInfo>(halfArr);
@@ -1143,9 +1149,9 @@ internal sealed class SerializerGenerator
         toBind = new ArraySegment<ParameterInfo>(toBnd);
         toInject = new ArraySegment<ParameterInfo>(toInj);
     }
-    private static void HandleInjections(MethodBase method, IOpCodeEmitter il, ArraySegment<ParameterInfo> toInject, LocalBuilder[] injectionLcls, bool isBytes)
+    private static void HandleInjections(MethodBase method, IOpCodeEmitter il, ArraySegment<ParameterInfo> toInject, LocalBuilder[] injectionLcls, bool isBytes, bool isRaw = false)
     {
-        Type[] paramArray = isBytes ? ProxyGenerator.RpcInvokeHandlerBytesParams : ProxyGenerator.RpcInvokeHandlerStreamParams;
+        Type[] paramArray = isBytes ? (isRaw ? ProxyGenerator.RpcInvokeHandlerRawBytesParams : ProxyGenerator.RpcInvokeHandlerBytesParams) : ProxyGenerator.RpcInvokeHandlerStreamParams;
         for (int i = 0; i < toInject.Count; ++i)
         {
             ParameterInfo param = toInject.Array![i + toInject.Offset];
@@ -1372,7 +1378,7 @@ internal sealed class SerializerGenerator
                 {
                     type = type.GetElementType()!;
                 }
-                else if (type is { IsArray: false, IsValueType: false } && type != typeof(string))
+                else if (type is { IsArray: false, IsPrimitive: false } && type != typeof(string))
                 {
                     // IEnumerable's are turned into arrays of their elements for matching purposes
                     Type? intxType;
@@ -2341,7 +2347,7 @@ internal sealed class SerializerGenerator
             FindLocalType(actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
         }
 
-        HandleInjections(method, il, toInject, injectionLcls, true);
+        HandleInjections(method, il, toInject, injectionLcls, isBytes: true, isRaw: true);
 
         int memArgInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerRawBytesParams, typeof(ReadOnlyMemory<byte>));
 
@@ -2553,7 +2559,7 @@ internal sealed class SerializerGenerator
             FindLocalType(actualType, il, i, ref canTakeOwnershipIndex, ref dataIndex, ref byteCountIndex, ref dataType, ref countType);
         }
 
-        HandleInjections(method, il, toInject, injectionLcls, false);
+        HandleInjections(method, il, toInject, injectionLcls, false, isRaw: true);
 
         int streamInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(Stream));
         int ovhInd = Array.IndexOf(ProxyGenerator.RpcInvokeHandlerStreamParams, typeof(RpcOverhead));

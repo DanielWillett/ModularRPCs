@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Annotations;
 
@@ -11,7 +12,7 @@ namespace DanielWillett.ModularRpcs.Annotations;
 /// </summary>
 /// <param name="timeout">Timeout in milliseconds of the request.</param>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
-public sealed class RpcTimeoutAttribute(int timeout) : Attribute
+public sealed class RpcTimeoutAttribute([ValueProvider("DanielWillett.ModularRpcs.Annotations.Timeouts")] int timeout) : Attribute
 {
     /// <summary>
     /// Timeout in milliseconds of the request.

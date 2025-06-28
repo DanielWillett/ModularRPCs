@@ -1,5 +1,6 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
@@ -11,6 +12,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
+
 public class DependencyInjectionRpcRouter : DefaultRpcRouter
 {
     /// <summary>
@@ -45,6 +47,11 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
                 Properties.Exceptions.ServiceNotFound,
                 Accessor.ExceptionFormatter.Format(typeof(IRpcConnectionLifetime))
             )),
+            (ProxyGenerator?)serviceProvider.GetService<ProxyGenerator>()
+            ?? throw new InvalidOperationException(string.Format(
+                Properties.Exceptions.ServiceNotFound,
+                Accessor.ExceptionFormatter.Format(typeof(ProxyGenerator))
+            )),
             callingAssembly
         )
     {
@@ -68,6 +75,11 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
                 Properties.Exceptions.ServiceNotFound,
                 Accessor.ExceptionFormatter.Format(typeof(IRpcConnectionLifetime))
             )),
+            (ProxyGenerator?)serviceProvider.GetService<ProxyGenerator>()
+            ?? throw new InvalidOperationException(string.Format(
+                Properties.Exceptions.ServiceNotFound,
+                Accessor.ExceptionFormatter.Format(typeof(ProxyGenerator))
+            )),
             scannableAssemblies
         )
     {
@@ -79,10 +91,10 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime)
-        : this(serviceProvider, serializer, lifetime, Assembly.GetCallingAssembly()) { }
-    protected internal DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, Assembly callingAssembly)
-        : base(serializer, lifetime, callingAssembly)
+    public DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator)
+        : this(serviceProvider, serializer, lifetime, proxyGenerator, Assembly.GetCallingAssembly()) { }
+    protected internal DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, Assembly callingAssembly)
+        : base(serializer, lifetime, proxyGenerator, callingAssembly)
     {
         ServiceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     }
@@ -91,8 +103,8 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     /// Create an <see cref="IRpcRouter"/> with one service provider that looks for <see cref="RpcClassAttribute"/>'s in the given <paramref name="scannableAssemblies"/>.
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
-    public DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, IEnumerable<Assembly> scannableAssemblies)
-        : base(serializer, lifetime, scannableAssemblies)
+    public DependencyInjectionRpcRouter(IServiceProvider serviceProvider, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, IEnumerable<Assembly> scannableAssemblies)
+        : base(serializer, lifetime, proxyGenerator, scannableAssemblies)
     {
         ServiceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
     }
@@ -102,11 +114,11 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime)
-        : this(serviceProviders, serializer, lifetime, Assembly.GetCallingAssembly()) { }
+    public DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator)
+        : this(serviceProviders, serializer, lifetime, proxyGenerator, Assembly.GetCallingAssembly()) { }
 
-    protected internal DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, Assembly callingAssembly)
-        : base(serializer, lifetime, callingAssembly)
+    protected internal DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, Assembly callingAssembly)
+        : base(serializer, lifetime, proxyGenerator, callingAssembly)
     {
         ServiceProviders = serviceProviders?.ToArray() ?? throw new ArgumentNullException(nameof(serviceProviders));
     }
@@ -115,8 +127,8 @@ public class DependencyInjectionRpcRouter : DefaultRpcRouter
     /// Create an <see cref="IRpcRouter"/> with multiple service providers that looks for <see cref="RpcClassAttribute"/>'s in the given <paramref name="scannableAssemblies"/>. The sooner a provider is in the enumerable, the higher priority it is.
     /// </summary>
     /// <exception cref="ArgumentNullException"/>
-    public DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, IEnumerable<Assembly> scannableAssemblies)
-        : base(serializer, lifetime, scannableAssemblies)
+    public DependencyInjectionRpcRouter(IEnumerable<IServiceProvider> serviceProviders, IRpcSerializer serializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, IEnumerable<Assembly> scannableAssemblies)
+        : base(serializer, lifetime, proxyGenerator, scannableAssemblies)
     {
         ServiceProviders = serviceProviders?.ToArray() ?? throw new ArgumentNullException(nameof(serviceProviders));
     }

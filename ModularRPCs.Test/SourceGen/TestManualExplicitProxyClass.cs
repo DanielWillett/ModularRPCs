@@ -128,14 +128,6 @@ namespace ModularRPCs.Test.SourceGen
         [global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyTypeAttribute(
             TypeSetupMethodName = nameof(@TestClass.__ModularRpcsGeneratedSetupStaticGeneratedProxy)
         )]
-        [global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyReceiveMethodAttribute(
-            nameof(@TestClass.Receive),
-            nameof(@TestClass.ModularRpcsGeneratedInvokeReceiveOvl0Bytes), nameof(@TestClass.ModularRpcsGeneratedInvokeReceiveOvl0Stream)
-        )]
-        [global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyReceiveMethodAttribute(
-            nameof(@TestClass.ReceiveWithParams),
-            nameof(@TestClass.ModularRpcsGeneratedInvokeReceiveWithParamsOvl0Bytes), nameof(@TestClass.ModularRpcsGeneratedInvokeReceiveWithParamsOvl0Stream)
-        )]
         partial class @TestClass : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType
         {
             [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
@@ -147,18 +139,43 @@ namespace ModularRPCs.Test.SourceGen
             void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(
                 in global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)
             {
-                info.Router.GetDefaultProxyContext(info.Generator, typeof(@TestClass), out this._modularRpcsGeneratedProxyContext);
+                info.Router.GetDefaultProxyContext(typeof(@TestClass), out this._modularRpcsGeneratedProxyContext);
             }
 
             [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
             [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-            public static void __ModularRpcsGeneratedSetupStaticGeneratedProxy(
+            public static unsafe void __ModularRpcsGeneratedSetupStaticGeneratedProxy(
                 global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder state)
             {
                 state.AddCallGetter(static () => ref _modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0);
                 state.AddCallGetter(static () => ref _modularRpcsGeneratedCallMethodInfoInvokeFromServerOvl0);
                 state.AddCallGetter(static () => ref _modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromClientOvl0);
                 state.AddCallGetter(static () => ref _modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromServerOvl0);
+
+                global::System.RuntimeMethodHandle workingHandle;
+                workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
+                    @TestClass => @TestClass.Receive()
+                ).MethodHandle;
+                state.AddReceiveMethod(
+                    workingHandle,
+                    global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Bytes,
+                    new ProxyGenerator.RpcInvokeHandlerBytes(ModularRpcsGeneratedInvokeReceiveOvl0Bytes));
+                state.AddReceiveMethod(
+                    workingHandle,
+                    global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Stream,
+                    new ProxyGenerator.RpcInvokeHandlerStream(ModularRpcsGeneratedInvokeReceiveOvl0Stream));
+
+                workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
+                    @TestClass => @TestClass.ReceiveWithParams(default(int), default(string))
+                ).MethodHandle;
+                state.AddReceiveMethod(
+                    workingHandle,
+                    global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Bytes,
+                    new ProxyGenerator.RpcInvokeHandlerBytes(ModularRpcsGeneratedInvokeReceiveWithParamsOvl0Bytes));
+                state.AddReceiveMethod(
+                    workingHandle,
+                    global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Stream,
+                    new ProxyGenerator.RpcInvokeHandlerStream(ModularRpcsGeneratedInvokeReceiveWithParamsOvl0Stream));
             }
 
             [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
@@ -397,14 +414,29 @@ namespace ModularRPCs.Test.SourceGen
 
             [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
             [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-            private static global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0
-                = global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo.FromCallMethod(
-                    global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.Instance,
-                    global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
+            private static global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0 =
+                new global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo()
+                {
+                    MethodHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
                         @TestClass => @TestClass.@InvokeFromClient()
-                    ),
-                    false
-                );
+                    ).MethodHandle,
+                    IsFireAndForget = false,
+                    SignatureHash = 0,
+                    Endpoint = new global::DanielWillett.ModularRpcs.Reflection.RpcEndpointTarget()
+                    {
+                        MethodName = "Receive",
+                        DeclaringTypeName = "ModularRPCs.Test.SourceGen.TestManualExplicitProxyClass+TestClass, DanielWillett.ModularRPCs.Test",
+                        SignatureHash = 0,
+                        IgnoreSignatureHash = false,
+                        ParameterTypesAreBindOnly = false,
+                        ParameterTypes = null,
+                        InjectsCancellationToken = false,
+                        IsBroadcast = false,
+                        OwnerMethodInfo = null
+                    },
+                    HasIdentifier = false,
+                    Timeout = global::System.TimeSpan.Zero
+                };
 
             [global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CallerInfoFieldNameAttribute(nameof(_modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0))]
             [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]

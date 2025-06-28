@@ -207,8 +207,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         AssemblyBuilder.SetCustomAttribute(attr);
 
         _generatedTypeBuilder = new GeneratedProxyTypeBuilder(
-            _getCallInfoFunctions
+            _getCallInfoFunctions,
+            _invokeMethodsStream,
+            _invokeMethodsBytes
         );
+        SerializerGenerator.InitializeGeneratedProxyBuilder(_generatedTypeBuilder);
         _generatedTypeBuilderArgs = [ _generatedTypeBuilder ];
 
         if (Compatibility.IncompatibleWithIgnoresAccessChecksToAttribute)
@@ -3341,11 +3344,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (_invokeMethodsStream.TryGetValue(method.MethodHandle, out Delegate? d))
             return (RpcInvokeHandlerStream)d;
 
-        if (CheckForGeneratedMethods(method, 0, out d))
-        {
-            return (RpcInvokeHandlerStream)d!;
-        }
-
         RpcInvokeHandlerStream entry = (RpcInvokeHandlerStream)_invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodStream);
         return entry;
     }
@@ -3353,11 +3351,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     {
         if (_invokeMethodsBytes.TryGetValue(method.MethodHandle, out Delegate? d))
             return (RpcInvokeHandlerBytes)d;
-
-        if (CheckForGeneratedMethods(method, 1, out d))
-        {
-            return (RpcInvokeHandlerBytes)d!;
-        }
 
         RpcInvokeHandlerBytes entry = (RpcInvokeHandlerBytes)_invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodBytes);
         return entry;
@@ -3367,11 +3360,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (_invokeMethodsStream.TryGetValue(method.MethodHandle, out Delegate? d))
             return (RpcInvokeHandlerStream)d;
 
-        if (CheckForGeneratedMethods(method, 2, out d))
-        {
-            return (RpcInvokeHandlerStream)d!;
-        }
-
         RpcInvokeHandlerStream entry = (RpcInvokeHandlerStream)_invokeMethodsStream.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodRawStream);
         return entry;
     }
@@ -3380,87 +3368,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         if (_invokeMethodsBytes.TryGetValue(method.MethodHandle, out Delegate? d))
             return (RpcInvokeHandlerRawBytes)d;
 
-        if (CheckForGeneratedMethods(method, 3, out d))
-        {
-            return (RpcInvokeHandlerRawBytes)d!;
-        }
-
         RpcInvokeHandlerRawBytes entry = (RpcInvokeHandlerRawBytes)_invokeMethodsBytes.GetOrAdd(method.MethodHandle, GetOrAddInvokeMethodRawBytes);
         return entry;
-    }
-
-    private bool CheckForGeneratedMethods(MethodInfo method, int src, out Delegate? d)
-    {
-        d = null;
-
-        Type? declaringType = method.DeclaringType;
-        if (declaringType == null || !declaringType.IsDefinedSafe<RpcGeneratedProxyTypeAttribute>())
-            return false;
-
-        foreach (RpcGeneratedProxyReceiveMethodAttribute receiveInfo in
-                 declaringType.GetAttributesSafe<RpcGeneratedProxyReceiveMethodAttribute>())
-        {
-            MethodInfo? refMethod = TypeUtility.FindDeclaredMethodByName(declaringType, receiveInfo.MethodName, receiveInfo.Parameters, BindingFlags.Instance);
-            MethodInfo? invokeBytesMethod = TypeUtility.FindDeclaredMethodByName(declaringType, receiveInfo.InvokeBytesMethod, null, BindingFlags.Static);
-            MethodInfo? invokeStreamMethod = TypeUtility.FindDeclaredMethodByName(declaringType, receiveInfo.InvokeStreamMethod, null, BindingFlags.Static);
-
-            if (refMethod == null)
-            {
-                this.LogWarning(string.Format(
-                        Properties.Logging.GeneratedInvokeMethodTargetNotFound,
-                        Accessor.Formatter.Format(declaringType),
-                        receiveInfo.MethodName
-                    )
-                );
-            }
-            if (invokeBytesMethod == null)
-            {
-                this.LogWarning(string.Format(
-                        Properties.Logging.GeneratedInvokeMethodTargetNotFound,
-                        Accessor.Formatter.Format(declaringType),
-                        receiveInfo.InvokeBytesMethod
-                    )
-                );
-            }
-            if (invokeStreamMethod == null)
-            {
-                this.LogWarning(string.Format(
-                        Properties.Logging.GeneratedInvokeMethodTargetNotFound,
-                        Accessor.Formatter.Format(declaringType),
-                        receiveInfo.InvokeStreamMethod
-                    )
-                );
-            }
-
-            if (refMethod == null)
-                continue;
-
-            bool raw = refMethod.GetAttributeSafe<RpcReceiveAttribute>() is { Raw: true };
-            Delegate @delegate;
-            if (invokeBytesMethod != null)
-            {
-                @delegate = invokeBytesMethod.CreateDelegate(
-                    raw ? typeof(RpcInvokeHandlerRawBytes) : typeof(RpcInvokeHandlerBytes)
-                );
-                if (src == (raw ? 3 : 1) && method == refMethod)
-                {
-                    d = @delegate;
-                }
-                _invokeMethodsBytes[refMethod.MethodHandle] = @delegate;
-            }
-
-            if (invokeStreamMethod == null)
-                continue;
-
-            @delegate = invokeStreamMethod.CreateDelegate(typeof(RpcInvokeHandlerStream));
-            if (src == (raw ? 2 : 0) && method == refMethod)
-            {
-                d = @delegate;
-            }
-            _invokeMethodsStream[refMethod.MethodHandle] = @delegate;
-        }
-
-        return d is not null;
     }
 
     private RpcInvokeHandlerStream GetOrAddInvokeMethodStream(RuntimeMethodHandle handle)
@@ -3557,7 +3466,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         typeof(object), typeof(object), typeof(RpcOverhead), typeof(IRpcRouter), typeof(IRpcSerializer), typeof(ReadOnlyMemory<byte>), typeof(bool), typeof(CancellationToken)
     ];
 
-    internal unsafe delegate void RpcInvokeHandlerBytes(
+    /// <summary>
+    /// Used by source generator.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public unsafe delegate void RpcInvokeHandlerBytes(
         object? serviceProvider,
         object? targetObject,
         RpcOverhead overhead,
@@ -3568,7 +3481,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         CancellationToken token
     );
 
-    internal delegate void RpcInvokeHandlerStream(
+    /// <summary>
+    /// Used by source generator.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public delegate void RpcInvokeHandlerStream(
         object? serviceProvider,
         object? targetObject,
         RpcOverhead overhead,
@@ -3578,7 +3495,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         CancellationToken token
     );
 
-    internal delegate void RpcInvokeHandlerRawBytes(
+    /// <summary>
+    /// Used by source generator.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public delegate void RpcInvokeHandlerRawBytes(
         object? serviceProvider,
         object? targetObject,
         RpcOverhead overhead,

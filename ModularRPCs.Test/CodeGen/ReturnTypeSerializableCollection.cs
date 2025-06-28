@@ -4860,6 +4860,7 @@ namespace ModularRPCs.Test.CodeGen
     {
         public List<T> List;
 
+        public CollectionImpl() : this(new List<T>()) { }
         public CollectionImpl(List<T> list)
         {
             List = list;

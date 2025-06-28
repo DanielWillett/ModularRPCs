@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using System.Runtime.Serialization;
 using DanielWillett.ReflectionTools;
@@ -9,7 +9,7 @@ namespace DanielWillett.ModularRpcs.Exceptions;
 /// Thrown when a parameter in an RPC is unserializable.
 /// </summary>
 [Serializable]
-public class RpcInjectionException : Exception
+public class RpcInjectionException : InvalidOperationException
 {
 
     /// <inheritdoc />

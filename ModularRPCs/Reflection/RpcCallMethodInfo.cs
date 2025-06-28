@@ -1,17 +1,32 @@
 using DanielWillett.ReflectionTools.Emit;
 using JetBrains.Annotations;
 using System;
+using System.ComponentModel;
 using System.Reflection;
 using System.Reflection.Emit;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 public struct RpcCallMethodInfo
 {
+    [UsedImplicitly]
     public bool IsFireAndForget;
+
+    [UsedImplicitly]
     public int SignatureHash;
+
+    [UsedImplicitly]
     public uint KnownId;
+
+    [UsedImplicitly]
     public RpcEndpointTarget Endpoint;
+
+    [UsedImplicitly]
     public bool HasIdentifier;
+
+    /// <summary>
+    /// If 0, is replaced with the default timeout set in <see cref="ProxyGenerator.DefaultTimeout"/>.
+    /// </summary>
+    [UsedImplicitly]
     public TimeSpan Timeout;
 
     /// <remarks>
@@ -35,11 +50,29 @@ public struct RpcCallMethodInfo
         RpcCallMethodInfo info = default;
         info.MethodHandle = method.MethodHandle;
         info.IsFireAndForget = isFireAndForget;
-        info.SignatureHash = ProxyGenerator.Instance.SerializerGenerator.GetBindingMethodSignatureHash(method);
+        info.SignatureHash = generator.SerializerGenerator.GetBindingMethodSignatureHash(method);
         info.Endpoint = RpcEndpointTarget.FromCallMethod(method);
         info.HasIdentifier = method is { IsStatic: false, DeclaringType: not null }
-                             && method.DeclaringType.GetField(ProxyGenerator.Instance.IdentifierFieldName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) != null;
-        info.Timeout = TypeUtility.GetTimeoutFromMethod(method, generator.DefaultTimeout);
+                             && method.DeclaringType.GetField(generator.IdentifierFieldName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) != null;
+        info.Timeout = TypeUtility.GetTimeoutFromMethod(method, TimeSpan.Zero);
+        return info;
+    }
+
+    /// <summary>
+    /// Create a <see cref="RpcCallMethodInfo"/> from a call/invoke method.
+    /// </summary>
+    /// <remarks>Used by </remarks>
+    [EditorBrowsable(EditorBrowsableState.Never), UsedImplicitly]
+    public static RpcCallMethodInfo FromCallMethodWithSignature(ProxyGenerator generator, MethodInfo method, bool isFireAndForget, int signature)
+    {
+        RpcCallMethodInfo info = default;
+        info.MethodHandle = method.MethodHandle;
+        info.IsFireAndForget = isFireAndForget;
+        info.SignatureHash = signature;
+        info.Endpoint = RpcEndpointTarget.FromCallMethod(method);
+        info.HasIdentifier = method is { IsStatic: false, DeclaringType: not null }
+                             && method.DeclaringType.GetField(generator.IdentifierFieldName, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) != null;
+        info.Timeout = TypeUtility.GetTimeoutFromMethod(method, TimeSpan.Zero);
         return info;
     }
 

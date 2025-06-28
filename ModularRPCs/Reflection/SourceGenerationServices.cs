@@ -16,6 +16,9 @@ public static class SourceGenerationServices
 
     public static string ResxRpcInjectionExceptionInstanceNull => Properties.Exceptions.RpcInjectionExceptionInstanceNull;
     public static string ResxRpcParseExceptionBufferRunOutFastRead => Properties.Exceptions.RpcParseExceptionBufferRunOutFastRead;
+    public static string ResxRpcInjectionExceptionMultipleServiceProviders => Properties.Exceptions.RpcInjectionExceptionMultipleServiceProviders;
+    public static string ResxRpcInjectionExceptionInfo => Properties.Exceptions.RpcInjectionExceptionInfo;
+    public static string ResxRpcParseExceptionBufferRunOutNativeIntOverflow => Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow;
 
     public static MethodInfo GetMethodByExpression<TDelegate>(Expression<TDelegate> expression)
     {
