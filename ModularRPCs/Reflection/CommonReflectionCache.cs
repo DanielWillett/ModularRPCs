@@ -9,6 +9,7 @@ using DanielWillett.ReflectionTools.Formatting;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -178,10 +179,10 @@ internal static class CommonReflectionCache
                                                                   );
 
     /// <summary>
-    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,ArraySegment{byte},Stream,bool,uint,ref RpcCallMethodInfo)"/>.
+    /// <see cref="IRpcRouter.InvokeRpc(object?,IRpcSerializer,RuntimeMethodHandle,CancellationToken,ArraySegment{byte},Stream,bool,uint,ref RpcCallMethodInfo,RpcInvokeOptions)"/>.
     /// </summary>
     internal static readonly MethodInfo RpcRouterInvokeRpcStream = typeof(IRpcRouter).GetMethod(nameof(IRpcRouter.InvokeRpc), BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any,
-                                                                       [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(CancellationToken), typeof(ArraySegment<byte>), typeof(Stream), typeof(bool), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType() ], null)
+                                                                       [ typeof(object), typeof(IRpcSerializer), typeof(RuntimeMethodHandle), typeof(CancellationToken), typeof(ArraySegment<byte>), typeof(Stream), typeof(bool), typeof(uint), typeof(RpcCallMethodInfo).MakeByRefType(), typeof(RpcInvokeOptions) ], null)
                                                                    ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IRpcRouter.InvokeRpc))
                                                                        .DeclaredIn<IRpcRouter>(isStatic: false)
                                                                        .WithParameter<object>("connections")
@@ -193,6 +194,7 @@ internal static class CommonReflectionCache
                                                                        .WithParameter<bool>("leaveOpen")
                                                                        .WithParameter<uint>("dataCt")
                                                                        .WithParameter<RpcCallMethodInfo>("callMethodInfo", ByRefTypeMode.Ref)
+                                                                       .WithParameter<RpcInvokeOptions>("options", ByRefTypeMode.Ref)
                                                                        .Returning<RpcTask>()
                                                                    );
 
@@ -448,9 +450,17 @@ internal static class CommonReflectionCache
     /// <see cref="ProxyGenerator.CallerInfoFieldNameAttribute(string)"/>
     /// </summary>
     internal static readonly ConstructorInfo CallerInfoFieldNameAttributeCtor = typeof(ProxyGenerator.CallerInfoFieldNameAttribute).GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(string) ], null)
-                                                                 ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(ProxyGenerator.CallerInfoFieldNameAttribute))
-                                                                     .WithParameter<string>("fieldName")
-                                                                 );
+                                                                                ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(ProxyGenerator.CallerInfoFieldNameAttribute))
+                                                                                    .WithParameter<string>("fieldName")
+                                                                                );
+
+    /// <summary>
+    /// <see cref="ReadOnlyCollection{T}(IList{T})"/>
+    /// </summary>
+    internal static readonly ConstructorInfo ReadOnlyCollectionByteIListCtor = typeof(ReadOnlyCollection<byte>).GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [ typeof(IList<byte>) ], null)
+                                                                               ?? throw new UnexpectedMemberAccessException(new MethodDefinition(typeof(ReadOnlyCollection<byte>))
+                                                                                   .WithParameter<IList<byte>>("list")
+                                                                               );
 
     /// <summary>
     /// <see cref="ReadOnlyMemory{T}.Length"/> of <see cref="byte"/>

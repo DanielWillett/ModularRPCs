@@ -143,7 +143,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         SupportsRemoteCancellation = supportsRemoteCancellation;
         IsBroadcast = isBroadcast;
 
-        if (TypeUtility.TryResolveMethod(null, methodName, null, declaringTypeName, null, parameterTypeNames, argsAreBindOnly, out MethodInfo? foundMethod, out _))
+        if (TypeUtility.TryResolveMethod(null, methodName, DeclaringType, declaringTypeName, null, parameterTypeNames, argsAreBindOnly, out MethodInfo? foundMethod, out _))
         {
             Method = foundMethod;
             IsStatic = Method.IsStatic;

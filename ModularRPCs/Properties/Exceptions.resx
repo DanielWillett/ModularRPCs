@@ -175,7 +175,7 @@
     <value>An {1} of {0} and this id has already been registered.</value>
   </data>
   <data name="InstanceIdDefaultValue" xml:space="preserve">
-    <value>An {1} of {0}'s identifier still had it's default value after the base constructor.</value>
+    <value>An {1} of {0}'s identifier still had a null value after the base constructor.</value>
   </data>
   <data name="InstanceIdNotSet" xml:space="preserve">
     <value>An {1} of {0}'s identifier was not set in the base constructor.</value>
@@ -461,5 +461,8 @@
   </data>
   <data name="ObjectNotProxyType" xml:space="preserve">
     <value>Given object is not a proxy implementation of "{0}".</value>
+  </data>
+  <data name="RpcInjectionExceptionInvalidRawParameter" xml:space="preserve">
+    <value>Parameter '{0}' ({1}) is not a valid parameter for a raw method. Add the RpcInject attribute to attempt to inject the parameter.</value>
   </data>
 </root>

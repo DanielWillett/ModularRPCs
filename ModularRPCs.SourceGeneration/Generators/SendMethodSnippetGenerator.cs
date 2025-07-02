@@ -4,9 +4,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.Linq;
-using System.Threading;
-using TypeSerializationInfo = DanielWillett.ModularRpcs.SourceGeneration.Util.TypeSerializationInfo;
-using TypeSerializationInfoType = DanielWillett.ModularRpcs.SourceGeneration.Util.TypeSerializationInfoType;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
 
@@ -30,6 +27,8 @@ internal readonly struct SendMethodSnippetGenerator
 
     public void GenerateMethodBodySnippet(SourceStringBuilder bldr)
     {
+        bool raw = Method.Target.Raw;
+
         Context.CancellationToken.ThrowIfCancellationRequested();
 
         EquatableList<RpcParameterDeclaration> parameters = Method.Parameters;
@@ -49,12 +48,12 @@ internal readonly struct SendMethodSnippetGenerator
 
         bldr.String("__modularRpcsGeneratedState.PreCalc = __modularRpcsGeneratedState.Serializer.CanFastReadPrimitives;");
 
-        if (toBind.Length > 0)
+        if (!raw && toBind.Length > 0)
         {
             bldr.String("#region Get Size")
                 .Empty();
 
-            uint ttl = checked ( (uint)toBind.Sum(parameter => TypeHelper.GetPrimitiveLikeSize(parameter.PrimitiveLikeType)) );
+            uint ttl = checked ( (uint)toBind.Sum(parameter => TypeHelper.GetPrimitiveLikeSize(parameter.Type.PrimitiveLikeType)) );
 
             if (ttl != 0)
             {
@@ -65,7 +64,7 @@ internal readonly struct SendMethodSnippetGenerator
 
             foreach (RpcParameterDeclaration parameter in toBind)
             {
-                if (parameter.PrimitiveLikeType != TypeHelper.PrimitiveLikeType.None)
+                if (parameter.Type.PrimitiveLikeType != TypeHelper.PrimitiveLikeType.None)
                 {
                     bldr.String("if (!__modularRpcsGeneratedState.PreCalc)")
                         .String("{").In();
@@ -137,7 +136,7 @@ internal readonly struct SendMethodSnippetGenerator
                         break;
                 }
 
-                if (parameter.PrimitiveLikeType != TypeHelper.PrimitiveLikeType.None)
+                if (parameter.Type.PrimitiveLikeType != TypeHelper.PrimitiveLikeType.None)
                 {
                     bldr.Out()
                         .String("}")
@@ -161,121 +160,22 @@ internal readonly struct SendMethodSnippetGenerator
 
         bldr.String("__modularRpcsGeneratedState.PreOverheadSize = __modularRpcsGeneratedState.OverheadSize;");
 
-        string? escapedIdTypeName;
-
-        // calculate ID size
-        if (!hasId || Method.Type.IdTypeCode != TypeCode.Object)
-        {
-            escapedIdTypeName = null;
-            bldr.String("__modularRpcsGeneratedState.IdTypeSize = 1u;");
-        }
-        else
-        {
-            escapedIdTypeName = TypeHelper.Escape(Method.Type.IdType!.Info.SerializableType.AssemblyQualifiedName!);
-
-            bldr.Build($"if (__modularRpcsGeneratedState.HasKnownTypeId = __modularRpcsGeneratedState.Serializer.TryGetKnownTypeId(typeof({Method.Type.IdType!.GloballyQualifiedName}), out __modularRpcsGeneratedState.KnownTypeId))")
-                .String("{").In();
-            bldr.String("__modularRpcsGeneratedState.IdTypeSize = 6u;")
-                .Out()
-                .String("}")
-                .String("else")
-                .String("{").In()
-                .Build($"__modularRpcsGeneratedState.IdTypeSize = 2u + checked ( (uint)__modularRpcsGeneratedState.Serializer.GetSize<string>(\"{escapedIdTypeName}\") );")
-                .Out()
-                .String("}");
-        }
+        GenerateGetIdSize(
+            bldr,
+            Method.Type,
+            out string? escapedIdTypeName,
+            "__modularRpcsGeneratedState.IdTypeSize",
+            "__modularRpcsGeneratedState.IdSize",
+            "__modularRpcsGeneratedState.Serializer",
+            "__modularRpcsGeneratedState.HasKnownTypeId",
+            "__modularRpcsGeneratedState.KnownTypeId",
+            "__modularRpcsGeneratedState.PreCalc",
+            "__modularRpcsGeneratedState.OverheadSize",
+            out bool passIdByRef,
+            "this"
+        );
 
         bldr.String("__modularRpcsGeneratedState.OverheadSize += __modularRpcsGeneratedState.IdTypeSize;");
-
-        bool passIdByRef = false;
-
-        if (hasId && Method.Type.IdType!.Info.Type != TypeSerializationInfoType.Void)
-        {
-            TypeSerializationInfo idInfo = Method.Type.IdType.Info;
-
-            string idVar = Method.Type.IdIsExplicit
-                ? $"((global::DanielWillett.ModularRpcs.Protocol.IRpcObject<{Method.Type.IdType!.GloballyQualifiedName}>)this).Identifier"
-                : "this.Identifier";
-
-            bldr.Build($"{Method.Type.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId = {idVar};");
-
-            switch (idInfo.Type)
-            {
-                case TypeSerializationInfoType.PrimitiveLike:
-                case TypeSerializationInfoType.Value:
-
-                    if (idInfo.PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
-                    {
-                        switch (idInfo.PrimitiveSerializationMode)
-                        {
-                            case TypeHelper.QuickSerializeMode.If64Bit:
-                                bldr.String("if (__modularRpcsGeneratedState.PreCalc && global::System.IntPtr.Size == 8)");
-                                break;
-                            case TypeHelper.QuickSerializeMode.If64BitLittleEndian:
-                                bldr.String("if (__modularRpcsGeneratedState.PreCalc && global::System.IntPtr.Size == 8 && global::System.BitConverter.IsLittleEndian)");
-                                break;
-                            case TypeHelper.QuickSerializeMode.IfLittleEndian:
-                                bldr.String("if (__modularRpcsGeneratedState.PreCalc && global::System.BitConverter.IsLittleEndian)");
-                                break;
-                            default: // Always
-                                bldr.String("if (__modularRpcsGeneratedState.PreCalc)");
-                                break;
-                        }
-
-                        int size = TypeHelper.GetPrimitiveLikeSize(Method.Type.IdType.PrimitiveType);
-                        bldr.String("{")
-                            .In()
-                            .Build($"__modularRpcsGeneratedState.IdSize = {size}u;")
-                            .Out()
-                            .String("}");
-
-                        bldr.String("else")
-                            .String("{")
-                            .In();
-                    }
-                    else
-                    {
-                        passIdByRef = Method.Type.IdType.IsValueType;
-                    }
-
-                    bldr.Build($"__modularRpcsGeneratedState.IdSize = checked ( (uint)__modularRpcsGeneratedState.Serializer.GetSize<{Method.Type.IdType.GloballyQualifiedName}>(__modularRpcsGeneratedId) );");
-
-                    if (idInfo.PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
-                    {
-                        bldr.Out()
-                            .String("}");
-                    }
-
-                    break;
-
-                case TypeSerializationInfoType.NullableValue:
-                    passIdByRef = true;
-                    bldr.Build($"__modularRpcsGeneratedState.IdSize = checked ( (uint)__modularRpcsGeneratedState.Serializer.GetSize<{idInfo.UnderlyingType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
-                    break;
-
-                case TypeSerializationInfoType.SerializableValue:
-                    passIdByRef = Method.Type.IdType!.IsValueType;
-                    bldr.Build($"__modularRpcsGeneratedState.IdSize = checked ( (uint)__modularRpcsGeneratedState.Serializer.GetSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
-                    break;
-
-                case TypeSerializationInfoType.NullableSerializableValue:
-                    passIdByRef = true;
-                    bldr.Build($"__modularRpcsGeneratedState.IdSize = checked ( (uint)__modularRpcsGeneratedState.Serializer.GetNullableSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
-                    break;
-
-                case TypeSerializationInfoType.SerializableCollection:
-                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
-                    bldr.Build($"__modularRpcsGeneratedState.IdSize = checked ( (uint)__modularRpcsGeneratedState.Serializer.GetSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}>) );");
-                    break;
-
-                case TypeSerializationInfoType.NullableSerializableCollection:
-                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
-                    bldr.Build($"__modularRpcsGeneratedState.IdSize = checked ( (uint)__modularRpcsGeneratedState.Serializer.GetNullableSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}?>) );");
-                    break;
-            }
-
-            bldr.String("__modularRpcsGeneratedState.OverheadSize += __modularRpcsGeneratedState.IdSize;");
-        }
 
         bldr.String("__modularRpcsGeneratedState.Size += __modularRpcsGeneratedState.OverheadSize;");
 
@@ -400,30 +300,33 @@ internal readonly struct SendMethodSnippetGenerator
 
         bldr.Empty();
 
-        if (toBind.Length > 0)
+        if (!raw)
         {
-            if (toBind.Length == 1)
-                bldr.Build($"#region Write Parameter");
-            else
-                bldr.Build($"#region Write Parameters ({toBind.Length} parameters)");
-
-            bldr.String(Method.Type.IdType == null
-                ? "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedState.PreOverheadSize + 1u;"
-                : "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedIdPos;");
-
-            foreach (RpcParameterDeclaration param in toBind)
+            if (toBind.Length > 0)
             {
-                bldr.Empty()
-                    .Build($"/* Write {param.Type.FullyQualifiedName} (#{param.Index}) */");
+                if (toBind.Length == 1)
+                    bldr.Build($"#region Write Parameter");
+                else
+                    bldr.Build($"#region Write Parameters ({toBind.Length} parameters)");
 
-                WriteValue(bldr, param.Type, canUnsignedRightShift, "__modularRpcsGeneratedIndex", $"@{param.Name}", "__modularRpcsGeneratedState.Size - __modularRpcsGeneratedIndex");
+                bldr.String(Method.Type.IdType == null
+                    ? "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedState.PreOverheadSize + 1u;"
+                    : "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedIdPos;");
+
+                foreach (RpcParameterDeclaration param in toBind)
+                {
+                    bldr.Empty()
+                        .Build($"/* Write {param.Type.FullyQualifiedName} (#{param.Index}) */");
+
+                    WriteValue(bldr, param.Type, canUnsignedRightShift, "__modularRpcsGeneratedIndex", $"@{param.Name}", "__modularRpcsGeneratedState.Size - __modularRpcsGeneratedIndex");
+                }
+
+                bldr.String("#endregion");
             }
-
-            bldr.String("#endregion");
-        }
-        else
-        {
-            bldr.String("// There are no parameters to write.");
+            else
+            {
+                bldr.String("// There are no parameters to write.");
+            }
         }
 
         int injectedConnectionArg = -1;
@@ -460,7 +363,7 @@ internal readonly struct SendMethodSnippetGenerator
         }
 
         bldr.String(isReturningTask
-                ? "return __modularRpcsGeneratedState.Router.InvokeRpc("
+                ? $"return ({Method.ReturnType.GloballyQualifiedName})__modularRpcsGeneratedState.Router.InvokeRpc("
                 : "__modularRpcsGeneratedState.Router.InvokeRpc(")
             .In();
 
@@ -501,6 +404,126 @@ internal readonly struct SendMethodSnippetGenerator
 
         bldr.Out()
             .String("}");
+    }
+
+    internal static void GenerateGetIdSize(SourceStringBuilder bldr, RpcClassDeclaration @class, out string? escapedIdTypeName, string idTypeSize, string idSize, string serializer, string? hasKnownTypeId, string knownTypeId, string preCalc, string overheadSize, out bool passIdByRef, string @this)
+    {
+        bool hasId = @class.IdType != null;
+
+        // calculate ID size
+        if (!hasId || @class.IdTypeCode != TypeCode.Object)
+        {
+            escapedIdTypeName = null;
+            bldr.Build($"{idTypeSize} = 1u;");
+        }
+        else
+        {
+            escapedIdTypeName = TypeHelper.Escape(@class.IdType!.Info.SerializableType.AssemblyQualifiedName);
+
+            if (hasKnownTypeId != null)
+                bldr.Build($"if ({hasKnownTypeId} = {serializer}.TryGetKnownTypeId(typeof({@class.IdType!.GloballyQualifiedName}), out {knownTypeId}))");
+            else
+                bldr.Build($"if ({serializer}.TryGetKnownTypeId(typeof({@class.IdType!.GloballyQualifiedName}), out {knownTypeId}))");
+            bldr.String("{").In()
+                    .Build($"{idTypeSize} = 6u;")
+                    .Out()
+                .String("}")
+                .String("else")
+                .String("{").In()
+                    .Build($"{idTypeSize} = 2u + checked ( (uint){serializer}.GetSize<string>(\"{escapedIdTypeName}\") );")
+                    .Out()
+                .String("}");
+        }
+
+        passIdByRef = false;
+
+        if (hasId && @class.IdType!.Info.Type != TypeSerializationInfoType.Void)
+        {
+            TypeSerializationInfo idInfo = @class.IdType.Info;
+
+            string idVar = @class.IdIsExplicit
+                ? $"((global::DanielWillett.ModularRpcs.Protocol.IRpcObject<{@class.IdType!.GloballyQualifiedName}>){@this}).Identifier"
+                : $"{@this}.Identifier";
+
+            bldr.Build($"{@class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId = {idVar};");
+
+            switch (idInfo.Type)
+            {
+                case TypeSerializationInfoType.PrimitiveLike:
+                case TypeSerializationInfoType.Value:
+
+                    if (idInfo.PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
+                    {
+                        switch (idInfo.PrimitiveSerializationMode)
+                        {
+                            case TypeHelper.QuickSerializeMode.If64Bit:
+                                bldr.Build($"if ({preCalc} && global::System.IntPtr.Size == 8)");
+                                break;
+                            case TypeHelper.QuickSerializeMode.If64BitLittleEndian:
+                                bldr.Build($"if ({preCalc} && global::System.IntPtr.Size == 8 && global::System.BitConverter.IsLittleEndian)");
+                                break;
+                            case TypeHelper.QuickSerializeMode.IfLittleEndian:
+                                bldr.Build($"if ({preCalc} && global::System.BitConverter.IsLittleEndian)");
+                                break;
+                            default: // Always
+                                bldr.Build($"if ({preCalc})");
+                                break;
+                        }
+
+                        int size = TypeHelper.GetPrimitiveLikeSize(@class.IdType.PrimitiveType);
+                        bldr.String("{")
+                            .In()
+                            .Build($"{idSize} = {size}u;")
+                            .Out()
+                            .String("}");
+
+                        bldr.String("else")
+                            .String("{")
+                            .In();
+                    }
+                    else
+                    {
+                        passIdByRef = @class.IdType.IsValueType;
+                    }
+
+                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSize<{@class.IdType.GloballyQualifiedName}>(__modularRpcsGeneratedId) );");
+
+                    if (idInfo.PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
+                    {
+                        bldr.Out()
+                            .String("}");
+                    }
+
+                    break;
+
+                case TypeSerializationInfoType.NullableValue:
+                    passIdByRef = true;
+                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSize<{idInfo.UnderlyingType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
+                    break;
+
+                case TypeSerializationInfoType.SerializableValue:
+                    passIdByRef = @class.IdType!.IsValueType;
+                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableValue:
+                    passIdByRef = true;
+                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetNullableSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
+                    break;
+
+                case TypeSerializationInfoType.SerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}>) );");
+                    break;
+
+                case TypeSerializationInfoType.NullableSerializableCollection:
+                case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetNullableSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}?>) );");
+                    break;
+            }
+
+            bldr.String($"{overheadSize} += {idSize};");
+        }
     }
 
     private static void WriteValue(SourceStringBuilder bldr, TypeSymbolInfo symbolInfo, bool canUnsignedRightShift, string offsetVar, string valueVar, string sizeVar)
@@ -798,11 +821,14 @@ internal readonly struct SendMethodSnippetGenerator
     }
 }
 
-internal struct SendMethodInfo
+internal class SendMethodInfo
 {
     public RpcMethodDeclaration Method;
     public int Overload;
     public string MethodInfoFieldName;
+    public string? DelegateName;
+    public DelegateType? DelegateType;
+    public bool IsDuplicateDelegateType;
 
     public SendMethodInfo(RpcMethodDeclaration method, int overload, string methodInfoFieldName)
     {

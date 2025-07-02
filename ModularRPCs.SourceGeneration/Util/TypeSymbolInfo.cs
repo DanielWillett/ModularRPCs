@@ -6,7 +6,7 @@ namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
 {
     public string Name { get; }
-    public string? NamespaceDeclaration { get; }
+    public string? Namespace { get; }
 
     /// <summary>
     /// Doesn't include '<c>global::</c>'.
@@ -18,12 +18,12 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
     /// </summary>
     public string GloballyQualifiedName { get; }
     public string AssemblyQualifiedName { get; }
-    public string FileName { get; }
     public bool IsNullable { get; }
     public bool IsValueType { get; }
 
     public TypeHelper.PrimitiveLikeType PrimitiveLikeType { get; }
     public TypeHelper.PrimitiveLikeType PrimitiveType { get; }
+    public bool IsNumericNativeInt { get; }
 
 #nullable disable
     public TypeSerializationInfo Info { get; }
@@ -34,18 +34,17 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
         IsValueType = typeSymbol.IsValueType;
         IsNullable = typeSymbol.IsNullable();
         Name = typeSymbol.Name;
-        string? nameSpace = typeSymbol.ContainingNamespace?.ToDisplayString(CustomFormats.NamespaceWithoutGlobalFormat);
-        if (string.IsNullOrEmpty(nameSpace))
+        Namespace = typeSymbol.ContainingNamespace?.ToDisplayString(CustomFormats.FullTypeNameFormat);
+        if (typeSymbol.SpecialType == SpecialType.System_Void)
         {
-            FileName = Name;
+            FullyQualifiedName = "void";
+            GloballyQualifiedName = "void";
         }
         else
         {
-            FileName = $"{nameSpace}.{Name}";
+            FullyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameFormat);
+            GloballyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameWithGlobalFormat);
         }
-        NamespaceDeclaration = typeSymbol.ContainingNamespace?.ToDisplayString(CustomFormats.NamespaceDeclarationFormat);
-        FullyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameFormat);
-        GloballyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameWithGlobalFormat);
         AssemblyQualifiedName = TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, typeSymbol);
 
         // easy way to detect enum underlying type changes
@@ -59,6 +58,7 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
             IsNullable = false;
             FullyQualifiedName = "System.IntPtr";
             GloballyQualifiedName = "global::System.IntPtr";
+            IsNumericNativeInt = true;
         }
         else if (GloballyQualifiedName.Equals("nuint", StringComparison.Ordinal)
                  && typeSymbol is { Name: "UIntPtr", ContainingNamespace.Name: "System" })
@@ -66,6 +66,7 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
             IsNullable = false;
             FullyQualifiedName = "System.UIntPtr";
             GloballyQualifiedName = "global::System.UIntPtr";
+            IsNumericNativeInt = true;
         }
 
         if (createInfo)
@@ -74,6 +75,11 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
 
     public bool Equals(string fullyQualifiedName)
     {
+        if (string.Equals(fullyQualifiedName, "global::System.Void", StringComparison.Ordinal))
+        {
+            return string.Equals(FullyQualifiedName, "void", StringComparison.Ordinal);
+        }
+
         return string.Equals(fullyQualifiedName, GloballyQualifiedName);
     }
 
@@ -81,8 +87,22 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
 
     public bool Equals(TypeSymbolInfo? other) => other != null && string.Equals(AssemblyQualifiedName, other.AssemblyQualifiedName, StringComparison.Ordinal)
                                                                && IsNullable == other.IsNullable
-                                                               && string.Equals(NamespaceDeclaration, other.NamespaceDeclaration, StringComparison.Ordinal)
-                                                               && PrimitiveLikeType == other.PrimitiveLikeType;
+                                                               && PrimitiveLikeType == other.PrimitiveLikeType
+                                                               && IsValueType == other.IsValueType
+                                                               && Equals(Info, other.Info);
 
-    public override int GetHashCode() => HashCode.Combine(Name, AssemblyQualifiedName);
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        unchecked
+        {
+            int hashCode = AssemblyQualifiedName.GetHashCode();
+            hashCode = (hashCode * 397) ^ IsNullable.GetHashCode();
+            hashCode = (hashCode * 397) ^ IsValueType.GetHashCode();
+            hashCode = (hashCode * 397) ^ (int)PrimitiveLikeType;
+            hashCode = (hashCode * 397) ^ (Info != null ? Info.GetHashCode() : 0);
+            return hashCode;
+        }
+    }
+
 }

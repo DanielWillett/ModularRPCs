@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
@@ -10,6 +11,21 @@ namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 
 public static class TypeHelper
 {
+    public static bool CanBeGenericArgument(this ITypeSymbol symbol)
+    {
+        if (symbol == null)
+            return false;
+
+        if (symbol.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer
+            || symbol.SpecialType is SpecialType.System_TypedReference or SpecialType.System_ArgIterator or SpecialType.System_RuntimeArgumentHandle or SpecialType.System_Void
+            || symbol.IsStatic)
+        {
+            return false;
+        }
+
+        return !symbol.IsRefLikeType;
+    }
+
     private static readonly string?[] PrimitiveTypes =
     [
         "global::System.Boolean",
@@ -57,7 +73,6 @@ public static class TypeHelper
         "global::System.Guid",
         "global::System.TimeSpan",
     ];
-
     public static string ToTypeCodeString(this TypeCode tc)
     {
         return tc switch
@@ -103,6 +118,7 @@ public static class TypeHelper
         UnderlyingTypeMask = 255,
         Enum = 256
     }
+
 
     public static PrimitiveLikeType GetPrimitiveType(ITypeSymbol? type)
     {
@@ -395,22 +411,35 @@ public static class TypeHelper
 
     private static void GetMetadataName(Compilation compilation, ITypeSymbol type, StringBuilder bldr, bool nested = false)
     {
-        if (!nested && type.ContainingNamespace != null)
-            bldr.Append(EscapeAssemblyQualifiedName(type.ContainingNamespace.ToDisplayString(CustomFormats.FullTypeNameFormat)))
-                .Append('.');
-        
-        if (type.ContainingType != null)
+        ITypeSymbol elementType = type;
+        while (true)
         {
-            GetMetadataName(compilation, type.ContainingType, bldr, nested: true);
+            if (elementType is IArrayTypeSymbol arr)
+                elementType = arr.ElementType;
+            else if (elementType is IPointerTypeSymbol ptr)
+                elementType = ptr.PointedAtType;
+            else
+                break;
+        }
+
+        if (!nested && elementType.ContainingNamespace != null)
+        {
+            bldr.Append(EscapeAssemblyQualifiedName(elementType.ContainingNamespace.ToDisplayString(CustomFormats.FullTypeNameFormat)))
+                .Append('.');
+        }
+        
+        if (elementType.ContainingType != null)
+        {
+            GetMetadataName(compilation, elementType.ContainingType, bldr, nested: true);
             bldr.Append('+');
         }
         
-        bldr.Append(EscapeAssemblyQualifiedName(type.MetadataName));
+        bldr.Append(EscapeAssemblyQualifiedName(elementType.MetadataName));
 
         if (nested)
             return;
 
-        if (type is INamedTypeSymbol n && n.IsGenericType && !n.IsUnboundGenericType)
+        if (elementType is INamedTypeSymbol n && n.IsGenericType && !n.IsUnboundGenericType)
         {
             ImmutableArray<ITypeSymbol> typeArgs = n.TypeArguments;
             if (!typeArgs.Any(x => x is IErrorTypeSymbol))
@@ -419,10 +448,10 @@ public static class TypeHelper
 
                 int ct = 0;
                 // nested types
-                if (type.ContainingType != null)
+                if (elementType.ContainingType != null)
                 {
                     Stack<INamedTypeSymbol> stack = new Stack<INamedTypeSymbol>(4);
-                    for (INamedTypeSymbol c = type.ContainingType; c != null; c = c.ContainingType)
+                    for (INamedTypeSymbol c = elementType.ContainingType; c != null; c = c.ContainingType)
                         stack.Push(c);
 
                     while (stack.Count > 0)
@@ -459,11 +488,44 @@ public static class TypeHelper
             }
         }
 
-        if (IsAssemblyMscorlib(compilation, type))
+        elementType = type;
+        while (true)
+        {
+            if (elementType is IArrayTypeSymbol arr)
+            {
+                switch (arr.Rank)
+                {
+                    case 0:
+                        break;
+
+                    case 1:
+                        if (arr.LowerBounds.IsDefaultOrEmpty || arr.LowerBounds.Length == 1 && arr.LowerBounds[0] == 0)
+                            bldr.Append("[]");
+                        else
+                            bldr.Append("[*]");
+                        break;
+
+                    default:
+                        bldr.Append('[').Append(',', arr.Rank - 1).Append(']');
+                        break;
+                }
+
+                elementType = arr.ElementType;
+            }
+            else if (elementType is IPointerTypeSymbol ptr)
+            {
+                bldr.Append('*');
+                elementType = ptr.PointedAtType;
+            }
+            else
+                break;
+        }
+
+        if (IsAssemblyMscorlib(compilation, elementType) || elementType.ContainingAssembly == null)
             return;
 
         bldr.Append(", ")
-            .Append(EscapeAssemblyQualifiedName(type.ContainingAssembly.Name));
+            .Append(EscapeAssemblyQualifiedName(elementType.ContainingAssembly.Name));
     }
 
     private static readonly char[] Escapables = [ '\n', '\r', '\t', '\v', '\\', '\"', '\'' ];

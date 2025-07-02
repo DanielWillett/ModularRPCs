@@ -1,9 +1,11 @@
+using DanielWillett.ModularRpcs;
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using ModularRPCs.Test.CodeGen;
@@ -14,8 +16,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs;
-using DanielWillett.ModularRpcs.Routing;
 
 namespace ModularRPCs.Test.SourceGen
 {
@@ -179,7 +179,7 @@ namespace ModularRPCs.Test.SourceGen
             Assert.That(primitiveLikeValue, Is.EqualTo(SourceGenPlayground.Val1));
             Assert.That(nonPrimitiveLikeValue, Is.EqualTo(SourceGenPlayground.Val2));
         }
-
+        
         [RpcSend(nameof(ReceiveComprehensive))]
         public partial RpcTask InvokeComprehensiveFromServer(int value1, string? value2, DateTime value3, FixedRpcSerializable fixedType, FixedRpcSerializable? fixedTypeNullable, IModularRpcRemoteConnection connection, CancellationToken token = default);
 

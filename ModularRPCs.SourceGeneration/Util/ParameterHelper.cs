@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
 using System;
+using System.Collections.Immutable;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -8,6 +10,29 @@ namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 
 public static class ParameterHelper
 {
+
+    private static readonly string[] RawByteInjectTypes =
+    [
+        "global::System.Byte*",
+        "global::System.Array",
+        "global::System.IO.Stream",
+        "global::System.Memory<global::System.Byte>",
+        "global::System.ReadOnlyMemory<global::System.Byte>",
+        "global::System.Span<global::System.Byte>",
+        "global::System.ReadOnlySpan<global::System.Byte>",
+        "global::System.ArraySegment<global::System.Byte>",
+        "global::System.Collections.Generic.IList<global::System.Byte>",
+        "global::System.Collections.Generic.IReadOnlyList<global::System.Byte>",
+        "global::System.Collections.Generic.ICollection<global::System.Byte>",
+        "global::System.Collections.Generic.IEnumerable<global::System.Byte>",
+        "global::System.Collections.Generic.IReadOnlyCollection<global::System.Byte>",
+        "global::System.Collections.Generic.List<global::System.Byte>",
+        "global::System.Collections.ArrayList",
+        "global::System.Collections.ObjectModel.ReadOnlyCollection<global::System.Byte>",
+        "global::System.Byte",
+        "global::DanielWillett.SpeedBytes.ByteWriter",
+        "global::DanielWillett.SpeedBytes.ByteReader"
+    ];
     public static AutoInjectType GetAutoInjectType(ITypeSymbol? parameter)
     {
         if (parameter == null)
@@ -169,6 +194,67 @@ public static class ParameterHelper
         ServiceProvider,
         ServiceProviders
     }
+    public enum RawByteInjectType
+    {
+        None = 0,
+        Pointer,
+        Array,
+        Stream,
+        Memory,
+        ReadOnlyMemory,
+        Span,
+        ReadOnlySpan,
+        ArraySegment,
+        IList,
+        IReadOnlyList,
+        ICollection,
+        IEnumerable,
+        IReadOnlyCollection,
+        List,
+        ArrayList,
+        ReadOnlyCollection,
+        ByRefByte,
+        ByteWriter,
+        ByteReader
+    }
+
+    public static RawByteInjectType GetRawByteInjectType(IParameterSymbol parameter)
+    {
+        if (parameter.Type is IArrayTypeSymbol arrayType)
+        {
+            if (!arrayType.IsSZArray)
+            {
+                return RawByteInjectType.None;
+            }
+
+            return arrayType.ElementType.SpecialType == SpecialType.System_Byte ? RawByteInjectType.Array : RawByteInjectType.None;
+        }
+
+        if (parameter.Type is IPointerTypeSymbol ptrType)
+        {
+            return ptrType.PointedAtType.SpecialType switch
+            {
+                SpecialType.System_Void or SpecialType.System_Byte => RawByteInjectType.Pointer,
+                _ => RawByteInjectType.None
+            };
+        }
+
+        string name = parameter.Type.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat);
+        if (name.Equals("global::System.IO.MemoryStream", StringComparison.Ordinal))
+        {
+            return RawByteInjectType.Stream;
+        }
+            
+        int index = RawByteInjectTypes.IndexOf(name);
+        if (index == -1)
+            return RawByteInjectType.None;
+
+        RawByteInjectType type = (RawByteInjectType)(index + 1);
+        if (type == RawByteInjectType.ByRefByte && parameter.RefKind is not RefKind.In and not RefKind.Ref and not RefKind.RefReadOnlyParameter)
+            return RawByteInjectType.None;
+
+        return type;
+    }
 
     internal static void BindParameters(
         EquatableList<RpcParameterDeclaration> parameters,
@@ -282,4 +368,110 @@ public static class ParameterHelper
 
         return unchecked((int)(h1 + ((h2 >> 6) | (h2 << 26)) + ((h3 >> 12) | (h3 << 20)) + ((h4 >> 18) | (h4 << 14)) + ((h5 >> 24) | (h5 << 8))));
     }
+
+    public static AwaitableInfo? GetAwaitableInfo(Compilation compilation, ITypeSymbol type)
+    {
+        IMethodSymbol? configureAwaitMethod = GetSymbol<IMethodSymbol>(
+            type.GetMembers("ConfigureAwait"),
+            method => method is { IsGenericMethod: false, Parameters.Length: 1 } && method.Parameters[0].Type.SpecialType == SpecialType.System_Boolean
+        );
+
+        ITypeSymbol originalTaskType = type;
+        ConfigureAwaitMethodType configureAwaitMethodType = ConfigureAwaitMethodType.None;
+
+        if (configureAwaitMethod is { ReturnType.SpecialType: not SpecialType.System_Void })
+        {
+            originalTaskType = configureAwaitMethod.ReturnType;
+            configureAwaitMethodType = configureAwaitMethod.RefKind != RefKind.None
+                ? ConfigureAwaitMethodType.ReturnsAwaiterRef
+                : ConfigureAwaitMethodType.ReturnsAwaiter;
+        }
+        else if (configureAwaitMethod != null)
+        {
+            configureAwaitMethodType = ConfigureAwaitMethodType.Void;
+        }
+
+        recheckWithOriginalType:
+        IMethodSymbol? getAwaiterMethod = GetSymbol<IMethodSymbol>(
+            originalTaskType.GetMembers("GetAwaiter"),
+            method => method is { IsGenericMethod: false, Parameters.Length: 0, ReturnType.SpecialType: not SpecialType.System_Void }
+        );
+
+        if (getAwaiterMethod == null)
+        {
+            if (ReferenceEquals(type, originalTaskType))
+                return null;
+
+            originalTaskType = type;
+            goto recheckWithOriginalType;
+        }
+
+        ITypeSymbol awaiterType = getAwaiterMethod.ReturnType;
+
+        IMethodSymbol? onCompletion = null;
+
+        INamedTypeSymbol? unsafeNotify = awaiterType.GetImplementation("global::System.Runtime.CompilerServices.ICriticalNotifyCompletion");
+        onCompletion = unsafeNotify?.GetMembers("UnsafeOnCompleted").OfType<IMethodSymbol>().FirstOrDefault();
+        INamedTypeSymbol? safeNotify = onCompletion != null ? null : awaiterType.GetImplementation("global::System.Runtime.CompilerServices.INotifyCompletion");
+        onCompletion ??= safeNotify?.GetMembers("OnCompleted").OfType<IMethodSymbol>().FirstOrDefault();
+
+
+        if (onCompletion == null)
+        {
+            if (ReferenceEquals(type, originalTaskType))
+                return null;
+
+            originalTaskType = type;
+            goto recheckWithOriginalType;
+        }
+
+        bool onCompletedExplicit = onCompletion.IsExplicitlyImplemented(awaiterType);
+
+        IPropertySymbol? isCompletedProperty = GetSymbol<IPropertySymbol>(
+            awaiterType.GetMembers("IsCompleted"),
+            method => method is { GetMethod: not null, Parameters.Length: 0, Type.SpecialType: SpecialType.System_Boolean }
+        );
+
+        IMethodSymbol? getResult = GetSymbol<IMethodSymbol>(
+            awaiterType.GetMembers("GetResult"),
+            method => method is { IsGenericMethod: false, Parameters.Length: 0 }
+        );
+
+        if (isCompletedProperty == null || getResult == null)
+        {
+            if (ReferenceEquals(type, originalTaskType))
+                return null;
+
+            originalTaskType = type;
+            goto recheckWithOriginalType;
+        }
+
+        return new AwaitableInfo(
+            new TypeSymbolInfo(compilation, getResult.ReturnType, true),
+            new TypeSymbolInfo(compilation, awaiterType),
+            configureAwaitMethodType,
+            onCompletedExplicit,
+            onCompletion.Name.Equals("UnsafeOnCompleted", StringComparison.Ordinal)
+        );
+    }
+
+    private static TSymbol? GetSymbol<TSymbol>(ImmutableArray<ISymbol> matches, Func<TSymbol, bool> matcher)
+    {
+        return matches.OfType<TSymbol>().FirstOrDefault(matcher);
+    }
+}
+
+public record struct AwaitableInfo(
+    TypeSymbolInfo AwaitReturnType,
+    TypeSymbolInfo AwaiterType,
+    ConfigureAwaitMethodType ConfigureAwaitMethodType,
+    bool OnCompletedIsExplicit,
+    bool CriticalOnCompleted);
+
+public enum ConfigureAwaitMethodType
+{
+    None,
+    Void,
+    ReturnsAwaiter,
+    ReturnsAwaiterRef
 }

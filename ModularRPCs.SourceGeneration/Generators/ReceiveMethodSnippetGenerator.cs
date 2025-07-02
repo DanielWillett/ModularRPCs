@@ -1,3 +1,4 @@
+using System;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
@@ -32,23 +33,50 @@ internal readonly struct ReceiveMethodSnippetGenerator
     //      uint maxSize
     //      CancellationToken token
 
+    // or (for stream or raw stream):
+    //      object? serviceProvider,
+    //      object? targetObject,
+    //      RpcOverhead overhead,
+    //      IRpcRouter router,
+    //      IRpcSerializer serializer,
+    //      Stream stream,
+    //      CancellationToken token
+
+    // or (for raw byte methods):
+    //      object? serviceProvider,
+    //      object? targetObject,
+    //      RpcOverhead overhead,
+    //      IRpcRouter router,
+    //      IRpcSerializer serializer,
+    //      ReadOnlyMemory<byte> rawData,
+    //      bool canTakeOwnership,
+    //      CancellationToken token*/
+
     public void GenerateMethodBodySnippet(SourceStringBuilder bldr, bool stream)
     {
         Context.CancellationToken.ThrowIfCancellationRequested();
 
-        bldr.String("bool preCalc = serializer.CanFastReadPrimitives;")
-            .String("uint readIndex = 0;")
-            .String("int bytesReadTemp;")
-            .Empty();
-
-
         ParameterHelper.BindParameters(Method.Parameters, out RpcParameterDeclaration[] toInject, out RpcParameterDeclaration[] toBind);
+
+        if (toBind.Length > 0 && !Method.Target.Raw)
+        {
+            bldr.String("bool preCalc = serializer.CanFastReadPrimitives;")
+                .String("uint readIndex = 0;")
+                .String("int bytesReadTemp;");
+        }
+
+        bool hasReturnValue = !Method.ReturnType.Equals("global::System.Void");
+        if (hasReturnValue)
+        {
+            bldr.Build($"{Method.ReturnType.GloballyQualifiedName} rtnValue;");
+        }
 
         bool canUseNativeIntArithmitic = Compilation.LanguageVersion >= LanguageVersion.CSharp11;
 
         bool hasSpVars = false;
         foreach (RpcParameterDeclaration param in toInject)
         {
+            bldr.Empty();
             switch (param.InjectType)
             {
                 default:
@@ -97,7 +125,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                         .String("else")
                         .String("{").In()
                             .Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInfo, \"{TypeHelper.Escape(param.Name)}\", \"{TypeHelper.Escape(param.Type.FullyQualifiedName)}\", \"{TypeHelper.Escape(Method.DisplayString)}\"));").Out()
-                        .String("}").Out();
+                        .String("}");
                     break;
 
                 case ParameterHelper.AutoInjectType.CancellationToken:
@@ -225,10 +253,287 @@ internal readonly struct ReceiveMethodSnippetGenerator
             }
         }
 
-        foreach (RpcParameterDeclaration param in toBind)
+        bool isFixed = false;
+        int byteDataRefArg = -1;
+        if (!Method.Target.Raw)
         {
-            bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index};");
-            ReadValue(bldr, param.Type, "readIndex", $"arg{param.Index}", canUseNativeIntArithmitic, stream);
+            foreach (RpcParameterDeclaration param in toBind)
+            {
+                bldr.Empty();
+                bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index};");
+                ReadValue(bldr, param.Type, "readIndex", $"arg{param.Index}", canUseNativeIntArithmitic, stream);
+            }
+        }
+        else
+        {
+            if (stream)
+            {
+                bldr.String("bool canTakeOwnership = true;");
+            }
+            bool hasByteCount = false,
+                 hasBytes = false;
+            int canTakeOwnershipArg = -1;
+            foreach (RpcParameterDeclaration param in toBind)
+            {
+                bldr.Empty();
+
+                switch (param.Type.PrimitiveLikeType)
+                {
+                    case TypeHelper.PrimitiveLikeType.Boolean:
+
+                        if (canTakeOwnershipArg >= 0)
+                        {
+                            bldr.String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionMultipleCanTakeOwnership);");
+                            continue;
+                        }
+                        
+                        canTakeOwnershipArg = param.Index;
+                        continue;
+
+                    case TypeHelper.PrimitiveLikeType.SByte:
+                    case TypeHelper.PrimitiveLikeType.Byte:
+                    case TypeHelper.PrimitiveLikeType.Int16:
+                    case TypeHelper.PrimitiveLikeType.UInt16:
+                    case TypeHelper.PrimitiveLikeType.Int32:
+                    case TypeHelper.PrimitiveLikeType.UInt32:
+                    case TypeHelper.PrimitiveLikeType.Int64:
+                    case TypeHelper.PrimitiveLikeType.UInt64:
+                    case TypeHelper.PrimitiveLikeType.IntPtr:
+                    case TypeHelper.PrimitiveLikeType.UIntPtr:
+
+                        if (hasByteCount)
+                        {
+                            bldr.String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionMultipleByteCount);");
+                            continue;
+                        }
+
+                        hasByteCount = true;
+                        string typeName = param.Type.GloballyQualifiedName;
+                        if (!canUseNativeIntArithmitic && param.Type.PrimitiveLikeType is TypeHelper.PrimitiveLikeType.IntPtr or TypeHelper.PrimitiveLikeType.UIntPtr && param.Type.IsNumericNativeInt)
+                        {
+                            typeName = param.Type.PrimitiveLikeType == TypeHelper.PrimitiveLikeType.IntPtr ? "nint" : "nuint";
+                        }
+
+                        if (stream)
+                            bldr.Build($"{typeName} arg{param.Index} = checked ( ({typeName})overhead.MessageSize );");
+                        else
+                            bldr.Build($"{typeName} arg{param.Index} = checked ( ({typeName})rawData.Length );");
+                        continue;
+
+                    default:
+                        if (param.RawInjectType is ParameterHelper.RawByteInjectType.None)
+                        {
+                            bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = default;")
+                                .Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInvalidRawParameter, \"{TypeHelper.Escape(param.Name)}\", \"{TypeHelper.Escape(param.Type.FullyQualifiedName)}\"));");
+                            continue;
+                        }
+
+                        if (hasBytes)
+                        {
+                            bldr.String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionMultipleByteData);");
+                            continue;
+                        }
+
+                        hasBytes = true;
+                        switch (param.RawInjectType)
+                        {
+                            case ParameterHelper.RawByteInjectType.Pointer:
+                                if (stream)
+                                {
+                                    bldr.String("byte[] rawData = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream);")
+                                        .Build($"fixed (byte* arg{param.Index} = rawData)");
+                                }
+                                else
+                                {
+                                    bldr.Build($"fixed (byte* arg{param.Index} = rawData.Span)");
+                                }
+
+                                bldr.String("{")
+                                    .In()
+                                    .String("canTakeOwnership = false;");
+                                isFixed = true;
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.Array:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream);");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromMemory(rawData, canTakeOwnership, out canTakeOwnership);");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.Stream:
+                                if (stream)
+                                {
+                                    if (param.Type.Equals("global::System.IO.MemoryStream"))
+                                    {
+                                        bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::System.IO.MemoryStream(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(rawData, canTakeOwnership, out canTakeOwnership));");
+                                    }
+                                    else
+                                    {
+                                        bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::DanielWillett.ModularRpcs.Data.PassthroughReadStream(stream, overhead.MessageSize);")
+                                            .String("canTakeOwnership = false;");
+                                    }
+                                }
+                                else
+                                {
+                                    bldr.Build($"global::System.ArraySegment<byte> _arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArraySegmentFromMemory(rawData, canTakeOwnership, out canTakeOwnership);")
+                                        .Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::System.IO.MemoryStream(_arg{param.Index}.Array, _arg{param.Index}.Offset, _arg{param.Index}.Count);");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.Memory:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::System.MemoryExtensions.AsMemory<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::System.MemoryExtensions.AsMemory<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArraySegmentFromMemory(rawData, canTakeOwnership, out canTakeOwnership));");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.ReadOnlyMemory:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::System.MemoryExtensions.AsMemory<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = rawData;");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.Span:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::System.MemoryExtensions.AsSpan<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::System.MemoryExtensions.AsSpan<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArraySegmentFromMemory(rawData, canTakeOwnership, out canTakeOwnership));");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.ReadOnlySpan:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::System.MemoryExtensions.AsSpan<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = rawData.Span;");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.ArraySegment:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::System.ArraySegment<byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArraySegmentFromMemory(rawData, canTakeOwnership, out canTakeOwnership);");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.IList:
+                            case ParameterHelper.RawByteInjectType.ICollection:
+                            case ParameterHelper.RawByteInjectType.IEnumerable:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream);");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetIListFromMemory(rawData, canTakeOwnership, out canTakeOwnership);");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.IReadOnlyList:
+                            case ParameterHelper.RawByteInjectType.IReadOnlyCollection:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream);");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetIReadOnlyListFromMemory(rawData, canTakeOwnership, out canTakeOwnership);");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.List:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetListFromStream(rawData, canTakeOwnership, out canTakeOwnership);");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetListFromMemory(rawData, canTakeOwnership, out canTakeOwnership);");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.ArrayList:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayListFromStream(overhead.MessageSize, stream);");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayListFromMemory(rawData);");
+                                }
+                                bldr.String("canTakeOwnership = true;");
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.ReadOnlyCollection:
+                                if (stream)
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::System.Collections.ObjectModel.ReadOnlyCollection<System.Byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetListFromStream(overhead.MessageSize, stream));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::System.Collections.ObjectModel.ReadOnlyCollection<System.Byte>(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetListFromMemory(rawData, canTakeOwnership, out canTakeOwnership));");
+                                }
+                                break;
+
+                            case ParameterHelper.RawByteInjectType.ByRefByte:
+                                if (stream)
+                                {
+                                    bldr.String("byte[] rawData = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArrayFromStream(overhead.MessageSize, stream);");
+                                }
+
+                                byteDataRefArg = param.Index;
+                                break;
+                                
+                            case ParameterHelper.RawByteInjectType.ByteReader:
+                                bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = new global::DanielWillett.SpeedBytes.ByteReader();");
+                                if (stream)
+                                {
+                                    bldr.Build($"arg{param.Index}.LoadNew(new global::DanielWillett.ModularRpcs.Data.PassthroughReadStream(stream, overhead.MessageSize));");
+                                }
+                                else
+                                {
+                                    bldr.Build($"arg{param.Index}.LoadNew(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetArraySegmentFromMemory(rawData, canTakeOwnership, out canTakeOwnership));");
+                                }
+                                break;
+
+                            default:
+                                bldr.Build($"{param.Type.GloballyQualifiedName} arg{param.Index} = default;")
+                                    .Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInvalidRawParameter, \"{TypeHelper.Escape(param.Name)}\", \"{TypeHelper.Escape(param.Type.FullyQualifiedName)}\"));");
+                                break;
+                        }
+
+                        continue;
+                }
+            }
+
+            if (canTakeOwnershipArg >= 0)
+            {
+                bldr.String($"bool arg{canTakeOwnershipArg} = canTakeOwnership;");
+            }
         }
 
         if (!Method.IsStatic)
@@ -237,26 +542,125 @@ internal readonly struct ReceiveMethodSnippetGenerator
                 .In().Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInstanceNull, \"{TypeHelper.Escape(Method.Type.Type.FullyQualifiedName)}\", \"{TypeHelper.Escape(Method.DisplayString)}\"));")
                 .Out()
                 .Empty();
-
-            bldr.Build($"(({Method.Type.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
         }
         else
         {
-            bldr.Empty()
-                .Build($"@{Method.Name}(");
+            bldr.Empty();
         }
 
-        bldr.In();
-        foreach (RpcParameterDeclaration param in Method.Parameters)
+        if (byteDataRefArg >= 0)
         {
-            if (param.Index == Method.Parameters.Count - 1)
-                bldr.Build($"arg{param.Index}");
-            else
-                bldr.Build($"arg{param.Index}, ");
+            bldr.String("if (rawData.Length >= 0)")
+                .String("{")
+                .In();
         }
 
-        bldr.Out()
-            .String(");");
+        for (int i = 0;; ++i)
+        {
+            if (i == 1)
+            {
+                bldr.Build($"byte arg{byteDataRefArg} = 0;");
+            }
+            if (!Method.IsStatic)
+            {
+                if (hasReturnValue)
+                {
+                    bldr.Build($"rtnValue = (({Method.Type.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
+                }
+                else
+                {
+                    bldr.Build($"(({Method.Type.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
+                }
+            }
+            else
+            {
+                if (hasReturnValue)
+                {
+                    bldr.Build($"rtnValue = @{Method.Type.Type.Name}.@{Method.Name}(");
+                }
+                else
+                {
+                    bldr.Build($"@{Method.Type.Type.Name}.@{Method.Name}(");
+                }
+            }
+
+            bldr.In();
+            foreach (RpcParameterDeclaration param in Method.Parameters)
+            {
+                if (param.Index == byteDataRefArg)
+                {
+                    if (i == 1)
+                        bldr.String($"ref arg{byteDataRefArg}, // data is empty, would throw IOB.");
+                    else
+                        bldr.String("ref rawData[0],");
+                }
+                else if (param.Index == Method.Parameters.Count - 1)
+                    bldr.Build($"arg{param.Index}");
+                else
+                    bldr.Build($"arg{param.Index}, ");
+            }
+
+            bldr.Out()
+                .String(");")
+                .Empty();
+
+            if (byteDataRefArg < 0 || i == 1)
+                break;
+
+            bldr.Out()
+                .String("}")
+                .String("else")
+                .String("{").In();
+        }
+
+        if (byteDataRefArg >= 0)
+        {
+            bldr.Out().String("}");
+        }
+
+        if (isFixed)
+        {
+            bldr.Out()
+                .String("}");
+        }
+
+        if (Method.ReturnTypeAwaitableInfo.HasValue)
+        {
+            AwaitableInfo awaitableInfo = Method.ReturnTypeAwaitableInfo.Value;
+
+            switch (awaitableInfo.ConfigureAwaitMethodType)
+            {
+                case ConfigureAwaitMethodType.Void:
+                    bldr.Build($"rtnValue.ConfigureAwait(false);");
+                    bldr.Build($"{awaitableInfo.AwaiterType.GloballyQualifiedName} rtnAwaiter = rtnValue.GetAwaiter();");
+                    break;
+
+                case ConfigureAwaitMethodType.ReturnsAwaiterRef:
+                case ConfigureAwaitMethodType.ReturnsAwaiter:
+                    bldr.Build($"");
+                    bldr.Build($"{awaitableInfo.AwaiterType.GloballyQualifiedName} rtnAwaiter = rtnValue.ConfigureAwait(false).GetAwaiter();");
+                    break;
+
+                default:
+                    bldr.Build($"{awaitableInfo.AwaiterType.GloballyQualifiedName} rtnAwaiter = rtnValue.GetAwaiter();");
+                    break;
+            }
+
+            bldr.String("if (!rtnAwaiter.IsCompleted)")
+                .String("{").In()
+                    .Build($"_ = new {Info.ClosureTypeName}(overhead, router, serializer, rtnAwaiter);")
+                    .String("return;")
+                .Out()
+                .String("}")
+                .Empty();
+
+            GenerateContinuationBody(bldr, "overhead", "router", "serializer", "rtnAwaiter", "rtnAwaiterValue");
+        }
+        else
+        {
+            InvokeReturnValue(bldr, Method.ReturnType, "overhead", "router", "serializer", "rtnValue");
+        }
+
         return;
 
         static void Inject(RpcMethodDeclaration method, SourceStringBuilder bldr, RpcParameterDeclaration param, string baseInterface, string value, bool alreadyDefined = false)
@@ -323,6 +727,82 @@ internal readonly struct ReceiveMethodSnippetGenerator
                 else
                     bldr.Build($"arg{param.Index} = {value} == null ? new {param.Type.GloballyQualifiedName}() : new {param.Type.GloballyQualifiedName} {{ {value} }};");
             }
+        }
+    }
+
+    public void GenerateContinuationBody(SourceStringBuilder bldr, string overhead, string router, string serializer, string awaiter, string value = "rtnValue")
+    {
+        AwaitableInfo awaitInfo = Method.ReturnTypeAwaitableInfo!.Value;
+        TypeSymbolInfo rtnType = awaitInfo.AwaitReturnType;
+
+        bool hasReturnValue = rtnType.Info.Type != TypeSerializationInfoType.Void;
+        if (hasReturnValue)
+        {
+            bldr.Build($"{rtnType.GloballyQualifiedName} {value};");
+        }
+
+        bldr.String("try")
+            .String("{").In();
+
+        bldr.String(hasReturnValue ? $"{value} = {awaiter}.GetResult();" : $"{awaiter}.GetResult();");
+
+        bldr.Out()
+            .String("}")
+            .String("catch (global::System.Exception ex)")
+            .String("{").In()
+            .Build($"{router}.HandleInvokeException(ex, {overhead}, {serializer});")
+            .String("return;")
+            .Out()
+            .String("}")
+            .Empty()
+            .Build($"if (({overhead}.Flags & global::DanielWillett.ModularRpcs.Protocol.RpcFlags.FireAndForget) != 0)")
+            .In().String("return;").Out()
+            .Empty();
+
+        InvokeReturnValue(bldr, rtnType, overhead, router, serializer, value);
+    }
+
+    private static void InvokeReturnValue(SourceStringBuilder bldr, TypeSymbolInfo rtnType, string overhead, string router, string serializer, string value)
+    {
+        TypeSerializationInfo rtnTypeInfo = rtnType.Info;
+        switch (rtnTypeInfo.Type)
+        {
+            case TypeSerializationInfoType.Void:
+                bldr.Build($"{router}.HandleInvokeVoidReturn({overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.PrimitiveLike:
+            case TypeSerializationInfoType.Value:
+                bldr.Build($"{router}.HandleInvokeReturnValue<{rtnType.GloballyQualifiedName}>({value}, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.NullableValue:
+                bldr.Build($"{router}.HandleInvokeNullableReturnValue<{rtnTypeInfo.UnderlyingType.GloballyQualifiedName}>({value}, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.SerializableValue:
+                bldr.Build($"{router}.HandleInvokeSerializableReturnValue<{rtnTypeInfo.SerializableType.GloballyQualifiedName}>({value}, null, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.SerializableCollection:
+                bldr.Build($"{router}.HandleInvokeSerializableReturnValue<{rtnTypeInfo.SerializableType.GloballyQualifiedName}>(default, {value} == null ? global::System.DBNull.Value : {value}, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.NullableSerializableValue:
+                bldr.Build($"{router}.HandleInvokeNullableSerializableReturnValue<{rtnTypeInfo.UnderlyingType.GloballyQualifiedName}>({value}, null, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.NullableSerializableCollection:
+                bldr.Build($"{router}.HandleInvokeNullableSerializableReturnValue<{rtnTypeInfo.UnderlyingType.GloballyQualifiedName}>(null, {value} == null ? global::System.DBNull.Value : {value}, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.NullableCollectionSerializableCollection:
+                bldr.Build($"{router}.HandleInvokeSerializableReturnValue<{rtnTypeInfo.SerializableType.GloballyQualifiedName}>(default({rtnTypeInfo.SerializableType.GloballyQualifiedName}), !{value}.HasValue ? global::System.DBNull.Value : {value}.Value, {overhead}, {serializer});");
+                break;
+
+            case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
+                bldr.Build($"{router}.HandleInvokeNullableSerializableReturnValue<{rtnTypeInfo.UnderlyingType.GloballyQualifiedName}>(null, !{value}.HasValue ? global::System.DBNull.Value : {value}.Value, {overhead}, {serializer});");
+                break;
         }
     }
 
@@ -394,7 +874,14 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                 bldr.Build($"if ((nint){bufferName} % 8 == 0)");
                             else
                                 bldr.Build($"if ((nint){bufferName} % sizeof({symbolInfo.GloballyQualifiedName}) == 0)");
-                            bldr.In().Build($"{valueVar} = *({symbolInfo.GloballyQualifiedName}*){bufferName};").Out()
+                            bldr.String("{").In()
+                                    .Build($"{valueVar} = *({symbolInfo.GloballyQualifiedName}*){bufferName};");
+                            if (idPrimType is TypeHelper.PrimitiveLikeType.IntPtr or TypeHelper.PrimitiveLikeType.UIntPtr)
+                                bldr.Build($"{offsetVar} += 8u;");
+                            else
+                                bldr.Build($"{offsetVar} += sizeof({symbolInfo.GloballyQualifiedName});");
+                            bldr.Out()
+                                .String("}")
                                 .String("else")
                                 .String("{").In();
 
@@ -429,8 +916,16 @@ internal readonly struct ReceiveMethodSnippetGenerator
 
                                 case TypeHelper.PrimitiveLikeType.Int64:
                                 case TypeHelper.PrimitiveLikeType.UInt64:
-                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
-                                        .Build($"{offsetVar} += 8u;");
+                                    if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
+                                    {
+                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32) );")
+                                            .Build($"{offsetVar} += 8u;");
+                                    }
+                                    else
+                                    {
+                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                            .Build($"{offsetVar} += 8u;");
+                                    }
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.IntPtr:
@@ -455,7 +950,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
                                             .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
-                                            .Build($"{valueVar} = (nint){valueVar}Num;");
+                                            .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nint")}){valueVar}Num;");
                                     }
 
                                     bldr.Build($"{offsetVar} += 8u;");
@@ -465,15 +960,19 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     
                                     if (canUseNativeIntArithmitic)
                                     {
-                                        bldr.String("if (global::System.IntPtr.Size == 8)").In()
-                                                .Build($"{valueVar} = unchecked ( (nuint)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (nuint)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );").Out()
-                                            .String("else")
+                                        bldr.String("if (global::System.IntPtr.Size == 8)").In();
+                                        if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
+                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})((nuint)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32) );").Out();
+                                        else
+                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (nuint)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );").Out();
+                                        
+                                        bldr.String("else")
                                             .String("{").In()
                                                 .Build($"long {valueVar}Num = unchecked ( (ulong)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (ulong)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {uint.MaxValue})")
                                                 .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
-                                                .Build($"{valueVar} = (nuint){valueVar}Num;")
+                                                .Build($"{valueVar} = ({symbolInfo.GloballyQualifiedName}){valueVar}Num;")
                                                 .Out()
                                             .String("}");
                                     }
@@ -483,7 +982,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {uint.MaxValue})")
                                             .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
-                                            .Build($"{valueVar} = (nuint){valueVar}Num;");
+                                            .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nuint")}){valueVar}Num;");
                                     }
 
                                     bldr.Build($"{offsetVar} += 8u;");
@@ -616,12 +1115,17 @@ internal readonly struct ReceiveMethodSnippetGenerator
     }
 }
 
-internal struct ReceiveMethodInfo
+internal class ReceiveMethodInfo
 {
     public RpcMethodDeclaration Method;
     public int Overload;
     public string ReceiveMethodNameStream;
     public string ReceiveMethodNameBytes;
+    public string? ClosureTypeName;
+    public string? DelegateName;
+    public DelegateType? DelegateType;
+    public bool IsDuplicateClosure;
+    public bool IsDuplicateDelegateType;
 
     public ReceiveMethodInfo(RpcMethodDeclaration method, int overload)
     {

@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
@@ -32,6 +31,7 @@ internal readonly struct ClassSnippetGenerator
 
         const string receiveInvokeNamePrefix = "ModularRpcsGeneratedInvoke";
         const string callMethodInfoFieldPrefix = "_modularRpcsGeneratedCallMethodInfo";
+        const string generatedClosureTypePrefix = "__ModularRpcsGeneratedClosure";
 
         SourceStringBuilder bldr = new SourceStringBuilder(2048, CultureInfo.InvariantCulture);
 
@@ -49,6 +49,7 @@ internal readonly struct ClassSnippetGenerator
 
         int overload = 0;
         string? last = null;
+        int closures = -1;
         for (int i = 0; i < recvMethods.Count; i++)
         {
             ReceiveMethodInfo info = recvMethods[i];
@@ -58,9 +59,50 @@ internal readonly struct ClassSnippetGenerator
                 ++overload;
 
             info.Overload = overload;
-            info.ReceiveMethodNameBytes = $"{receiveInvokeNamePrefix}{info.Method.Name}Ovl{info.Overload}Bytes";
-            info.ReceiveMethodNameStream = $"{receiveInvokeNamePrefix}{info.Method.Name}Ovl{info.Overload}Stream";
-            recvMethods[i] = info;
+            object overloadBox = info.Overload;
+            info.ReceiveMethodNameBytes = $"{receiveInvokeNamePrefix}{info.Method.Name}Ovl{overloadBox}Bytes";
+            info.ReceiveMethodNameStream = $"{receiveInvokeNamePrefix}{info.Method.Name}Ovl{overloadBox}Stream";
+
+            if (info.Method.DelegateType.Predefined == PredefinedDelegateType.None)
+            {
+                for (int j = 0; j < i; ++j)
+                {
+                    ReceiveMethodInfo otherInfo = recvMethods[j];
+                    if (!otherInfo.Method.DelegateType.Equals(info.Method.DelegateType))
+                        continue;
+
+                    info.DelegateName = otherInfo.DelegateName;
+                    info.DelegateType = otherInfo.DelegateType;
+                    info.IsDuplicateDelegateType = true;
+                    break;
+                }
+
+                if (info.DelegateType == null)
+                {
+                    info.DelegateName = string.Format(info.Method.DelegateType.Name, overloadBox);
+                    info.DelegateType = info.Method.DelegateType;
+                }
+            }
+
+            if (info.Method.ReturnTypeAwaitableInfo.HasValue)
+            {
+                TypeSymbolInfo awaiterType = info.Method.ReturnTypeAwaitableInfo.Value.AwaiterType;
+                string? existing = null;
+                for (int j = 0; j < i; ++j)
+                {
+                    ReceiveMethodInfo otherInfo = recvMethods[j];
+                    if (otherInfo.ClosureTypeName == null || !otherInfo.Method.ReturnTypeAwaitableInfo!.Value.AwaiterType.Equals(awaiterType))
+                        continue;
+
+                    existing = otherInfo.ClosureTypeName;
+                    break;
+                }
+
+                info.ClosureTypeName = existing ?? $"{generatedClosureTypePrefix}_{++closures}";
+                info.IsDuplicateClosure = existing != null;
+            }
+            
+            last = info.Method.Name;
         }
 
         overload = 0;
@@ -73,16 +115,73 @@ internal readonly struct ClassSnippetGenerator
             else
                 ++overload;
 
+            object overloadBox = overload;
+
+            if (info.Method.DelegateType.Predefined == PredefinedDelegateType.None)
+            {
+                for (int j = 0; j < recvMethods.Count; ++j)
+                {
+                    ReceiveMethodInfo otherInfo = recvMethods[j];
+                    if (!otherInfo.Method.DelegateType.Equals(info.Method.DelegateType))
+                        continue;
+
+                    info.DelegateName = otherInfo.DelegateName;
+                    info.DelegateType = otherInfo.DelegateType;
+                    info.IsDuplicateDelegateType = true;
+                    break;
+                }
+
+                if (info.DelegateType == null)
+                {
+                    for (int j = 0; j < i; ++j)
+                    {
+                        SendMethodInfo otherInfo = sendMethods[j];
+                        if (!otherInfo.Method.DelegateType.Equals(info.Method.DelegateType))
+                            continue;
+
+                        info.DelegateName = otherInfo.DelegateName;
+                        info.DelegateType = otherInfo.DelegateType;
+                        info.IsDuplicateDelegateType = true;
+                        break;
+                    }
+
+                    if (info.DelegateType == null)
+                    {
+                        info.DelegateName = string.Format(info.Method.DelegateType.Name, overloadBox);
+                        info.DelegateType = info.Method.DelegateType;
+                    }
+                }
+            }
+
             info.Overload = overload;
-            info.MethodInfoFieldName = $"{callMethodInfoFieldPrefix}{info.Method.Name}Ovl{overload.ToString(CultureInfo.InvariantCulture)}";
-            sendMethods[i] = info;
+            info.MethodInfoFieldName = $"{callMethodInfoFieldPrefix}{info.Method.Name}Ovl{overloadBox}";
+            last = info.Method.Name;
         }
 
-        // namespace {
         bldr.String("// <auto-generated/>")
-            .Preprocessor("#nullable disable")
-            .Build($"{Class.Type.NamespaceDeclaration}")
-            .String("{").In();
+            .Preprocessor("#nullable disable");
+        if (Class.Type.Namespace != null)
+        {
+            bldr.Build($"namespace {Class.Type.Namespace}")
+                .String("{").In();
+        }
+
+        if (Class.NestedParents is not null)
+        {
+            foreach (string def in Class.NestedParents)
+            {
+                bldr.Build($"partial {def}")
+                    .String("{").In();
+            }
+        }
+
+        string idVarMe = Class is { IdType: not null, IdIsExplicit: true }
+            ? $"((global::DanielWillett.ModularRpcs.Protocol.IRpcObject<{Class.IdType.GloballyQualifiedName}>)me).Identifier"
+            : "me.Identifier";
+
+        string idVarThis = Class is { IdType: not null, IdIsExplicit: true }
+            ? $"((global::DanielWillett.ModularRpcs.Protocol.IRpcObject<{Class.IdType.GloballyQualifiedName}>)this).Identifier"
+            : "this.Identifier";
 
         // class attributes
         bldr.String("[global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyTypeAttribute(");
@@ -115,17 +214,34 @@ internal readonly struct ClassSnippetGenerator
                 .String("void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(").In()
                     .String("in global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)").Out()
                 .String("{").In()
-                    .Build($"info.Router.GetDefaultProxyContext(typeof(@{Class.Type.Name}), out this.__modularRpcsGeneratedProxyContext);").Out()
+                    .Build($"info.Router.GetDefaultProxyContext(typeof(@{Class.Type.Name}), out this.__modularRpcsGeneratedProxyContext);");
+
+        if (Class.IdType != null)
+        {
+            if (Class.IdType.IsNullable)
+            {
+                bldr.Empty()
+                    .Build($"if (!{idVarThis}.HasValue)")
+                    .In().String($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcObjectInitializationException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxInstanceIdDefaultValue, \"{TypeHelper.Escape(Class.Type.FullyQualifiedName)}\", \"IRpcObject<{TypeHelper.Escape(Class.IdType.FullyQualifiedName)}>\"));").Out();
+            }
+            else if (!Class.IdType.IsValueType)
+            {
+                bldr.Empty()
+                    .Build($"if ({idVarThis} == null)")
+                    .In().String($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcObjectInitializationException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxInstanceIdDefaultValue, \"{TypeHelper.Escape(Class.Type.FullyQualifiedName)}\", \"IRpcObject<{TypeHelper.Escape(Class.IdType.FullyQualifiedName)}>\"));").Out();
+            }
+
+            bldr.Empty()
+                .Build($"if (!__modularRpcsGeneratedInstances.TryAdd({idVarThis}{(Class.IdType.IsNullable ? ".Value" : string.Empty)}, new global::System.WeakReference(this)))")
+                .In().String($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcObjectInitializationException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxInstanceWithThisIdAlreadyExists, \"{TypeHelper.Escape(Class.Type.FullyQualifiedName)}\", \"IRpcObject<{TypeHelper.Escape(Class.IdType.FullyQualifiedName)}>\"));").Out();
+        }
+
+        bldr    .Out()
                 .String("}")
                 .Empty();
 
         // static init method
 
-        if (sendMethods.Count == 0 && recvMethods.Count == 0)
-        {
-            bldr.Preprocessor("#if NET7_0_OR_GREATER");
-        }
-        
         bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
             .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
             .Preprocessor("#if NET7_0_OR_GREATER")
@@ -136,6 +252,14 @@ internal readonly struct ClassSnippetGenerator
             .String("static unsafe void __ModularRpcsGeneratedSetupStaticGeneratedProxy(").In()
                 .String("global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder state)").Out()
             .String("{").In();
+
+        if (Class.IdType != null)
+        {
+            bldr.Build($"state.AddGetObjectFunction(typeof(@{Class.Type.Name}), new global::System.Func<object, global::System.WeakReference>(__ModularRpcsGeneratedGetObject));");
+            bldr.Build($"state.AddReleaseObjectFunction(typeof(@{Class.Type.Name}), new global::System.Func<object, bool>(__ModularRpcsGeneratedReleaseObject));");
+        }
+
+        bldr.Build($"state.AddGetOverheadSizeFunction(typeof(@{Class.Type.Name}), new global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.GetOverheadSize(__ModularRpcsGeneratedGetOverheadSize));");
 
         foreach (SendMethodInfo method in sendMethods)
         {
@@ -161,20 +285,7 @@ internal readonly struct ClassSnippetGenerator
             {
                 bldr.Empty()
                     .Build($"// Register {method.Method.Name}")
-                    .Build($"workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<{Class.Type.GloballyQualifiedName}>>(").In()
-                    .Build($"@{Class.Type.Name} => @{Class.Type.Name}.@{method.Method.Name}(").In();
-
-                bool needsComma = false;
-                foreach (RpcParameterDeclaration parameter in method.Method.Parameters)
-                {
-                    string comma = needsComma ? ", " : string.Empty;
-                    bldr.Build($"{comma}default({parameter.Type.GloballyQualifiedName})");
-                    needsComma = true;
-                }
-
-                bldr.Out()
-                    .String(")").Out()
-                    .String(").MethodHandle;");
+                    .Build($"workingHandle = {(method.DelegateType ?? method.Method.DelegateType).GetMethodByExpressionString(method.Method, Class.Type.Name, method.DelegateName)}.MethodHandle;");
 
                 bldr.String("state.AddReceiveMethod(").In()
                         .String("workingHandle,")
@@ -209,10 +320,153 @@ internal readonly struct ClassSnippetGenerator
         bldr.Out()
             .String("}");
 
-        if (sendMethods.Count == 0 && recvMethods.Count == 0)
+        if (Class.IdType != null)
         {
-            bldr.Preprocessor("#endif");
+            string idType = Class.IdType.Info.Type switch
+            {
+                TypeSerializationInfoType.NullableValue or TypeSerializationInfoType.NullableSerializableValue
+                    => Class.IdType.Info.UnderlyingType.GloballyQualifiedName,
+                _ => Class.IdType.GloballyQualifiedName
+            };
+
+            bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                .Build($"private static unsafe readonly global::System.Collections.Concurrent.ConcurrentDictionary<{idType}, global::System.WeakReference> __modularRpcsGeneratedInstances")
+                .In().Build($"= new global::System.Collections.Concurrent.ConcurrentDictionary<{idType}, global::System.WeakReference>();").Out()
+                .Empty()
+                .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                .Build($"private unsafe int __modularRpcsSuppressFinalize;")
+                .Empty()
+                .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                .String("private static unsafe global::System.WeakReference __ModularRpcsGeneratedGetObject(object id)")
+                .String("{").In()
+                    
+                    .Build($"{idType} idType = ({idType})id;")
+                    .String("__modularRpcsGeneratedInstances.TryGetValue(idType, out global::System.WeakReference outRef);")
+                    .String("return outRef;")
+                
+                .Out()
+                .String("}")
+                .Empty()
+                .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                .String("private static unsafe bool __ModularRpcsGeneratedReleaseObject(object obj)")
+                .String("{").In()
+                    
+                    .Build($"@{Class.Type.Name} me = (@{Class.Type.Name})obj;")
+                    .String("if (global::System.Threading.Interlocked.Exchange(ref me.__modularRpcsSuppressFinalize, 1) != 0)")
+                    .In().String("return false;").Out()
+                    .Empty();
+
+            if (Class.HasReleaseMethod)
+            {
+                bldr.String("try")
+                    .String("{").In()
+                    .String("me.Release();")
+                    .Out()
+                    .String("}")
+                    .String("catch")
+                    .String("{").In()
+                    .String("me.__modularRpcsSuppressFinalize = 0;")
+                    .String("throw;")
+                    .Out()
+                    .String("}");
+            }
+
+            bldr    .Build($"return __modularRpcsGeneratedInstances.TryRemove({idVarMe}, out _);")
+                
+                .Out()
+                .String("}")
+                .Empty();
+            
+            for (int i = 0; !(i == 1 && !Class.IsUnityType || i > 1); ++i)
+            {
+                bldr.String("// Use DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject to implement your own finalizer.");
+
+                if (i == 1)
+                {
+                    bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                        .Build($"protected virtual void OnDestroy()");
+                }
+                else
+                {
+                    bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                        .Build($"~@{Class.Type.Name}()");
+                }
+
+                bldr.String("{").In();
+                        
+                if (Class.HasExplicitFinalizer)
+                {
+                    bldr.String("try")
+                        .String("{").In();
+                }
+
+                bldr.String("if (global::System.Threading.Interlocked.Exchange(ref this.__modularRpcsSuppressFinalize, 1) == 0)")
+                    .In().Build($"__modularRpcsGeneratedInstances.TryRemove({idVarThis}, out _);").Out(); 
+
+                if (Class.HasExplicitFinalizer)
+                {
+                        
+                    bldr.Out()
+                        .String("}")
+                        .String("finally")
+                        .String("{").In();
+
+                    string src = i == 1
+                        ? "global::DanielWillett.ModularRpcs.Protocol.ExplicitFinalizerSource.OnDestroy"
+                        : "global::DanielWillett.ModularRpcs.Protocol.ExplicitFinalizerSource.Finalizer";
+
+                    if (Class.IsExplicitFinalizerExplicit)
+                        bldr.Build($"((global::DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject)this).OnFinalizing({src});");
+                    else
+                        bldr.Build($"this.OnFinalizing({src});");
+
+                    bldr.Out()
+                        .String("}");
+                }
+                
+                bldr.Out()
+                    .String("}");
+            }
+
         }
+
+        bldr.String("private static int __ModularRpcsGeneratedGetOverheadSize(object obj, global::System.RuntimeMethodHandle handle, ref global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo callInfo, out int sizeWithoutId)")
+            .String("{").In()
+
+            .Build($"@{Class.Type.Name} me = (@{Class.Type.Name})obj;")
+            .String("global::DanielWillett.ModularRpcs.Serialization.IRpcSerializer serializer = me.__modularRpcsGeneratedProxyContext.DefaultSerializer;")
+            .String("uint overheadSize = me.__modularRpcsGeneratedProxyContext.Router.GetOverheadSize(handle, ref callInfo);")
+            .String("sizeWithoutId = checked ( (int)overheadSize );")
+            .Empty()
+            .String("uint idTypeSize;")
+            .String("uint idSize;")
+            .Empty();
+
+        SendMethodSnippetGenerator.GenerateGetIdSize(
+                bldr,
+                Class,
+                out _,
+                "idTypeSize",
+                "idSize",
+                "serializer",
+                null,
+                "_",
+                "serializer.CanFastReadPrimitives",
+                "overheadSize",
+                out _,
+                "me"
+            );
+
+
+        bldr.Empty()
+            .String("return checked ( (int)(overheadSize + idTypeSize) );")
+
+            .Out()
+            .String("}");
 
         bldr.String("#endregion")
             .Empty();
@@ -226,28 +480,10 @@ internal readonly struct ClassSnippetGenerator
             bldr.Empty()
                 .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .Build($"private static global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo {method.MethodInfoFieldName}").In()
+                .Build($"private static {(method.Method.NeedsUnsafe ? "unsafe " : string.Empty)}global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo {method.MethodInfoFieldName}").In()
                     .String("= new global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo()")
                     .String("{").In()
-                        .Build($"MethodHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<{Class.Type.GloballyQualifiedName}>>(").In()
-                            .Build($"@{Class.Type.Name} => @{Class.Type.Name}.@{method.Method.Name}({(method.Method.Parameters.Count == 0 ? ")" : string.Empty)}");
-
-            if (method.Method.Parameters.Count > 0)
-            {
-                bool needsComma = false;
-                foreach (RpcParameterDeclaration parameter in method.Method.Parameters)
-                {
-                    string comma = needsComma ? ", " : string.Empty;
-                    bldr.Build($"{comma}default({parameter.Type.GloballyQualifiedName})");
-                    needsComma = true;
-                }
-
-                bldr.Out()
-                    .String(")");
-            }
-
-            bldr.Out()
-                .String(").MethodHandle,")
+                        .Build($"MethodHandle = {(method.DelegateType ?? method.Method.DelegateType).GetMethodByExpressionString(method.Method, Class.Type.Name, method.DelegateName)}.MethodHandle,")
                 .Build($"IsFireAndForget = {(method.Method.IsFireAndForget ? "true" : "false")},")
                 .Build($"SignatureHash = {method.Method.SignatureHash},")
                 .Build($"HasIdentifier = {(Class.IdType == null ? "false" : "true")},");
@@ -284,7 +520,8 @@ internal readonly struct ClassSnippetGenerator
                     .String("OwnerMethodInfo = null").Out()
                 .String("}")
                 .Out()
-                .String("};");
+                .String("};")
+                .Out();
 
             bldr.Empty()
                 .String("/// <summary>")
@@ -293,7 +530,7 @@ internal readonly struct ClassSnippetGenerator
                 .String("/// <remarks>This method is responsible for triggering the initial RPC invocation.</remarks>")
                 .Empty();
 
-            bldr.Build($"{method.Method.Definition}")
+            bldr.Build($"{(method.Method.NeedsUnsafe ? "unsafe " : string.Empty)}{method.Method.Definition}")
                 .String("{").In();
 
             new SendMethodSnippetGenerator(Context, Compilation, method)
@@ -326,14 +563,24 @@ internal readonly struct ClassSnippetGenerator
                     .String("object targetObject,")
                     .String("global::DanielWillett.ModularRpcs.Protocol.RpcOverhead overhead,")
                     .String("global::DanielWillett.ModularRpcs.Routing.IRpcRouter router,")
-                    .String("global::DanielWillett.ModularRpcs.Serialization.IRpcSerializer serializer,")
-                    .String("byte* bytes,")
-                    .String("uint maxSize,")
-                    .String("global::System.Threading.CancellationToken token)").Out()
+                    .String("global::DanielWillett.ModularRpcs.Serialization.IRpcSerializer serializer,");
+
+            if (method.Method.Target.Raw)
+            {
+                bldr.String("global::System.ReadOnlyMemory<byte> rawData,")
+                    .String("bool canTakeOwnership,");
+            }
+            else
+            {
+                bldr.String("byte* bytes,")
+                    .String("uint maxSize,");
+            }
+            
+            bldr.String("global::System.Threading.CancellationToken token)").Out()
                 .String("{").In();
 
-            new ReceiveMethodSnippetGenerator(Context, Compilation, method)
-                .GenerateMethodBodySnippet(bldr, stream: false);
+            ReceiveMethodSnippetGenerator generator = new ReceiveMethodSnippetGenerator(Context, Compilation, method);
+            generator.GenerateMethodBodySnippet(bldr, stream: false);
 
             bldr.Out()
                 .String("}");
@@ -357,19 +604,93 @@ internal readonly struct ClassSnippetGenerator
                     .String("global::System.Threading.CancellationToken token)").Out()
                 .String("{").In();
 
-            new ReceiveMethodSnippetGenerator(Context, Compilation, method)
-                .GenerateMethodBodySnippet(bldr, stream: true);
+            generator.GenerateMethodBodySnippet(bldr, stream: true);
 
             bldr.Out()
                 .String("}")
                 .Empty();
+
+            if (method.ClosureTypeName == null || method.IsDuplicateClosure)
+                continue;
+
+            AwaitableInfo awaitableInfo = method.Method.ReturnTypeAwaitableInfo!.Value;
+
+            bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                .Build($"private sealed class {method.ClosureTypeName} : DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GeneratedClosure")
+                .String("{").In()
+                    .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .Build($"private {awaitableInfo.AwaiterType.GloballyQualifiedName} _awaiter;")
+                    .Empty()
+                    .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .Build($"public {method.ClosureTypeName}(global::DanielWillett.ModularRpcs.Protocol.RpcOverhead overhead, global::DanielWillett.ModularRpcs.Routing.IRpcRouter router, global::DanielWillett.ModularRpcs.Serialization.IRpcSerializer serializer, {awaitableInfo.AwaiterType.GloballyQualifiedName} awaiter)")
+                    .In().String(": base(overhead, router, serializer)").Out()
+                    .String("{").In()
+                        .String("this._awaiter = awaiter;");
+
+            if (awaitableInfo.CriticalOnCompleted)
+            {
+                bldr.String(awaitableInfo.OnCompletedIsExplicit
+                    ? "((global::System.Runtime.CompilerServices.ICriticalNotifyCompletion)this._awaiter).UnsafeOnCompleted(new global::System.Action(Continuation));"
+                    : "this._awaiter.UnsafeOnCompleted(new global::System.Action(Continuation));");
+            }
+            else
+            {
+                bldr.String(awaitableInfo.OnCompletedIsExplicit
+                    ? "((global::System.Runtime.CompilerServices.INotifyCompletion)this._awaiter).OnCompleted(new global::System.Action(Continuation));"
+                    : "this._awaiter.OnCompleted(new global::System.Action(Continuation));");
+            }
+
+            bldr.Out()
+                    .String("}")
+                    .Empty()
+                    .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .String("private void Continuation()")
+                    .String("{").In();
+
+            generator.GenerateContinuationBody(bldr, "this.Overhead", "this.Router", "this.Serializer", "this._awaiter");
+
+            bldr.Out()
+                    .String("}")
+                    .Out()
+                .String("}");
         }
-        bldr.String("#endregion").Out();
+        bldr.String("#endregion");
+        
+        foreach (ReceiveMethodInfo method in recvMethods)
+        {
+            if (method.DelegateType == null || method.IsDuplicateDelegateType)
+                continue;
 
-        bldr.String("}").Out()
-            .String("}")
-            .String("#nullable restore");
+            method.DelegateType.WriteDefinition(bldr, Accessibility.Private, method.DelegateName!);
+        }
+        foreach (SendMethodInfo method in sendMethods)
+        {
+            if (method.DelegateType == null || method.IsDuplicateDelegateType)
+                continue;
 
-        Context.AddSource(Class.Type.FileName, SourceText.From(bldr.ToString(), Encoding.UTF8));
+            method.DelegateType.WriteDefinition(bldr, Accessibility.Private, method.DelegateName!);
+        }
+
+        bldr.Out()
+            .String("}");
+
+        if (Class.NestedParents is not null)
+        {
+            foreach (string _ in Class.NestedParents)
+            {
+                bldr.Out().String("}");
+            }
+        }
+
+        if (Class.Type.Namespace != null)
+        {
+            bldr.Out()
+                .String("}");
+        }
+
+        bldr.Preprocessor("#nullable restore");
+
+        Context.AddSource(Class.Type.FullyQualifiedName, SourceText.From(bldr.ToString(), Encoding.UTF8));
     }
 }

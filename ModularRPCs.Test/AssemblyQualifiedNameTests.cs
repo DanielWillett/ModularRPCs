@@ -8,7 +8,11 @@ namespace ModularRPCs.Test
 {
     internal unsafe class AssemblyQualifiedNameTests
     {
-        private const int OptionCt = 12;
+#if NET7_0_OR_GREATER
+        private const int OptionCt = 14;
+#else
+        private const int OptionCt = 16;
+#endif
 
         // ReSharper disable once UseCollectionExpression
         // ReSharper disable once RedundantExplicitArraySize
@@ -25,6 +29,14 @@ namespace ModularRPCs.Test
             typeof(Generic<AssemblyQualifiedNameTests, int, ValueTuple<ushort, short>>.NestedGeneric<Version>),
             typeof(Generic<AssemblyQualifiedNameTests, int, ValueTuple<ushort, short>>.NestedGeneric<Version>.DoubleNestedGeneric<string>),
             typeof(Struct.Nested),
+            typeof(int[][]),
+            typeof(int[][,]),
+            typeof(int[,][]),
+            typeof(int*[,][]),
+#if NET7_0_OR_GREATER
+            typeof(int[,]*[]),
+            typeof(int[,][]*),
+#endif
             typeof(Struct.NestedGeneric<Version>)
         };
 
@@ -32,6 +44,42 @@ namespace ModularRPCs.Test
         public void AsmQualifiedNameNoVersion([Range(0, OptionCt - 1)] int num)
         {
             Type expected = Options[num];
+            string name = TypeUtility.GetAssemblyQualifiedNameNoVersion(expected);
+
+            Console.WriteLine($"Generated: \"{name}\".");
+            Console.WriteLine($"Expected:  \"{expected.AssemblyQualifiedName}\".");
+
+            Type foundType = Type.GetType(name, ignoreCase: true, throwOnError: true);
+
+            Assert.That(foundType, Is.EqualTo(expected));
+
+            Assert.That(foundType, Is.Not.Null);
+            Assert.That(foundType, Is.EqualTo(expected));
+            Assert.That(TypeUtility.GetAssemblyQualifiedNameNoVersion(foundType), Is.EqualTo(name));
+        }
+
+        [Test]
+        public void AsmQualifiedNameNoVersionLowerBoundedArrayLen1()
+        {
+            Type expected = Array.CreateInstance(typeof(int), new int[] { 1 }, new int[] { 1 }).GetType();
+            string name = TypeUtility.GetAssemblyQualifiedNameNoVersion(expected);
+
+            Console.WriteLine($"Generated: \"{name}\".");
+            Console.WriteLine($"Expected:  \"{expected.AssemblyQualifiedName}\".");
+
+            Type foundType = Type.GetType(name, ignoreCase: true, throwOnError: true);
+
+            Assert.That(foundType, Is.EqualTo(expected));
+
+            Assert.That(foundType, Is.Not.Null);
+            Assert.That(foundType, Is.EqualTo(expected));
+            Assert.That(TypeUtility.GetAssemblyQualifiedNameNoVersion(foundType), Is.EqualTo(name));
+        }
+
+        [Test]
+        public void AsmQualifiedNameNoVersionLowerBoundedArrayLenMore()
+        {
+            Type expected = Array.CreateInstance(typeof(int), new int[] { 1, 2, 3 }, new int[] { 1, 2, 3 }).GetType();
             string name = TypeUtility.GetAssemblyQualifiedNameNoVersion(expected);
 
             Console.WriteLine($"Generated: \"{name}\".");

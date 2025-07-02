@@ -76,8 +76,6 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                     ClassError error = ClassError.None;
                     if (symbol.IsStatic)
                         error = ClassError.Static;
-                    else if (symbol.ContainingType != null)
-                        error = ClassError.Nested;
                     else if (!symbol.CanBeReferencedByName)
                         error = ClassError.Invalid;
                     else if (symbol.IsValueType)
@@ -100,14 +98,38 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                     bool explicitMulti = multiConnectionInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcMultipleConnectionsObject.Connections));
 
                     bool isUnityType = false;
+                    bool hasReleaseMethod = false;
+                    int hasExplicitFinalizer = 0;
 
-                    for (ITypeSymbol? baseType = symbol.BaseType; baseType != null; baseType = baseType.BaseType)
+                    for (ITypeSymbol? baseType = symbol; baseType != null; baseType = baseType.BaseType)
                     {
-                        if (baseType.IsEqualTo("global::UnityEngine.MonoBehaviour, UnityEngine.CoreModule"))
+                        if (!ReferenceEquals(baseType, symbol) && baseType.IsEqualTo("global::UnityEngine.MonoBehaviour, UnityEngine.CoreModule"))
                         {
                             isUnityType = true;
-                            break;
                         }
+
+                        if (hasExplicitFinalizer == 0 && idType != null)
+                        {
+                            INamedTypeSymbol? explicitFinalizerInterface = baseType.AllInterfaces.FirstOrDefault(x =>
+                                !x.IsGenericType && x.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject")
+                            );
+
+                            if (explicitFinalizerInterface != null)
+                            {
+                                hasExplicitFinalizer = 1 + (explicitFinalizerInterface.IsExplicitlyImplemented<IMethodSymbol>(symbol, "OnFinalizing") ? 1 : 0); // todo: nameof
+                            }
+                        }
+
+                        if (hasReleaseMethod || idType == null)
+                            continue;
+
+                        IMethodSymbol? method = baseType
+                            .GetMembers("Release")
+                            .OfType<IMethodSymbol>()
+                            .FirstOrDefault(x => x.Parameters.Length == 0 && !x.IsStatic && !x.HasAttribute("global::DanielWillett.ReflectionTools.IgnoreAttribute"));
+                        
+                        if (method != null)
+                            hasReleaseMethod = true;
                     }
 
                     return (
@@ -125,7 +147,11 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                             IsSingleConnectionObject = singleConnectionInterface != null, 
                             IsSingleConnectionExplicit = explicitSingle,
                             IsMultipleConnectionObject = multiConnectionInterface != null,
-                            IsMultipleConnectionExplicit = explicitMulti
+                            IsMultipleConnectionExplicit = explicitMulti, 
+                            NestedParents = symbol.ContainingType == null ? null : GetNestedParents(symbol),
+                            HasReleaseMethod = hasReleaseMethod,
+                            HasExplicitFinalizer = hasExplicitFinalizer > 0,
+                            IsExplicitFinalizerExplicit = hasExplicitFinalizer == 2
                         }
                     );
                 })
@@ -149,6 +175,18 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
         {
             new ClassSnippetGenerator(n, (CSharpCompilation)c.Compilation, c.Declaration, c.Methods).GenerateClassSnippet();
         });
+    }
+
+    private static EquatableList<string> GetNestedParents(INamedTypeSymbol symbol)
+    {
+        EquatableList<string> list = new EquatableList<string>();
+        for (INamedTypeSymbol? containingType = symbol.ContainingType; containingType != null; containingType = containingType.ContainingType)
+        {
+            list.Add(containingType.ToDisplayString(CustomFormats.TypeDeclarationFormat));
+        }
+
+        list.Reverse();
+        return list;
     }
 
     private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, (INamedTypeSymbol Symbol, RpcClassDeclaration Declaration) info, CancellationToken token)
@@ -188,9 +226,9 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                     IsManualInjected = arg.GetAttributes().Any(
                         x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcInjectAttribute")
                     ),
-                    PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(arg.Type),
                     Definition = arg.ToDisplayString(CustomFormats.MethodDeclarationFormat),
-                    RefKind = arg.RefKind
+                    RefKind = arg.RefKind,
+                    RawInjectType = ParameterHelper.GetRawByteInjectType(arg)
                 };
             }).Where(x => x != null));
 
@@ -218,12 +256,15 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 XmlDocs = CustomFormats.GetXmlDocReference(method),
                 DisplayString = method.ToDisplayString(CustomFormats.MethodDisplayFormat),
                 Parameters = parameters,
-                ReturnType = new TypeSymbolInfo(compilation, method.ReturnType),
+                ReturnType = new TypeSymbolInfo(compilation, method.ReturnType, createInfo: true),
                 IsFireAndForget = isFireAndForget,
                 IsBroadcast = isBroadcast,
                 SignatureHash = ParameterHelper.GetMethodSignatureHash(compilation, method, parameters),
                 ForceSignatureCheck = method.HasAttribute("global::DanielWillett.ModularRpcs.Annotations.RpcForceSignatureCheckAttribute"),
-                Timeout = GetTimeout(method)
+                Timeout = GetTimeout(method),
+                ReturnTypeAwaitableInfo = attribute is RpcReceiveAttribute ? ParameterHelper.GetAwaitableInfo(compilation, method.ReturnType) : null,
+                NeedsUnsafe = method.Parameters.Any(x => x.Type.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer),
+                DelegateType = new DelegateType(method)
             };
         }
     }
@@ -400,16 +441,15 @@ internal enum RpcAttributeType
     RpcTimeout
 }
 
-internal enum ClassError
+public enum ClassError
 {
     None,
     Static,
-    Nested,
     Invalid,
     Struct
 }
 
-internal record RpcClassDeclaration
+public record RpcClassDeclaration
 {
     public required TypeSymbolInfo Type { get; init; }
     public required string Definition { get; init; }
@@ -419,8 +459,11 @@ internal record RpcClassDeclaration
     public required bool IsSingleConnectionExplicit { get; set; }
     public required bool IsMultipleConnectionObject { get; init; }
     public required bool IsMultipleConnectionExplicit { get; set; }
+    public required EquatableList<string>? NestedParents { get; set; }
 
     public bool IsUnityType { get; init; }
+    public bool HasExplicitFinalizer { get; init; }
+    public bool IsExplicitFinalizerExplicit { get; init; }
 
 
     /// <summary>
@@ -429,4 +472,5 @@ internal record RpcClassDeclaration
     public TypeSymbolInfo? IdType { get; init; }
     public bool IdIsExplicit { get; init; }
     public TypeCode IdTypeCode { get; init; }
+    public bool HasReleaseMethod { get; init; }
 }

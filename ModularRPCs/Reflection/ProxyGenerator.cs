@@ -69,7 +69,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
     private readonly ConstructorInfo _identifierErrorConstructor;
 
-    private delegate int GetOverheadSize(object targetObject, RuntimeMethodHandle method,
+    /// <summary>
+    /// Used by source generators.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [UsedImplicitly]
+    public delegate int GetOverheadSize(object targetObject, RuntimeMethodHandle method,
         ref RpcCallMethodInfo callInfo, out int sizeWithoutId);
 
     private unsafe delegate int WriteIdentifierHandler(object targetObject, byte* bytes, int maxSize);
@@ -107,11 +112,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// Name of the private field used to store implementations of various interfaces used internally, such as <see cref="IRpcRouter"/>.
     /// </summary>
     public string ProxyContextFieldName => "_proxyContext<RPC_Proxy>";
-
-    /// <summary>
-    /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the signature: <c>bool TryGetInstance&lt;RPC_Proxy&gt;(T, out WeakReference)</c>.
-    /// </summary>
-    public string TryGetInstanceMethodName => "TryGetInstance<RPC_Proxy>";
 
     /// <summary>
     /// Name of the static method added to all proxy classes implementing <see cref="IRpcObject{T}"/>. It has the signature: <c>WeakReference GetInstance&lt;RPC_Proxy&gt;(object)</c>.
@@ -209,7 +209,10 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         _generatedTypeBuilder = new GeneratedProxyTypeBuilder(
             _getCallInfoFunctions,
             _invokeMethodsStream,
-            _invokeMethodsBytes
+            _invokeMethodsBytes,
+            _getObjectFunctions,
+            _releaseObjectFunctions,
+            _getOverheadSizeFunctions
         );
         SerializerGenerator.InitializeGeneratedProxyBuilder(_generatedTypeBuilder);
         _generatedTypeBuilderArgs = [ _generatedTypeBuilder ];
@@ -846,6 +849,50 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         );
     }
 
+    private static MethodInfo GetImplementedMethod(in ProxyTypeInfo info, MethodInfo method)
+    {
+        Type? declaringType = method.DeclaringType;
+        if (declaringType is { IsInterface: true })
+        {
+            MethodInfo? implemented = Accessor.GetImplementedMethod(info.Type, method);
+            if (implemented != null)
+                method = implemented;
+        }
+
+        if (declaringType == null || declaringType == info.Type || !(method.IsVirtual || method.IsAbstract) || method.IsFinal || method.IsStatic)
+            return method;
+
+        ParameterInfo[] parameters = method.GetParameters();
+        Type[] types;
+        if (parameters.Length == 0)
+        {
+            types = Type.EmptyTypes;
+        }
+        else
+        {
+            types = new Type[parameters.Length];
+            for (int i = 0; i < parameters.Length; ++i)
+                types[i] = parameters[i].ParameterType;
+        }
+
+        try
+        {
+            MethodInfo? declared = info.Type.GetMethod(
+                method.Name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly,
+                null,
+                method.CallingConvention,
+                types,
+                null);
+
+            return declared ?? method;
+        }
+        catch
+        {
+            return method;
+        }
+    }
+
     private static bool _supportsByRefRtn = true;
     private Delegate? GetCallInfoGetter(in ProxyTypeInfo info, RuntimeMethodHandle methodHandle)
     {
@@ -864,12 +911,25 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             static methodHandle =>
             {
                 MethodBase? mtd = MethodBase.GetMethodFromHandle(methodHandle);
-                CallerInfoFieldNameAttribute? attribute = mtd?.GetAttributeSafe<CallerInfoFieldNameAttribute>();
+                if (mtd?.DeclaringType == null)
+                    return null;
 
+                ProxyTypeInfo info = Instance.GetProxyTypeInfo(mtd.DeclaringType);
+                MethodBase declaredMethod = mtd;
+
+                if (mtd is MethodInfo mtdInfo)
+                {
+                    if (mtd.ReflectedType == null || mtd.ReflectedType != info.Type)
+                    {
+                        declaredMethod = GetImplementedMethod(in info, mtdInfo) ?? mtd;
+                    }
+                }
+
+                CallerInfoFieldNameAttribute? attribute = declaredMethod.GetAttributeSafe<CallerInfoFieldNameAttribute>();
                 if (attribute == null)
                     return null;
 
-                FieldInfo? field = mtd!.DeclaringType?.GetField(attribute.FieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                FieldInfo? field = declaredMethod.ReflectedType?.GetField(attribute.FieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
                 if (field == null)
                     return null;
 
@@ -878,24 +938,30 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             byVal:
                 if (!_supportsByRefRtn)
                 {
-                    DynamicMethod newMethod = new DynamicMethod("<Proxy>_GetValFrom" + field.Name, attr, conv, typeof(RpcCallMethodInfo), Type.EmptyTypes, mtd.DeclaringType!, true);
+                    DynamicMethod newMethod = new DynamicMethod("<Proxy>_GetValFrom" + field.Name, attr, conv, typeof(RpcCallMethodInfo), Type.EmptyTypes, declaredMethod.ReflectedType!, true);
                     IOpCodeEmitter il = newMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
                     il.Emit(OpCodes.Ldsfld, field);
                     il.Emit(OpCodes.Ret);
 
-                    return newMethod.CreateDelegate(typeof(SourceGenerationServices.GetCallInfoByVal));
+                    Delegate d1 = newMethod.CreateDelegate(typeof(SourceGenerationServices.GetCallInfoByVal));
+                    if (mtd != declaredMethod)
+                        Instance._getCallInfoFunctions[declaredMethod.MethodHandle] = d1;
+                    return d1;
                 }
 
                 try
                 {
-                    DynamicMethod newMethod = new DynamicMethod("<Proxy>_GetRefTo" + field.Name, attr, conv, typeof(RpcCallMethodInfo).MakeByRefType(), Type.EmptyTypes, mtd.DeclaringType!, true);
+                    DynamicMethod newMethod = new DynamicMethod("<Proxy>_GetRefTo" + field.Name, attr, conv, typeof(RpcCallMethodInfo).MakeByRefType(), Type.EmptyTypes, declaredMethod.ReflectedType!, true);
                     IOpCodeEmitter il = newMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
 
                     il.Emit(OpCodes.Ldsflda, field);
                     il.Emit(OpCodes.Ret);
 
-                    return newMethod.CreateDelegate(typeof(SourceGenerationServices.GetCallInfo));
+                    Delegate d1 = newMethod.CreateDelegate(typeof(SourceGenerationServices.GetCallInfo));
+                    if (mtd != declaredMethod)
+                        Instance._getCallInfoFunctions[declaredMethod.MethodHandle] = d1;
+                    return d1;
                 }
                 catch (Exception) // older frameworks don't support return by ref for dynamic methods, ofc mono throws a different exception than .net framework
                 {
@@ -906,13 +972,31 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         );
     }
 
-    private TypeBuilder StartProxyType(string typeName, Type type,
+    private TypeBuilder StartProxyType(ref string typeName, Type type,
         bool typeGivesInternalAccess, bool unity,
         out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField,
         out FieldBuilder? unityRouterField)
     {
-        TypeBuilder typeBuilder = ModuleBuilder.DefineType(typeName,
-            TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
+        TypeBuilder typeBuilder;
+        bool hasRetried = false;
+        while (true)
+        {
+            try
+            {
+                typeBuilder = ModuleBuilder.DefineType(typeName,
+                    TypeAttributes.Public | TypeAttributes.Sealed | TypeAttributes.Class, type);
+                break;
+            }
+            catch (ArgumentException)
+            {
+                // duplicate type name, this is mainly for tests
+                if (hasRetried)
+                    throw;
+
+                typeName += Guid.NewGuid();
+                hasRetried = true;
+            } 
+        }
         Assembly asm = type.Assembly;
         
         // most builds of mono don't work with that attribute
@@ -1244,10 +1328,22 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
             if (baseReleaseMethod is { IsAbstract: false })
             {
+                il.BeginExceptionBlock();
+
                 il.Emit(OpCodes.Ldarg_0);
                 il.Emit(OpCodes.Call, baseReleaseMethod);
                 if (baseReleaseMethod.ReturnType != typeof(void))
                     il.Emit(OpCodes.Pop);
+
+                il.BeginCatchBlock(typeof(Exception));
+
+                il.Emit(OpCodes.Pop);
+                il.Emit(OpCodes.Ldarg_0);
+                il.Emit(OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Stfld, suppressFinalizeField);
+                il.Emit(OpCodes.Rethrow);
+
+                il.EndExceptionBlock();
             }
 
             il.Emit(OpCodes.Ldsfld, dictField);
@@ -1269,24 +1365,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             il.MarkLabel(alreadyDoneLabel);
             il.Emit(OpCodes.Ldc_I4_0);
             il.MarkLabel(retLbl);
-            il.Emit(OpCodes.Ret);
-
-            MethodBuilder tryFetchMethod = typeBuilder.DefineMethod(
-                TryGetInstanceMethodName,
-                MethodAttributes.Public | MethodAttributes.Static, CallingConventions.Standard,
-                typeof(bool),
-                [ elementType, typeof(WeakReference).MakeByRefType() ]
-            );
-
-            tryFetchMethod.DefineParameter(1, ParameterAttributes.None, "key");
-            tryFetchMethod.DefineParameter(2, ParameterAttributes.Out, "object");
-
-            il = tryFetchMethod.AsEmitter(debuggable: DebugPrint, addBreakpoints: BreakpointPrint);
-
-            il.Emit(OpCodes.Ldsfld, dictField);
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldarg_1);
-            il.Emit(OpCodes.Call, dictTryGetValueMethod);
             il.Emit(OpCodes.Ret);
 
             MethodBuilder fetchMethod = typeBuilder.DefineMethod(
@@ -1524,159 +1602,60 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         LocalBuilder identifier = il.DeclareLocal(idType);
 
-        Label ifNotDefault = il.DefineLabel();
+        Label? ifNotNull = null;
         Label ifDidntAdd = il.DefineLabel();
-        Label? ifDefault = null;
         il.Emit(OpCodes.Ldarg_0);
         bool isAddr = false;
         LocalBuilder id2 = identifier;
-        if (idType.IsValueType)
-        {
-            if (isIdNullable)
-            {
-                if (identifierBackingField != null)
-                {
-                    id2 = il.DeclareLocal(idType.MakeByRefType());
-                    isAddr = true;
-
-                    il.Emit(OpCodes.Ldflda, identifierBackingField);
-                    il.Emit(OpCodes.Dup);
-                    il.Emit(OpCodes.Stloc, id2);
-                }
-                else
-                {
-                    il.Emit(identifierProperty.GetMethod!.GetCallRuntime(), identifierProperty.GetMethod);
-                    il.Emit(OpCodes.Stloc, id2);
-                    il.Emit(OpCodes.Ldloca, id2);
-                }
-
-                il.Emit(OpCodes.Call, getHasValueMethod!);
-                il.Emit(OpCodes.Brtrue, ifNotDefault);
-            }
-            else if (idType.IsPrimitive)
-            {
-                if (identifierBackingField != null)
-                    il.Emit(OpCodes.Ldfld, identifierBackingField);
-                else
-                    il.Emit(identifierProperty.GetMethod!.GetCallRuntime(), identifierProperty.GetMethod);
-                il.Emit(OpCodes.Dup);
-                il.Emit(OpCodes.Stloc, identifier);
-                il.Emit(OpCodes.Brtrue, ifNotDefault);
-            }
-            else
-            {
-                if (identifierBackingField != null)
-                {
-                    id2 = il.DeclareLocal(idType.MakeByRefType());
-                    isAddr = true;
-
-                    il.Emit(OpCodes.Ldflda, identifierBackingField);
-                    il.Emit(OpCodes.Dup);
-                    il.Emit(OpCodes.Stloc, id2);
-                }
-                else
-                {
-                    il.Emit(identifierProperty.GetMethod!.GetCallRuntime(), identifierProperty.GetMethod);
-                    il.Emit(OpCodes.Stloc, id2);
-                    il.Emit(OpCodes.Ldloca, id2);
-                }
-
-                // check if value == default
-                LocalBuilder lclCheck = il.DeclareLocal(idType);
-                il.Emit(OpCodes.Ldloca, lclCheck);
-                il.Emit(OpCodes.Initobj, idType);
-                il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
-
-                il.Emit(OpCodes.Ldloca, identifier);
-                MethodInfo? refEqual = idType.GetMethod("Equals", BindingFlags.Public | BindingFlags.Instance, null, CallingConventions.Any, [idType.MakeByRefType()], null);
-                if (refEqual != null && !refEqual.IsIgnored())
-                {
-                    il.Emit(OpCodes.Ldloca, lclCheck);
-                    il.Emit(OpCodes.Call, refEqual);
-                    il.Emit(OpCodes.Brfalse, ifNotDefault);
-                }
-                else
-                {
-                    Type equatableType = typeof(IEquatable<>).MakeGenericType(idType);
-                    if (equatableType.IsAssignableFrom(idType))
-                    {
-                        MethodInfo equal = equatableType.GetMethod(nameof(IEquatable<int>.Equals), BindingFlags.Public | BindingFlags.Instance)
-                                            ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IEquatable<int>.Equals))
-                                                .DeclaredIn(equatableType, isStatic: false)
-                                                .WithParameter(idType, "other")
-                                                .Returning<bool>()
-                                            );
-
-                        equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
-                        il.Emit(OpCodes.Ldloc, lclCheck);
-                        il.Emit(equal.GetCallRuntime(), equal);
-                        il.Emit(OpCodes.Brfalse, ifNotDefault);
-                    }
-                    else
-                    {
-                        Type comparableType = typeof(IComparable<>).MakeGenericType(idType);
-                        if (equatableType.IsAssignableFrom(idType))
-                        {
-                            MethodInfo equal = comparableType.GetMethod(nameof(IComparable<int>.CompareTo), BindingFlags.Public | BindingFlags.Instance)
-                                                   ?? throw new UnexpectedMemberAccessException(new MethodDefinition(nameof(IComparable<int>.CompareTo))
-                                                       .DeclaredIn(comparableType, isStatic: false)
-                                                       .WithParameter(idType, "other")
-                                                       .Returning<int>()
-                                                   );
-
-                            equal = Accessor.GetImplementedMethod(idType, equal) ?? equal;
-                            il.Emit(OpCodes.Ldloc, lclCheck);
-                            il.Emit(equal.GetCallRuntime(), equal);
-                            il.Emit(OpCodes.Brtrue, ifNotDefault);
-                        }
-                        else
-                        {
-                            il.Emit(OpCodes.Ldloc, lclCheck);
-                            il.Emit(OpCodes.Callvirt, CommonReflectionCache.ObjectEqualsObject);
-                            il.Emit(OpCodes.Brfalse, ifNotDefault);
-                        }
-                    }
-                }
-            }
-        }
-        else if (idType == typeof(string))
+        if (type.IsValueType)
         {
             if (identifierBackingField != null)
-                il.Emit(OpCodes.Ldfld, identifierBackingField);
+            {
+                id2 = il.DeclareLocal(idType.MakeByRefType());
+                isAddr = true;
+
+                il.Emit(OpCodes.Ldflda, identifierBackingField);
+            }
             else
+            {
                 il.Emit(identifierProperty.GetMethod!.GetCallRuntime(), identifierProperty.GetMethod);
-            ifDefault = il.DefineLabel();
-            il.Emit(OpCodes.Dup);
-            il.Emit(OpCodes.Stloc, identifier);
-            il.Emit(OpCodes.Brfalse, ifDefault.Value);
-            il.Emit(OpCodes.Ldloc, identifier);
-            il.Emit(OpCodes.Call, CommonReflectionCache.GetStringLength);
-            il.Emit(OpCodes.Brtrue, ifNotDefault);
+            }
+
+            il.Emit(OpCodes.Stloc, id2);
         }
-        else
+
+        if (isIdNullable)
         {
+            ifNotNull = il.DefineLabel();
+            il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
+            il.Emit(OpCodes.Call, getHasValueMethod!);
+            il.Emit(OpCodes.Brtrue, ifNotNull.Value);
+        }
+        else if (!idType.IsValueType)
+        {
+            ifNotNull = il.DefineLabel();
             if (identifierBackingField != null)
                 il.Emit(OpCodes.Ldfld, identifierBackingField);
             else
                 il.Emit(identifierProperty.GetMethod.GetCallRuntime(), identifierProperty.GetMethod);
             il.Emit(OpCodes.Dup);
             il.Emit(OpCodes.Stloc, identifier);
-            il.Emit(OpCodes.Ldnull);
-            il.Emit(OpCodes.Bne_Un, ifNotDefault);
+            il.Emit(OpCodes.Brtrue, ifNotNull.Value);
         }
 
-        if (ifDefault.HasValue)
-            il.MarkLabel(ifDefault.Value);
+        if (ifNotNull.HasValue)
+        {
 #if DEBUG
-        il.EmitWriteLine($"Had a default value for instance id of type {Accessor.Formatter.Format(type)}.");
+            il.EmitWriteLine($"Had a default value for instance id of type {Accessor.Formatter.Format(type)}.");
 #endif
-        il.Emit(OpCodes.Ldstr, string.Format(Properties.Exceptions.InstanceIdDefaultValue, Accessor.ExceptionFormatter.Format(type), Accessor.ExceptionFormatter.Format(interfaceType)));
-        il.Emit(OpCodes.Newobj, _identifierErrorConstructor);
-        il.Emit(OpCodes.Throw);
+            il.Emit(OpCodes.Ldstr, string.Format(Properties.Exceptions.InstanceIdDefaultValue, Accessor.ExceptionFormatter.Format(type), Accessor.ExceptionFormatter.Format(interfaceType)));
+            il.Emit(OpCodes.Newobj, _identifierErrorConstructor);
+            il.Emit(OpCodes.Throw);
 
-        il.MarkLabel(ifNotDefault);
-        il.Emit(OpCodes.Ldsfld, dictField);
+            il.MarkLabel(ifNotNull.Value);
+        }
 
+        il.Emit(OpCodes.Ldarg_0);
         if (isIdNullable)
         {
             il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
@@ -1686,8 +1665,13 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         {
             il.Emit(OpCodes.Ldloc, id2);
             if (isAddr)
-                il.Emit(OpCodes.Ldind_Ref);
+                SerializerGenerator.LoadFromRef(idType, il);
         }
+        il.Emit(OpCodes.Stfld, idField);
+
+        il.Emit(OpCodes.Ldsfld, dictField);
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldfld, idField);
 
         il.Emit(OpCodes.Ldarg_0);
         il.Emit(OpCodes.Newobj, CommonReflectionCache.WeakReferenceConstructor);
@@ -1696,21 +1680,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         il.Emit(OpCodes.Brfalse, ifDidntAdd);
 
-        il.Emit(OpCodes.Ldarg_0);
-
-        if (isIdNullable)
-        {
-            il.Emit(isAddr ? OpCodes.Ldloc : OpCodes.Ldloca, id2);
-            il.Emit(OpCodes.Call, getValueMethod!);
-        }
-        else
-        {
-            il.Emit(OpCodes.Ldloc, id2);
-            if (isAddr)
-                il.Emit(OpCodes.Ldind_Ref);
-        }
-
-        il.Emit(OpCodes.Stfld, idField);
         il.Emit(OpCodes.Ret);
 
         il.MarkLabel(ifDidntAdd);
@@ -1765,26 +1734,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         }
 
         string typeName = (type.FullName ?? type.Name) + "<RPC_Proxy>";
-        try
-        {
-            if (ModuleBuilder.GetType(typeName, false, false) != null)
-            {
-                typeName = type.AssemblyQualifiedName + "<RPC_Proxy>";
-                string copiedTypeName = typeName;
-                int dupNum = 0;
-                while (ModuleBuilder.GetType(copiedTypeName.Replace("+", "\\+").Replace(",", "\\,"), false, false) != null)
-                {
-                    ++dupNum;
-                    copiedTypeName = typeName + "_" + dupNum.ToString(CultureInfo.InvariantCulture);
-                }
-
-                typeName = copiedTypeName;
-            }
-        }
-        catch (NotImplementedException)
-        {
-            typeName = type.Name + "_" + Guid.NewGuid();
-        }
 
         bool unity = false;
 
@@ -1821,7 +1770,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         IOpCodeEmitter? typeInitIl = null;
         
-        TypeBuilder builder = StartProxyType(typeName, type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
+        TypeBuilder builder = StartProxyType(ref typeName, type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
 
         List<string> takenMethodNames = new List<string>();
         foreach (MethodInfo method in methods)
@@ -2312,6 +2261,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 }
 
                 il.Emit(OpCodes.Ldsflda, methodInfoField);
+                il.Emit(OpCodes.Ldc_I4, (int)RpcInvokeOptions.Default);
                 il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcRouterInvokeRpcBytes);
             }
             else
@@ -2347,6 +2297,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
                     il.Emit(OpCodes.Conv_Ovf_U4_Un);
                     il.Emit(OpCodes.Ldsflda, methodInfoField);
+                    il.Emit(OpCodes.Ldc_I4, (int)RpcInvokeOptions.Default);
                     il.Emit(OpCodes.Callvirt, CommonReflectionCache.RpcRouterInvokeRpcStream);
                 }
                 else

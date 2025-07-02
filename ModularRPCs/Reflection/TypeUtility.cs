@@ -611,7 +611,7 @@ internal static class TypeUtility
     {
         if (!nested && !string.IsNullOrEmpty(type.Namespace))
         {
-            bldr.Append(type.Namespace)
+            bldr.Append(EscapeAssemblyQualifiedName(type.Namespace))
                 .Append('.');
         }
 
@@ -621,27 +621,31 @@ internal static class TypeUtility
             bldr.Append('+');
         }
 
-        bldr.Append(type.Name);
+        bldr.Append(EscapeAssemblyQualifiedName(type.Name));
 
-        if (nested || !type.IsConstructedGenericType)
+        if (nested)
             return;
 
-        args ??= type.GetGenericArguments();
-        bldr.Append('[');
-
-        for (int i = 0; i < args.Length; ++i)
+        if (type.IsConstructedGenericType)
         {
-            if (i != 0)
-                bldr.Append(',');
-
+            args ??= type.GetGenericArguments();
             bldr.Append('[');
 
-            CreateAssemblyQualifiedNameSlow(args[i], bldr, null);
+            for (int i = 0; i < args.Length; ++i)
+            {
+                if (i != 0)
+                    bldr.Append(',');
+
+                bldr.Append('[');
+
+                CreateAssemblyQualifiedNameSlow(args[i], bldr, null);
+
+                bldr.Append(']');
+            }
 
             bldr.Append(']');
-        }
 
-        bldr.Append(']');
+        }
 
         Assembly? asm = type.Assembly;
         if (asm == Accessor.MSCoreLib || asm == null)
@@ -650,7 +654,7 @@ internal static class TypeUtility
         }
 
         bldr.Append(", ")
-            .Append(asm.GetName().Name);
+            .Append(EscapeAssemblyQualifiedName(asm.GetName().Name));
     }
 
     public static bool CompareAssemblyQualifiedNameNoVersion(Type type, string asmQualifiedName)
@@ -662,6 +666,71 @@ internal static class TypeUtility
             return GetAssemblyQualifiedNameNoVersion(type).AsSpan().Equals(asmQualifiedName.AsSpan(0, asmVerInd), StringComparison.Ordinal);
         
         return GetAssemblyQualifiedNameNoVersion(type).Equals(asmQualifiedName, StringComparison.Ordinal);
+    }
+
+    private static readonly char[] AssemblyQualifiedEscapables = ['\n', '\r', '\t', '\v', '\\', ',', '+', '[', ']'];
+
+    private static string EscapeAssemblyQualifiedName(string? value)
+    {
+        if (value == null)
+            return null!;
+
+        int c = 0;
+        string s = value;
+        for (int i = 0; i < s.Length; ++i)
+        {
+            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+' or '[' or ']')
+                ++c;
+        }
+
+        if (c <= 0)
+        {
+            return s;
+        }
+
+        unsafe
+        {
+            char* newValue = stackalloc char[s.Length + c];
+
+            int prevIndex = -1;
+            int writeIndex = 0;
+            while (true)
+            {
+                int index = s.IndexOfAny(AssemblyQualifiedEscapables, prevIndex + 1);
+                if (index == -1)
+                {
+                    for (int i = prevIndex + 1; i < s.Length; ++i)
+                    {
+                        newValue[writeIndex] = s[i];
+                        ++writeIndex;
+                    }
+                    break;
+                }
+
+                for (int i = prevIndex + 1; i < index; ++i)
+                {
+                    newValue[writeIndex] = s[i];
+                    ++writeIndex;
+                }
+
+                char self = s[index];
+                newValue[writeIndex] = '\\';
+                newValue[writeIndex + 1] = self switch
+                {
+                    '\n' => 'n',
+                    '\r' => 'r',
+                    '\t' => 't',
+                    '\v' => 'v',
+                    _ => self
+                };
+
+                writeIndex += 2;
+
+                prevIndex = index;
+            }
+
+            return new string(newValue, 0, writeIndex);
+        }
     }
 
     public static unsafe void WriteTypeCode(TypeCode tc, IRpcSerializer serializer, object value, byte* ptr, ref uint index, uint size)

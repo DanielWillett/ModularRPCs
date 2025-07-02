@@ -2,6 +2,7 @@ using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using JetBrains.Annotations;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 
@@ -36,13 +37,52 @@ public class GeneratedProxyTypeBuilder
     private readonly IDictionary<RuntimeMethodHandle, Delegate?> _callInfoGetters;
     private readonly IDictionary<RuntimeMethodHandle, Delegate> _invokeStreamMethods;
     private readonly IDictionary<RuntimeMethodHandle, Delegate> _invokeBytesMethods;
+    private readonly IDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions;
+    private readonly IDictionary<Type, Func<object, bool>> _releaseObjectFunctions;
+    private readonly IDictionary<Type, ProxyGenerator.GetOverheadSize?> _overheadSizeFunctions;
     internal IDictionary<RuntimeMethodHandle, int>? MethodSignatures;
 
-    public GeneratedProxyTypeBuilder(IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters, IDictionary<RuntimeMethodHandle, Delegate> invokeStreamMethods, IDictionary<RuntimeMethodHandle, Delegate> invokeBytesMethods)
+    public GeneratedProxyTypeBuilder(IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters,
+        IDictionary<RuntimeMethodHandle, Delegate> invokeStreamMethods,
+        IDictionary<RuntimeMethodHandle, Delegate> invokeBytesMethods,
+        IDictionary<Type, Func<object, WeakReference?>> getObjectFunctions,
+        IDictionary<Type, Func<object, bool>> releaseObjectFunctions,
+        IDictionary<Type, ProxyGenerator.GetOverheadSize?> overheadSizeFunctions)
     {
         _callInfoGetters = callInfoGetters;
         _invokeStreamMethods = invokeStreamMethods;
         _invokeBytesMethods = invokeBytesMethods;
+        _getObjectFunctions = getObjectFunctions;
+        _releaseObjectFunctions = releaseObjectFunctions;
+        _overheadSizeFunctions = overheadSizeFunctions;
+    }
+
+
+    [UsedImplicitly]
+    public void AddGetOverheadSizeFunction(Type type, ProxyGenerator.GetOverheadSize? function)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+
+        _overheadSizeFunctions[type] = function;
+    }
+
+    [UsedImplicitly]
+    public void AddGetObjectFunction(Type type, Func<object, WeakReference?> function)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+
+        _getObjectFunctions[type] = function;
+    }
+
+    [UsedImplicitly]
+    public void AddReleaseObjectFunction(Type type, Func<object, bool> function)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+
+        _releaseObjectFunctions[type] = function;
     }
 
 
@@ -51,7 +91,7 @@ public class GeneratedProxyTypeBuilder
     {
         if (MethodSignatures == null)
             throw new InvalidOperationException();
-        MethodSignatures.Add(handle, signature);
+        MethodSignatures[handle] = signature;
     }
 
     [UsedImplicitly]
@@ -59,48 +99,34 @@ public class GeneratedProxyTypeBuilder
     {
         if (getCallInfo == null)
             throw new ArgumentNullException(nameof(getCallInfo));
-        _callInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
-    }
-
-    [UsedImplicitly]
-    public void AddCallGetter(SourceGenerationServices.GetCallInfoByVal getCallInfo)
-    {
-        if (getCallInfo == null)
-            throw new ArgumentNullException(nameof(getCallInfo));
-        _callInfoGetters.Add(getCallInfo().MethodHandle, getCallInfo);
+        _callInfoGetters[getCallInfo().MethodHandle] = getCallInfo;
     }
 
     [UsedImplicitly]
     public void AddReceiveMethod(RuntimeMethodHandle handle, ReceiveMethodInvokerType type, ProxyGenerator.RpcInvokeHandlerBytes invoker)
     {
-        if (invoker == null)
-            throw new ArgumentNullException(nameof(invoker));
         if (type != ReceiveMethodInvokerType.Bytes)
             throw new ArgumentOutOfRangeException(nameof(type));
 
-        _invokeBytesMethods.Add(handle, invoker);
+        _invokeBytesMethods[handle] = invoker ?? throw new ArgumentNullException(nameof(invoker));
     }
 
     [UsedImplicitly]
     public void AddReceiveMethod(RuntimeMethodHandle handle, ReceiveMethodInvokerType type, ProxyGenerator.RpcInvokeHandlerRawBytes invoker)
     {
-        if (invoker == null)
-            throw new ArgumentNullException(nameof(invoker));
         if (type != ReceiveMethodInvokerType.BytesRaw)
             throw new ArgumentOutOfRangeException(nameof(type));
 
-        _invokeBytesMethods.Add(handle, invoker);
+        _invokeBytesMethods[handle] = invoker ?? throw new ArgumentNullException(nameof(invoker));
     }
 
     [UsedImplicitly]
     public void AddReceiveMethod(RuntimeMethodHandle handle, ReceiveMethodInvokerType type, ProxyGenerator.RpcInvokeHandlerStream invoker)
     {
-        if (invoker == null)
-            throw new ArgumentNullException(nameof(invoker));
         if (type is not ReceiveMethodInvokerType.Stream and not ReceiveMethodInvokerType.StreamRaw)
             throw new ArgumentOutOfRangeException(nameof(type));
 
-        _invokeStreamMethods.Add(handle, invoker);
+        _invokeStreamMethods[handle] = invoker ?? throw new ArgumentNullException(nameof(invoker));
     }
 
     [EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]

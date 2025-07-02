@@ -205,7 +205,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier still had it&apos;s default value after the base constructor..
+        ///   Looks up a localized string similar to An {1} of {0}&apos;s identifier still had a null value after the base constructor..
         /// </summary>
         internal static string InstanceIdDefaultValue {
             get {
@@ -561,6 +561,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string RpcInjectionExceptionInstanceNull {
             get {
                 return ResourceManager.GetString("RpcInjectionExceptionInstanceNull", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Parameter &apos;{0}&apos; ({1}) is not a valid parameter for a raw method. Add the RpcInject attribute to attempt to inject the parameter..
+        /// </summary>
+        internal static string RpcInjectionExceptionInvalidRawParameter {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionInvalidRawParameter", resourceCulture);
             }
         }
         

@@ -21,6 +21,7 @@ public class RpcOverhead
     /// <summary>
     /// The size in bytes of the message this <see cref="RpcOverhead"/> represents, not including the overhead itself.
     /// </summary>
+    [UsedImplicitly]
     public uint MessageSize { get; }
     
     /// <summary>

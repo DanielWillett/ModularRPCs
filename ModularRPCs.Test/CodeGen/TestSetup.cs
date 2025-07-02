@@ -2,14 +2,11 @@ using DanielWillett.ModularRpcs.DependencyInjection;
 using DanielWillett.ModularRpcs.Loopback;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ReflectionTools;
-using DanielWillett.ReflectionTools.IoC;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using System;
-using System.IO;
-using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace ModularRPCs.Test.CodeGen
 {
@@ -19,22 +16,19 @@ namespace ModularRPCs.Test.CodeGen
         {
             ServiceCollection collection = new ServiceCollection();
 
+            ServiceProviderOptions opt = new ServiceProviderOptions
+            {
+                ValidateOnBuild = false,
+                ValidateScopes = false
+            };
+
             Accessor.LogILTraceMessages = true;
             Accessor.LogDebugMessages = true;
             Accessor.LogInfoMessages = true;
             Accessor.LogWarningMessages = true;
             Accessor.LogErrorMessages = true;
 
-            ILoggerFactory factory = LoggerFactory.Create(l => l
-                .SetMinimumLevel(LogLevel.Trace)
-                .AddConsole()
-                .AddProvider(new FileLoggerProvider())
-            );
-
-            Accessor.Logger = new ReflectionToolsLoggerProxy(factory, false);
-
-            collection.AddSingleton(factory);
-            collection.AddTransient(typeof(ILogger<>), typeof(Logger<>));
+            collection.AddLogging(l => l.AddConsole());
 
             collection.AddSingleton(Accessor.Active);
             collection.AddTransient(_ => Accessor.Logger);
@@ -42,25 +36,22 @@ namespace ModularRPCs.Test.CodeGen
             collection.AddModularRpcs(isServer: true);
             collection.AddRpcSingleton<T>();
 
-            IServiceProvider serverProvider = collection.BuildServiceProvider();
+            IServiceProvider serverProvider = collection.BuildServiceProvider(opt);
             server = serverProvider;
 
             _ = serverProvider.GetService<IAccessor>();
 
             collection = new ServiceCollection();
 
-            collection.AddLogging(l => l
-                .SetMinimumLevel(LogLevel.Trace)
-                .AddConsole()
-                .AddProvider(new FileLoggerProvider())
-            );
+            collection.AddLogging(l => l.AddConsole());
+
             collection.AddSingleton(Accessor.Active);
             collection.AddTransient(_ => Accessor.Logger);
             collection.AddTransient(_ => Accessor.Formatter);
             collection.AddModularRpcs(isServer: false);
             collection.AddRpcSingleton<T>();
 
-            IServiceProvider clientProvider = collection.BuildServiceProvider();
+            IServiceProvider clientProvider = collection.BuildServiceProvider(opt);
             client = clientProvider;
 
             ProxyGenerator.Instance.DefaultTimeout = TimeSpan.FromSeconds(5d);
@@ -91,61 +82,6 @@ namespace ModularRPCs.Test.CodeGen
                 Assert.That(remote.Server.Local.IsClosed, Is.False);
 
                 return remote.Server;
-            }
-        }
-    }
-
-    public class FileLoggerProvider : ILoggerProvider
-    {
-        private static readonly StreamWriter StreamWriter = new StreamWriter(new FileStream("log.txt", FileMode.Create, FileAccess.Write, FileShare.Read, 4096, FileOptions.SequentialScan), Encoding.UTF8, 1024)
-        {
-            AutoFlush = true
-        };
-    
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            StreamWriter.Dispose();
-        }
-
-        /// <inheritdoc />
-        public ILogger CreateLogger(string categoryName)
-        {
-            return new FileLogger(categoryName);
-        }
-
-        private class FileLogger : ILogger
-        {
-            private readonly string _category;
-
-            public FileLogger(string category)
-            {
-                _category = category;
-            }
-
-            /// <inheritdoc />
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
-            {
-                string fmt = _category + " | " + formatter(state, exception);
-                if (exception != null)
-                    fmt += Environment.NewLine + exception;
-
-                lock (StreamWriter)
-                {
-                    StreamWriter.WriteLine(fmt);
-                }
-            }
-
-            /// <inheritdoc />
-            public bool IsEnabled(LogLevel logLevel)
-            {
-                return true;
-            }
-
-            /// <inheritdoc />
-            public IDisposable BeginScope<TState>(TState state)
-            {
-                return null;
             }
         }
     }

@@ -1,20 +1,44 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Data;
-internal class PassthroughReadStream : Stream
+
+/// <summary>
+/// Used by the source generator and internal code to prevent reading past a certain position in an underlying stream.
+/// </summary>
+/// <remarks>Does not support writing.</remarks>
+public sealed class PassthroughReadStream : Stream
 {
     private long _startInd;
     private long _length;
     private long _bytesRead;
+    
+    /// <summary>
+    /// The maximum number of bytes that can be read from the underlying stream.
+    /// </summary>
     public long Count { get; }
+
+    /// <summary>
+    /// The stream being read from.
+    /// </summary>
     public Stream UnderlyingStream { get; }
+
+    /// <inheritdoc />
     public override bool CanRead => UnderlyingStream.CanRead;
+
+    /// <inheritdoc />
     public override bool CanSeek => UnderlyingStream.CanSeek;
+
+    /// <inheritdoc />
+    /// <remarks>Always returns <see langword="false"/>.</remarks>
     public override bool CanWrite => false;
+
+    /// <inheritdoc />
     public override long Length { get; }
+
+    /// <inheritdoc />
     public override long Position
     {
         get => _bytesRead;
@@ -32,17 +56,29 @@ internal class PassthroughReadStream : Stream
             _bytesRead = (int)value;
         }
     }
+
+    /// <inheritdoc />
     public override int ReadTimeout
     {
         get => UnderlyingStream.ReadTimeout;
         set => UnderlyingStream.ReadTimeout = value;
     }
+
+    /// <inheritdoc />
     public override int WriteTimeout
     {
         get => UnderlyingStream.WriteTimeout;
         set => UnderlyingStream.WriteTimeout = value;
     }
+
+    /// <inheritdoc />
     public override bool CanTimeout => UnderlyingStream.CanTimeout;
+
+    /// <summary>
+    /// Creates a new <see cref="PassthroughReadStream"/> around <paramref name="stream"/> with a maximum of <paramref name="count"/> byte(s).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"/>
+    /// <exception cref="ArgumentNullException"/>
     public PassthroughReadStream(Stream stream, long count)
     {
         if (count < 0)
@@ -72,47 +108,69 @@ internal class PassthroughReadStream : Stream
 
         Length = _startInd < 0 ? Count : Math.Min(Count, UnderlyingStream.Length - _startInd);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override void SetLength(long value)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override void Write(byte[] buffer, int offset, int count)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override void WriteByte(byte value)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override void EndWrite(IAsyncResult asyncResult)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback? callback, object? state)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamIAsyncResultNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override int EndRead(IAsyncResult asyncResult)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamIAsyncResultNotSupported);
     }
+
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER
+    /// <exception cref="NotSupportedException"/>
     public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+
+    /// <exception cref="NotSupportedException"/>
     public override void Write(ReadOnlySpan<byte> buffer)
     {
         throw new NotSupportedException(Properties.Exceptions.PassthroughStreamWriteNotSupported);
     }
+    
+    /// <inheritdoc />
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         long allowedToRead = Math.Min(Count - _bytesRead, buffer.Length);
@@ -123,6 +181,8 @@ internal class PassthroughReadStream : Stream
         _bytesRead += actuallyRead;
         return actuallyRead;
     }
+
+    /// <inheritdoc />
     public override int Read(Span<byte> buffer)
     {
         long allowedToRead = Math.Min(Count - _bytesRead, buffer.Length);
@@ -134,8 +194,15 @@ internal class PassthroughReadStream : Stream
         return actuallyRead;
     }
 #endif
+
+    /// <inheritdoc />
     public override int ReadByte()
     {
+        if (Count <= _bytesRead)
+        {
+            return -1;
+        }
+
         int b = UnderlyingStream.ReadByte();
         if (b >= 0)
             ++_bytesRead;
@@ -143,12 +210,23 @@ internal class PassthroughReadStream : Stream
         return b;
     }
 
+#if NETCOREAPP
     [Obsolete]
+#endif
+    /// <inheritdoc />
     public override object? InitializeLifetimeService() => UnderlyingStream.InitializeLifetimeService();
+
+    /// <inheritdoc />
     public override int GetHashCode() => UnderlyingStream.GetHashCode();
-    public override bool Equals(object? obj) => UnderlyingStream.Equals(obj);
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => obj is PassthroughReadStream r && r.Count == Count && UnderlyingStream.Equals(r.UnderlyingStream);
+
     // ReSharper disable once ReturnTypeCanBeNotNullable
+    /// <inheritdoc />
     public override string? ToString() => UnderlyingStream.ToString();
+
+    /// <inheritdoc />
     public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
     {
         long allowedToRead = Math.Min(Count - _bytesRead, count);
@@ -159,6 +237,8 @@ internal class PassthroughReadStream : Stream
         _bytesRead += actuallyRead;
         return actuallyRead;
     }
+
+    /// <inheritdoc />
     public override int Read(byte[] buffer, int offset, int count)
     {
         long allowedToRead = Math.Min(Count - _bytesRead, count);
@@ -169,6 +249,8 @@ internal class PassthroughReadStream : Stream
         _bytesRead += actuallyRead;
         return actuallyRead;
     }
+
+    /// <inheritdoc />
     public override long Seek(long offset, SeekOrigin origin)
     {
         switch (origin)
@@ -234,27 +316,40 @@ internal class PassthroughReadStream : Stream
 
         return _bytesRead;
     }
-    public override Task FlushAsync(CancellationToken cancellationToken) => UnderlyingStream.FlushAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public override Task FlushAsync(CancellationToken cancellationToken)
+    {
+        return UnderlyingStream.FlushAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override void Flush()
+    {
+        UnderlyingStream.Flush();
+    }
+
+    /// <inheritdoc />
     public override void Close()
     {
         UnderlyingStream.Close();
         base.Close();
     }
+
+    /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
         if (disposing)
             UnderlyingStream.Dispose();
         base.Dispose(disposing);
     }
+
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
+    /// <inheritdoc />
     public override async ValueTask DisposeAsync()
     {
         await UnderlyingStream.DisposeAsync();
         await base.DisposeAsync();
     }
 #endif
-    public override void Flush()
-    {
-        UnderlyingStream.Flush();
-    }
 }

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 
-internal sealed class SourceStringBuilder
+public sealed class SourceStringBuilder
 {
     private int _indent;
     private bool _isNewLine;
@@ -60,7 +60,12 @@ internal sealed class SourceStringBuilder
     {
         int amt = UseSpaces ? IndentSize : 1;
         if (_indent < amt)
-            throw new InvalidOperationException("Already fully un-indented");
+        {
+            Preprocessor("#error HELP");
+            //throw new InvalidOperationException("Already fully un-indented");
+            _indent = 0;
+            return this;
+        }
 
         _indent -= amt;
         return this;

@@ -7,7 +7,7 @@ namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
 /// <remarks>
 /// Mostly stolen from <see href="https://github.com/dotnet/roslyn/blob/main/docs/features/incremental-generators.cookbook.md#auto-interface-implementation"/>.
 /// </remarks>
-internal class EquatableList<T> : List<T>, IEquatable<EquatableList<T>> where T : IEquatable<T>
+public class EquatableList<T> : List<T>, IEquatable<EquatableList<T>> where T : IEquatable<T>
 {
     public EquatableList() { }
     public EquatableList(int capacity) : base(capacity) { }
@@ -52,13 +52,13 @@ internal class EquatableList<T> : List<T>, IEquatable<EquatableList<T>> where T 
         return this.Select(item => item?.GetHashCode() ?? 0).Aggregate((x, y) => x ^ y);
     }
 
-    public static bool operator ==(EquatableList<T> list1, EquatableList<T> list2)
+    public static bool operator ==(EquatableList<T>? list1, EquatableList<T>? list2)
     {
         return ReferenceEquals(list1, list2)
                || list1 is not null && list2 is not null && list1.Equals(list2);
     }
 
-    public static bool operator !=(EquatableList<T> list1, EquatableList<T> list2)
+    public static bool operator !=(EquatableList<T>? list1, EquatableList<T>? list2)
     {
         return !(list1 == list2);
     }

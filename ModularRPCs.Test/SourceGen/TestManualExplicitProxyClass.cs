@@ -2,16 +2,16 @@ using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Loopback;
+using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
+using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using ModularRPCs.Test.CodeGen;
 using NUnit.Framework;
 using System;
-using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Async.Internal;
-using DanielWillett.ModularRpcs.Exceptions;
-using DanielWillett.ModularRpcs.Routing;
 
 // ReSharper disable UnusedParameter.Local
 // ReSharper disable RedundantNameQualifier
@@ -121,6 +121,12 @@ namespace ModularRPCs.Test.SourceGen
                 Assert.That(primitiveLikeValue, Is.EqualTo(Val1));
                 Assert.That(nonPrimitiveLikeValue, Is.EqualTo(Val2));
             }
+
+            [RpcReceive(Raw = true)]
+            private void Test(ReadOnlySpan<char> span)
+            {
+
+            }
         }
 
         [IgnoreGenerateRpcSource, GenerateRpcSource]
@@ -153,8 +159,8 @@ namespace ModularRPCs.Test.SourceGen
                 state.AddCallGetter(static () => ref _modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromServerOvl0);
 
                 global::System.RuntimeMethodHandle workingHandle;
-                workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
-                    @TestClass => @TestClass.Receive()
+                workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<@TestClass, global::System.Action>(
+                    @TestClass => @TestClass.Receive
                 ).MethodHandle;
                 state.AddReceiveMethod(
                     workingHandle,
@@ -165,8 +171,8 @@ namespace ModularRPCs.Test.SourceGen
                     global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder.ReceiveMethodInvokerType.Stream,
                     new ProxyGenerator.RpcInvokeHandlerStream(ModularRpcsGeneratedInvokeReceiveOvl0Stream));
 
-                workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
-                    @TestClass => @TestClass.ReceiveWithParams(default(int), default(string))
+                workingHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<@TestClass, global::System.Func<int, string, Task>>(
+                    @TestClass => @TestClass.ReceiveWithParams
                 ).MethodHandle;
                 state.AddReceiveMethod(
                     workingHandle,
@@ -417,8 +423,8 @@ namespace ModularRPCs.Test.SourceGen
             private static global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeFromClientOvl0 =
                 new global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo()
                 {
-                    MethodHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
-                        @TestClass => @TestClass.@InvokeFromClient()
+                    MethodHandle = global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<@TestClass, global::System.Func<RpcTask>>(
+                        @TestClass => @TestClass.@InvokeFromClient
                     ).MethodHandle,
                     IsFireAndForget = false,
                     SignatureHash = 0,
@@ -560,10 +566,10 @@ namespace ModularRPCs.Test.SourceGen
 
             [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
             [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-            private static RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeFromServerOvl0 = RpcCallMethodInfo.FromCallMethod(
+            private static unsafe RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeFromServerOvl0 = RpcCallMethodInfo.FromCallMethod(
                 global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.Instance,
-                global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
-                    @TestClass => @TestClass.@InvokeFromServer(null)
+                global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<@TestClass, global::System.Func<IModularRpcRemoteConnection, RpcTask>>(
+                    @TestClass => @TestClass.@InvokeFromServer
                 ),
                 false
             );
@@ -634,8 +640,8 @@ namespace ModularRPCs.Test.SourceGen
             private static global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromClientOvl0
                 = global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo.FromCallMethod(
                     global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.Instance,
-                    global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
-                        @TestClass => @TestClass.@InvokeWithParamsFromClient(0, null)
+                    global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<TestClass, global::System.Func<int, string, RpcTask>>(
+                        @TestClass => @TestClass.@InvokeWithParamsFromClient
                     ),
                     false
                 );
@@ -728,8 +734,8 @@ namespace ModularRPCs.Test.SourceGen
             [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
             private static RpcCallMethodInfo _modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromServerOvl0 = RpcCallMethodInfo.FromCallMethod(
                 global::DanielWillett.ModularRpcs.Reflection.ProxyGenerator.Instance,
-                global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<global::System.Action<@TestClass>>(
-                    @TestClass => @TestClass.@InvokeWithParamsFromServer(0, null, null)
+                global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GetMethodByExpression<@TestClass, global::System.Func<int, string, IModularRpcRemoteConnection, RpcTask>>(
+                    @TestClass => @TestClass.@InvokeWithParamsFromServer
                 ),
                 false
             );
@@ -816,6 +822,74 @@ namespace ModularRPCs.Test.SourceGen
                             ref @TestClass._modularRpcsGeneratedCallMethodInfoInvokeWithParamsFromClientOvl0);
                     }
                 }
+            }
+        }
+
+
+        private sealed class __ModularRpcsReceiveClosureTypeOvl0 : DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GeneratedClosure
+        {
+            [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+            private ConfiguredTaskAwaitable.ConfiguredTaskAwaiter _awaiter;
+
+            [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+            public __ModularRpcsReceiveClosureTypeOvl0(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ConfiguredTaskAwaitable.ConfiguredTaskAwaiter awaiter)
+                : base(overhead, router, serializer)
+            {
+                _awaiter = awaiter;
+                _awaiter.UnsafeOnCompleted(new Action(Continuation));
+            }
+
+            [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+            private void Continuation()
+            {
+                try
+                {
+                    _awaiter.GetResult();
+                }
+                catch (Exception ex)
+                {
+                    Router.HandleInvokeException(ex, Overhead, Serializer);
+                    return;
+                }
+
+                if ((Overhead.Flags & RpcFlags.FireAndForget) != 0)
+                    return;
+
+                Router.HandleInvokeVoidReturn(Overhead, Serializer);
+            }
+        }
+
+        private sealed class __ModularRpcsReceiveClosureTypeOvl1 : DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.GeneratedClosure
+        {
+            [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+            private ConfiguredTaskAwaitable<int>.ConfiguredTaskAwaiter _awaiter;
+
+            [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+            public __ModularRpcsReceiveClosureTypeOvl1(RpcOverhead overhead, IRpcRouter router, IRpcSerializer serializer, ConfiguredTaskAwaitable<int>.ConfiguredTaskAwaiter awaiter)
+                : base(overhead, router, serializer)
+            {
+                _awaiter = awaiter;
+                _awaiter.UnsafeOnCompleted(new Action(Continuation));
+            }
+
+            [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+            private void Continuation()
+            {
+                int rtnValue;
+                try
+                {
+                    rtnValue = _awaiter.GetResult();
+                }
+                catch (Exception ex)
+                {
+                    Router.HandleInvokeException(ex, Overhead, Serializer);
+                    return;
+                }
+
+                if ((Overhead.Flags & RpcFlags.FireAndForget) != 0)
+                    return;
+
+                this.Router.HandleInvokeVoidReturn(this.Overhead, this.Serializer);
             }
         }
     }

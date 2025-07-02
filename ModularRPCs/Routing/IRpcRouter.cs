@@ -80,7 +80,7 @@ public interface IRpcRouter
     /// <summary>
     /// Pre-calculate the size of the overhead resulting from calling this RPC from a 'call' method.
     /// </summary>
-    [System.Diagnostics.Contracts.Pure]
+    [System.Diagnostics.Contracts.Pure, UsedImplicitly]
     uint GetOverheadSize(RuntimeMethodHandle sourceMethodHandle, ref RpcCallMethodInfo callMethodInfo);
 
     /// <summary>
