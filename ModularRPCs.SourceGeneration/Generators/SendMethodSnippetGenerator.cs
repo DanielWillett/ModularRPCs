@@ -12,16 +12,18 @@ internal readonly struct SendMethodSnippetGenerator
     public readonly SourceProductionContext Context;
     public readonly RpcMethodDeclaration Method;
     public readonly RpcSendAttribute Send;
+    public readonly RpcClassDeclaration Class;
     public readonly CSharpCompilation Compilation;
     public readonly SendMethodInfo Info;
 
-    internal SendMethodSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, SendMethodInfo method)
+    internal SendMethodSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, SendMethodInfo method, RpcClassDeclaration @class)
     {
         Context = context;
         Method = method.Method;
         Send = (RpcSendAttribute)method.Method.Target;
         Info = method;
         Compilation = compilation;
+        Class = @class;
     }
 
 
@@ -33,11 +35,13 @@ internal readonly struct SendMethodSnippetGenerator
 
         EquatableList<RpcParameterDeclaration> parameters = Method.Parameters;
 
-        bool hasId = Method.Type.IdType != null;
+        bool hasId = Class.IdType != null;
 
         ParameterHelper.BindParameters(parameters, out RpcParameterDeclaration[] toInject, out RpcParameterDeclaration[] toBind);
 
         bool isReturningTask = !Method.ReturnType.Equals("global::System.Void");
+
+        string returnStr = isReturningTask ? $"return ({Method.ReturnType.GloballyQualifiedName})" : string.Empty;
 
         bool canUnsignedRightShift = Compilation.LanguageVersion >= LanguageVersion.CSharp11;
 
@@ -47,6 +51,10 @@ internal readonly struct SendMethodSnippetGenerator
             .String("__modularRpcsGeneratedState.Serializer = this.__modularRpcsGeneratedProxyContext.DefaultSerializer;");
 
         bldr.String("__modularRpcsGeneratedState.PreCalc = __modularRpcsGeneratedState.Serializer.CanFastReadPrimitives;");
+
+        RpcParameterDeclaration? rawBytesPosition = null,
+                                 rawCountPosition = null,
+                                 rawCanTakeOwnershipPosition = null;
 
         if (!raw && toBind.Length > 0)
         {
@@ -148,11 +156,142 @@ internal readonly struct SendMethodSnippetGenerator
                 .String("#endregion")
                 .Empty();
         }
+        else if (raw)
+        {
+            bool needsCountParam = false;
+            foreach (RpcParameterDeclaration param in toBind)
+            {
+                switch (param.Type.PrimitiveType)
+                {
+                    case TypeHelper.PrimitiveLikeType.Boolean:
+
+                        if (rawCanTakeOwnershipPosition != null)
+                        {
+                            bldr.String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionMultipleCanTakeOwnership);");
+                            continue;
+                        }
+
+                        rawCanTakeOwnershipPosition = param;
+                        continue;
+
+                    case TypeHelper.PrimitiveLikeType.SByte:
+                    case TypeHelper.PrimitiveLikeType.Byte:
+                    case TypeHelper.PrimitiveLikeType.Int16:
+                    case TypeHelper.PrimitiveLikeType.UInt16:
+                    case TypeHelper.PrimitiveLikeType.Int32:
+                    case TypeHelper.PrimitiveLikeType.UInt32:
+                    case TypeHelper.PrimitiveLikeType.Int64:
+                    case TypeHelper.PrimitiveLikeType.UInt64:
+                    case TypeHelper.PrimitiveLikeType.IntPtr:
+                    case TypeHelper.PrimitiveLikeType.UIntPtr:
+                        if (rawCountPosition != null)
+                        {
+                            bldr.String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionMultipleByteCount);");
+                            continue;
+                        }
+
+                        if (param.Type.PrimitiveType is TypeHelper.PrimitiveLikeType.SByte or TypeHelper.PrimitiveLikeType.Int16 or TypeHelper.PrimitiveLikeType.Int32 or TypeHelper.PrimitiveLikeType.Int64 or TypeHelper.PrimitiveLikeType.UInt64 or TypeHelper.PrimitiveLikeType.IntPtr or TypeHelper.PrimitiveLikeType.UIntPtr)
+                        {
+                            bldr.Build($"if (@{param.Name} < 0 || @{param.Name} > {int.MaxValue})")
+                                .In().Build($"throw new global::System.ArgumentOutOfRangeException(nameof(@{param.Name}), @{param.Name}, null);").Out();
+                        }
+
+                        rawCountPosition = param;
+                        break;
+
+                    default:
+
+                        if (param.RawInjectType is ParameterHelper.RawByteInjectType.None)
+                        {
+                            bldr.Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInvalidRawParameter, \"{TypeHelper.Escape(param.Name)}\", \"{TypeHelper.Escape(param.Type.FullyQualifiedName)}\"));");
+                            continue;
+                        }
+
+                        if (rawBytesPosition != null)
+                        {
+                            bldr.String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionMultipleByteData);");
+                            continue;
+                        }
+
+                        rawBytesPosition = param;
+                        switch (param.RawInjectType)
+                        {
+                            case ParameterHelper.RawByteInjectType.Pointer:
+                            case ParameterHelper.RawByteInjectType.ByRefByte:
+                                needsCountParam = true;
+                                break;
+
+                            default:
+                                bldr.Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInvalidRawParameter, \"{TypeHelper.Escape(param.Name)}\", \"{TypeHelper.Escape(param.Type.FullyQualifiedName)}\"));");
+                                break;
+                        }
+                        break;
+                }
+            }
+
+            if (needsCountParam && rawCountPosition == null)
+            {
+                bldr.Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionNoByteCount, \"{TypeHelper.Escape(rawBytesPosition!.Type.FullyQualifiedName)}\"));");
+                return;
+            }
+
+            if (rawBytesPosition == null)
+            {
+                bldr.Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionNoByteData);");
+                return;
+            }
+
+            switch (rawBytesPosition.RawInjectType)
+            {
+                case ParameterHelper.RawByteInjectType.Pointer:
+                    bldr.Build($"{returnStr}global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.InvokeRpcInvokerByPointer(__modularRpcsGeneratedState.Router, ");
+                    break;
+                case ParameterHelper.RawByteInjectType.Array:
+                    break;
+                case ParameterHelper.RawByteInjectType.Stream:
+                    break;
+                case ParameterHelper.RawByteInjectType.Memory:
+                    break;
+                case ParameterHelper.RawByteInjectType.ReadOnlyMemory:
+                    break;
+                case ParameterHelper.RawByteInjectType.Span:
+                    break;
+                case ParameterHelper.RawByteInjectType.ReadOnlySpan:
+                    break;
+                case ParameterHelper.RawByteInjectType.ArraySegment:
+                    break;
+                case ParameterHelper.RawByteInjectType.IList:
+                    break;
+                case ParameterHelper.RawByteInjectType.IReadOnlyList:
+                    break;
+                case ParameterHelper.RawByteInjectType.ICollection:
+                    break;
+                case ParameterHelper.RawByteInjectType.IEnumerable:
+                    break;
+                case ParameterHelper.RawByteInjectType.IReadOnlyCollection:
+                    break;
+                case ParameterHelper.RawByteInjectType.List:
+                    break;
+                case ParameterHelper.RawByteInjectType.ArrayList:
+                    break;
+                case ParameterHelper.RawByteInjectType.ReadOnlyCollection:
+                    break;
+                case ParameterHelper.RawByteInjectType.ByRefByte:
+                    break;
+                case ParameterHelper.RawByteInjectType.ByteWriter:
+                    break;
+                case ParameterHelper.RawByteInjectType.ByteReader:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+            return;
+        }
 
         bldr.String("__modularRpcsGeneratedState.OverheadSize = __modularRpcsGeneratedState.Router.GetOverheadSize(")
             .In()
-                .Build($"@{Method.Type.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,")
-                .Build($"ref @{Method.Type.Type.Name}.{Info.MethodInfoFieldName}").Out()
+                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,")
+                .Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName}").Out()
             .String(");")
             .Empty();
 
@@ -162,7 +301,7 @@ internal readonly struct SendMethodSnippetGenerator
 
         GenerateGetIdSize(
             bldr,
-            Method.Type,
+            Class,
             out string? escapedIdTypeName,
             "__modularRpcsGeneratedState.IdTypeSize",
             "__modularRpcsGeneratedState.IdSize",
@@ -198,7 +337,7 @@ internal readonly struct SendMethodSnippetGenerator
 
         string parameterList = parameters.Count == 0 ? string.Empty : (", " + string.Join(", ", parameters.Select(x => $"@{x.Name}")));
 
-        bldr.Build($"return __ModularRpcsGeneratedInvoke(ref __modularRpcsGeneratedState{(hasId ? (passIdByRef ? ", ref __modularRpcsGeneratedId" : ", __modularRpcsGeneratedId") : string.Empty)}{parameterList});");
+        bldr.Build($"{returnStr}__ModularRpcsGeneratedInvoke(ref __modularRpcsGeneratedState{(hasId ? (passIdByRef ? ", ref __modularRpcsGeneratedId" : ", __modularRpcsGeneratedId") : string.Empty)}{parameterList});");
 
         bldr.Out()
             .String("}");
@@ -213,7 +352,7 @@ internal readonly struct SendMethodSnippetGenerator
             .String("__modularRpcsGeneratedState.Buffer = __modularRpcsGeneratedBuffer;");
 
 
-        bldr.Build($"return __ModularRpcsGeneratedInvoke(ref __modularRpcsGeneratedState{(hasId ? (passIdByRef ? ", ref __modularRpcsGeneratedId" : ", __modularRpcsGeneratedId") : string.Empty)}{parameterList});");
+        bldr.Build($"{returnStr}__ModularRpcsGeneratedInvoke(ref __modularRpcsGeneratedState{(hasId ? (passIdByRef ? ", ref __modularRpcsGeneratedId" : ", __modularRpcsGeneratedId") : string.Empty)}{parameterList});");
 
         bldr.Out()
             .String("}")
@@ -227,23 +366,23 @@ internal readonly struct SendMethodSnippetGenerator
 
         string parameterDefList = parameters.Count == 0 ? string.Empty : (", " + string.Join(", ", parameters.Select(x => x.Definition)));
 
-        bldr.Build($"static unsafe {Method.ReturnType.GloballyQualifiedName} __ModularRpcsGeneratedInvoke(ref global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState{(hasId ? (passIdByRef ? $", ref {Method.Type.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId" : $", {Method.Type.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId") : string.Empty)}{parameterDefList})")
+        bldr.Build($"static unsafe {Method.ReturnType.GloballyQualifiedName} __ModularRpcsGeneratedInvoke(ref global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState{(hasId ? (passIdByRef ? $", ref {Class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId" : $", {Class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId") : string.Empty)}{parameterDefList})")
             .String("{")
             .In();
 
-        if (Method.Type.IdType == null)
+        if (Class.IdType == null)
         {
             bldr.String("// TypeCode: Empty")
                 .String("__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = 0;");
         }
         else
         {
-            bldr.Build($"#region Write ID ({Method.Type.IdType.Name})")
-                .Build($"// TypeCode: {Method.Type.IdTypeCode.ToTypeCodeString()}")
-                .Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = {(byte)Method.Type.IdTypeCode};")
+            bldr.Build($"#region Write ID ({Class.IdType.Name})")
+                .Build($"// TypeCode: {Class.IdTypeCode.ToTypeCodeString()}")
+                .Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = {(byte)Class.IdTypeCode};")
                 .Empty();
                 
-            if (Method.Type.IdTypeCode == TypeCode.Object)
+            if (Class.IdTypeCode == TypeCode.Object)
             {
                 bldr.String("uint __modularRpcsGeneratedIdPos;")
                     .String("if (__modularRpcsGeneratedState.HasKnownTypeId)")
@@ -293,7 +432,7 @@ internal readonly struct SendMethodSnippetGenerator
                 bldr.String("uint __modularRpcsGeneratedIdPos = __modularRpcsGeneratedState.PreOverheadSize + 1u;");
             }
 
-            WriteValue(bldr, Method.Type.IdType, canUnsignedRightShift, "__modularRpcsGeneratedIdPos", "__modularRpcsGeneratedId", "__modularRpcsGeneratedState.IdSize");
+            WriteValue(bldr, Class.IdType, canUnsignedRightShift, "__modularRpcsGeneratedIdPos", "__modularRpcsGeneratedId", "__modularRpcsGeneratedState.IdSize");
 
             bldr.String("#endregion");
         }
@@ -309,7 +448,7 @@ internal readonly struct SendMethodSnippetGenerator
                 else
                     bldr.Build($"#region Write Parameters ({toBind.Length} parameters)");
 
-                bldr.String(Method.Type.IdType == null
+                bldr.String(Class.IdType == null
                     ? "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedState.PreOverheadSize + 1u;"
                     : "uint __modularRpcsGeneratedIndex = __modularRpcsGeneratedIdPos;");
 
@@ -352,19 +491,17 @@ internal readonly struct SendMethodSnippetGenerator
         string? thisConnection = null;
         if (injectedConnectionArg == -1)
         {
-            if (Method.Type.IsSingleConnectionObject)
+            if (Class.IsSingleConnectionObject)
             {
-                thisConnection = Method.Type.IsSingleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject)this).Connection" : "this.Connection";
+                thisConnection = Class.IsSingleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcSingleConnectionObject)this).Connection" : "this.Connection";
             }
-            else if (Method.Type.IsMultipleConnectionObject)
+            else if (Class.IsMultipleConnectionObject)
             {
-                thisConnection = Method.Type.IsMultipleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject)this).Connections" : "this.Connections";
+                thisConnection = Class.IsMultipleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject)this).Connections" : "this.Connections";
             }
         }
 
-        bldr.String(isReturningTask
-                ? $"return ({Method.ReturnType.GloballyQualifiedName})__modularRpcsGeneratedState.Router.InvokeRpc("
-                : "__modularRpcsGeneratedState.Router.InvokeRpc(")
+        bldr.Build($"{returnStr}__modularRpcsGeneratedState.Router.InvokeRpc(")
             .In();
 
         if (thisConnection != null)
@@ -384,7 +521,7 @@ internal readonly struct SendMethodSnippetGenerator
             bldr.String("null,");
         }
         bldr    .String("__modularRpcsGeneratedState.Serializer,")
-                .Build($"@{Method.Type.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,");
+                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,");
 
         if (cancellationTokenArg != -1)
         {
@@ -398,7 +535,7 @@ internal readonly struct SendMethodSnippetGenerator
         bldr    .String("__modularRpcsGeneratedState.Buffer,")
                 .String("checked ( (int)__modularRpcsGeneratedState.Size ),")
                 .String("__modularRpcsGeneratedState.Size - __modularRpcsGeneratedState.OverheadSize,")
-                .Build($"ref @{Method.Type.Type.Name}.{Info.MethodInfoFieldName},")
+                .Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName},")
                 .String("global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Default | global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Generated").Out()
             .String(");");
 

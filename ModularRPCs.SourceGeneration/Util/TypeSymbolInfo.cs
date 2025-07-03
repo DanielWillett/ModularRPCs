@@ -29,7 +29,7 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
     public TypeSerializationInfo Info { get; }
 #nullable restore
 
-    public TypeSymbolInfo(Compilation compilation, ITypeSymbol typeSymbol, bool createInfo = false)
+    public TypeSymbolInfo(Compilation compilation, ITypeSymbol typeSymbol, bool createInfo = false, bool isByRef = false)
     {
         IsValueType = typeSymbol.IsValueType;
         IsNullable = typeSymbol.IsNullable();
@@ -45,7 +45,7 @@ public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
             FullyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameFormat);
             GloballyQualifiedName = typeSymbol.ToDisplayString(NullableFlowState.NotNull, CustomFormats.FullTypeNameWithGlobalFormat);
         }
-        AssemblyQualifiedName = TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, typeSymbol);
+        AssemblyQualifiedName = TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, typeSymbol, isByRef);
 
         // easy way to detect enum underlying type changes
         PrimitiveLikeType = TypeHelper.GetPrimitiveLikeType(typeSymbol);

@@ -61,16 +61,16 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             );
         });
 
-        IncrementalValuesProvider<(INamedTypeSymbol Node, RpcClassDeclaration Declaration)> symbolsAndClassDefs =
-            context.SyntaxProvider.ForAttributeWithMetadataName<(INamedTypeSymbol? Node, RpcClassDeclaration? Declaration)>(
+        IncrementalValuesProvider<RpcClassDeclaration> symbolsAndClassDefs =
+            context.SyntaxProvider.ForAttributeWithMetadataName<RpcClassDeclaration?>(
                 "DanielWillett.ModularRpcs.Annotations.GenerateRpcSourceAttribute",
                 static (n, _) => n is ClassDeclarationSyntax or StructDeclarationSyntax,
-                static (n, _) =>
+                static (n, token) =>
                 {
                     INamedTypeSymbol? symbol = n.TargetSymbol as INamedTypeSymbol;
-                    if (symbol == null)
+                    if (symbol == null || symbol.HasAttribute("global::DanielWillett.ModularRpcs.Annotations.IgnoreGenerateRpcSourceAttribute"))
                     {
-                        return (null, null);
+                        return null;
                     }
 
                     ClassError error = ClassError.None;
@@ -80,6 +80,11 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                         error = ClassError.Invalid;
                     else if (symbol.IsValueType)
                         error = ClassError.Struct;
+
+                    if (error != ClassError.None)
+                    {
+                        return null;
+                    }
 
                     INamedTypeSymbol? rpcObjectInterface = symbol.GetImplementation(
                         x => x.IsGenericType && x.ConstructedFrom.IsEqualTo("global::DanielWillett.ModularRpcs.Protocol.IRpcObject<T>")
@@ -132,48 +137,35 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                             hasReleaseMethod = true;
                     }
 
-                    return (
-                        Node: symbol,
-                        Declaration: new RpcClassDeclaration
-                        {
-                            Error = error,
-                            Definition = symbol.ToDisplayString(CustomFormats.TypeDeclarationFormat),
-                            IsValueType = symbol.IsValueType,
-                            Type = new TypeSymbolInfo(n.SemanticModel.Compilation, symbol),
-                            IdType = idType == null ? null : new TypeSymbolInfo(n.SemanticModel.Compilation, idType, createInfo: true),
-                            IdTypeCode = TypeHelper.GetTypeCode(idType),
-                            IdIsExplicit = explicitId,
-                            IsUnityType = isUnityType,
-                            IsSingleConnectionObject = singleConnectionInterface != null, 
-                            IsSingleConnectionExplicit = explicitSingle,
-                            IsMultipleConnectionObject = multiConnectionInterface != null,
-                            IsMultipleConnectionExplicit = explicitMulti, 
-                            NestedParents = symbol.ContainingType == null ? null : GetNestedParents(symbol),
-                            HasReleaseMethod = hasReleaseMethod,
-                            HasExplicitFinalizer = hasExplicitFinalizer > 0,
-                            IsExplicitFinalizerExplicit = hasExplicitFinalizer == 2
-                        }
-                    );
+                    RpcClassDeclaration cls = new RpcClassDeclaration
+                    {
+                        Error = error,
+                        Definition = symbol.ToDisplayString(CustomFormats.TypeDeclarationFormat),
+                        IsValueType = symbol.IsValueType,
+                        Type = new TypeSymbolInfo(n.SemanticModel.Compilation, symbol),
+                        IdType = idType == null ? null : new TypeSymbolInfo(n.SemanticModel.Compilation, idType, createInfo: true),
+                        IdTypeCode = TypeHelper.GetTypeCode(idType),
+                        IdIsExplicit = explicitId,
+                        IsUnityType = isUnityType,
+                        IsSingleConnectionObject = singleConnectionInterface != null, 
+                        IsSingleConnectionExplicit = explicitSingle,
+                        IsMultipleConnectionObject = multiConnectionInterface != null,
+                        IsMultipleConnectionExplicit = explicitMulti, 
+                        NestedParents = symbol.ContainingType == null ? null : GetNestedParents(symbol),
+                        HasReleaseMethod = hasReleaseMethod,
+                        HasExplicitFinalizer = hasExplicitFinalizer > 0,
+                        IsExplicitFinalizerExplicit = hasExplicitFinalizer == 2
+                    };
+
+                    cls.Methods = new EquatableList<RpcMethodDeclaration>(EnumerateMethods(n.SemanticModel.Compilation, symbol, cls, token));
+                    return cls;
                 })
-                .WithTrackingName("ModularRPCs_AllGeneratedRpcClasses")
-                .Where(info =>
-                {
-                    return info.Node != null && info.Node.GetAttributes().All(x => !x.AttributeClass.IsEqualTo(
-                        "global::DanielWillett.ModularRpcs.Annotations.IgnoreGenerateRpcSourceAttribute"
-                    ));
-                })!
-                .WithTrackingName<(INamedTypeSymbol Node, RpcClassDeclaration Declaration)>("ModularRPCs_FilteredGeneratedRpcClasses");
+                .Where(x => x != null)!
+                .WithTrackingName<RpcClassDeclaration>("ModularRPCs_AllGeneratedRpcClasses");
 
-        IncrementalValuesProvider<(RpcClassDeclaration Declaration, EquatableList<RpcMethodDeclaration> Methods, Compilation Compilation)> compositedClasses =
-            symbolsAndClassDefs
-                .Where(x => x.Declaration.Error == ClassError.None)
-                .Combine(context.CompilationProvider)
-                .Select((x, token) => (x.Left.Declaration, new EquatableList<RpcMethodDeclaration>(EnumerateMethods(x.Right, x.Left, token)), x.Right))
-                .WithTrackingName("ModularRPCs_FilteredGeneratedRpcClassesAndMethods");
-
-        context.RegisterSourceOutput(compositedClasses, static (n, c) =>
+        context.RegisterSourceOutput(symbolsAndClassDefs.Combine(context.CompilationProvider), static (n, c) =>
         {
-            new ClassSnippetGenerator(n, (CSharpCompilation)c.Compilation, c.Declaration, c.Methods).GenerateClassSnippet();
+            new ClassSnippetGenerator(n, (CSharpCompilation)c.Right, c.Left).GenerateClassSnippet();
         });
     }
 
@@ -189,13 +181,12 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
         return list;
     }
 
-    private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, (INamedTypeSymbol Symbol, RpcClassDeclaration Declaration) info, CancellationToken token)
+    private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, INamedTypeSymbol symbol, RpcClassDeclaration decl, CancellationToken token)
     {
-        (ITypeSymbol symbol, RpcClassDeclaration decl) = info;
         foreach (IMethodSymbol method in symbol.GetMembers().OfType<IMethodSymbol>())
         {
             RpcTargetAttribute? attribute = method.GetAttributes()
-                                                  .Select(a => GetRpcTypeAttribute(compilation, a, info.Symbol))
+                                                  .Select(a => GetRpcTypeAttribute(compilation, a, symbol))
                                                   .FirstOrDefault(x => x != null);
             if (attribute == null)
                 continue;
@@ -216,7 +207,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
 
             EquatableList<RpcParameterDeclaration> parameters = new EquatableList<RpcParameterDeclaration>(method.Parameters.Select((arg, index) =>
             {
-                TypeSymbolInfo symbolInfo = new TypeSymbolInfo(compilation, arg.Type, createInfo: true);
+                TypeSymbolInfo symbolInfo = new TypeSymbolInfo(compilation, arg.Type, createInfo: true, isByRef: arg.RefKind != RefKind.None);
                 return new RpcParameterDeclaration
                 {
                     Index = index,
@@ -247,7 +238,6 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
 
             yield return new RpcMethodDeclaration
             {
-                Type = decl,
                 Target = attribute,
                 Visibility = method.DeclaredAccessibility,
                 IsStatic = method.IsStatic,
@@ -460,6 +450,7 @@ public record RpcClassDeclaration
     public required bool IsMultipleConnectionObject { get; init; }
     public required bool IsMultipleConnectionExplicit { get; set; }
     public required EquatableList<string>? NestedParents { get; set; }
+    public EquatableList<RpcMethodDeclaration> Methods { get; set; }
 
     public bool IsUnityType { get; init; }
     public bool HasExplicitFinalizer { get; init; }

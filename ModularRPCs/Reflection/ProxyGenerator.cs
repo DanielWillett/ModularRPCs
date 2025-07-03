@@ -2409,47 +2409,47 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                     il.Emit(OpCodes.Ldsflda, methodInfoField);
                     if (bytesType == typeof(byte[]))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByArray)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByArray)!);
                     }
                     else if (bytesType == typeof(ArraySegment<byte>))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByArraySegment)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByArraySegment)!);
                     }
                     else if (bytesType == typeof(Span<byte>))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerBySpan)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerBySpan)!);
                     }
                     else if (bytesType == typeof(ReadOnlySpan<byte>))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByReadOnlySpan)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByReadOnlySpan)!);
                     }
                     else if (bytesType == typeof(Memory<byte>))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByMemory)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByMemory)!);
                     }
                     else if (bytesType == typeof(ReadOnlyMemory<byte>))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByReadOnlyMemory)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByReadOnlyMemory)!);
                     }
                     else if (bytesType == typeof(byte*))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByPointer)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByPointer)!);
                     }
                     else if (typeof(ICollection<byte>).IsAssignableFrom(bytesType))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByCollection)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByCollection)!);
                     }
                     else if (typeof(IEnumerable<byte>).IsAssignableFrom(bytesType))
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByEnumerable)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByEnumerable)!);
                     }
                     else if (isByteWriter)
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByByteWriter)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByByteWriter)!);
                     }
                     else if (isByteReader)
                     {
-                        il.Emit(OpCodes.Call, Accessor.GetMethod(InvokeRpcInvokerByByteReader)!);
+                        il.Emit(OpCodes.Call, Accessor.GetMethod(SourceGenerationServices.InvokeRpcInvokerByByteReader)!);
                     }
                     else
                     {
@@ -2547,253 +2547,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
 #endif
 
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByByteWriter(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, object writerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        ByteWriter writer = (ByteWriter)writerBox;
-        if (writer.Stream != null)
-            throw new NotSupportedException(Properties.Exceptions.WriterStreamModeNotSupported);
-
-        if (byteCt == uint.MaxValue)
-        {
-            byteCt = (uint)writer.Count;
-        }
-        else if (writer.Count < byteCt)
-        {
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-        }
-
-        if (writer.Buffer == null)
-        {
-            throw new ArgumentException(Properties.Exceptions.NoDataLoadedRaw, nameof(byteCt));
-        }
-
-        if (Compatibility.IncompatibleWithBufferMemoryCopyOverlap)
-        {
-            byte[] newArr = new byte[writer.Count + hdr.Length];
-            Buffer.BlockCopy(hdr, 0, newArr, 0, hdr.Length);
-            Buffer.BlockCopy(writer.Buffer, 0, newArr, hdr.Length, writer.Count);
-            fixed (byte* ptr = newArr)
-            {
-                return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
-            }
-        }
-
-        writer.ExtendBufferFor(hdr.Length);
-        fixed (byte* hdrPtr = hdr)
-        fixed (byte* bfrPtr = writer.Buffer)
-        {
-            Buffer.MemoryCopy(bfrPtr, bfrPtr + hdr.Length, writer.Buffer.Length - hdr.Length, writer.Count);
-            Buffer.MemoryCopy(hdrPtr, bfrPtr, hdr.Length, hdr.Length);
-
-            RpcTask task = router.InvokeRpc(connections, serializer, method, token, bfrPtr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
-
-            // undo copying the header
-            Buffer.MemoryCopy(bfrPtr + hdr.Length, bfrPtr, writer.Buffer.Length, writer.Count);
-            if (hdr.Length > writer.Count)
-            {
-                Unsafe.InitBlock(bfrPtr + writer.Count, 0, (uint)(hdr.Length - writer.Count));
-            }
-            return task;
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByByteReader(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, object readerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        ByteReader reader = (ByteReader)readerBox;
-        if (reader.Stream != null)
-        {
-            if (byteCt == uint.MaxValue)
-            {
-                byteCt = checked ( (uint)(reader.Stream.Length - reader.Stream.Position) );
-            }
-
-            return router.InvokeRpc(connections, serializer, method, token, new ArraySegment<byte>(hdr), reader.Stream, true, byteCt, ref callInfo);
-        }
-
-        if (reader.Data.Array == null)
-        {
-            throw new ArgumentException(Properties.Exceptions.NoDataLoadedRaw, nameof(byteCt));
-        }
-
-        if (byteCt == uint.MaxValue)
-        {
-            byteCt = (uint)reader.BytesLeft;
-        }
-        else if (reader.BytesLeft < byteCt)
-        {
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-        }
-
-        byte[] newArr = new byte[byteCt + hdr.Length];
-        Buffer.BlockCopy(hdr, 0, newArr, 0, hdr.Length);
-        Buffer.BlockCopy(reader.Data.Array!, reader.Position, newArr, hdr.Length, (int)byteCt);
-        fixed (byte* ptr = newArr)
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByPointer(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, byte* bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        if (byteCt < hdr.Length)
-            throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
-
-        fixed (byte* ptr = hdr)
-        {
-            Buffer.MemoryCopy(ptr, bytes, byteCt, hdr.Length);
-        }
-
-        return router.InvokeRpc(connections, serializer, method, token, bytes, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RpcTask InvokeRpcInvokerByMemory(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, Memory<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-        => InvokeRpcInvokerBySpan(router, connections, serializer, method, token, bytes.Span, byteCt, hdr, ref callInfo);
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RpcTask InvokeRpcInvokerByReadOnlyMemory(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ReadOnlyMemory<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-        => InvokeRpcInvokerByReadOnlySpan(router, connections, serializer, method, token, bytes.Span, byteCt, hdr, ref callInfo);
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerBySpan(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, Span<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        if (bytes.Length < hdr.Length || byteCt < hdr.Length)
-            throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
-
-        if (byteCt > bytes.Length)
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-
-        hdr.AsSpan().CopyTo(bytes.Slice(0, hdr.Length));
-        fixed (byte* ptr = bytes)
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByReadOnlySpan(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ReadOnlySpan<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        if (byteCt > bytes.Length)
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-
-        byte[] ttlArray = new byte[byteCt + (uint)hdr.Length];
-        Buffer.BlockCopy(hdr, 0, ttlArray, 0, hdr.Length);
-        bytes.Slice(0, checked ( (int)byteCt )).CopyTo(ttlArray.AsSpan(hdr.Length));
-        fixed (byte* ptr = ttlArray)
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByArray(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, byte[] bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        if (bytes.Length < hdr.Length || byteCt < hdr.Length)
-            throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
-
-        if (byteCt > bytes.Length)
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-
-        Buffer.BlockCopy(hdr, 0, bytes, 0, hdr.Length);
-        fixed (byte* ptr = bytes)
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByArraySegment(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ArraySegment<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        if (bytes.Array == null || bytes.Count < hdr.Length || byteCt < hdr.Length)
-            throw new RpcOverflowException(Properties.Exceptions.RawOverflow) { ErrorCode = 6 };
-
-        if (byteCt > bytes.Count)
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-
-        Buffer.BlockCopy(hdr, 0, bytes.Array, bytes.Offset, hdr.Length);
-        fixed (byte* ptr = &bytes.Array[bytes.Offset])
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt, (uint)(byteCt - hdr.Length), ref callInfo);
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByCollection(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ICollection<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        if (byteCt > bytes.Count)
-            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
-
-        byte[] ttlArray = new byte[byteCt];
-        Buffer.BlockCopy(hdr, 0, ttlArray, 0, hdr.Length);
-        bytes.CopyTo(ttlArray, hdr.Length);
-        fixed (byte* ptr = ttlArray)
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
-        }
-    }
-
-    /// <summary>
-    /// This is an internal API and shouldn't be used by external code.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static unsafe RpcTask InvokeRpcInvokerByEnumerable(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, IEnumerable<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
-    {
-        byte[] ttlArray;
-        if (byteCt == uint.MaxValue)
-        {
-            ttlArray = hdr.Concat(bytes).ToArray();
-            fixed (byte* ptr = ttlArray)
-            {
-                return router.InvokeRpc(connections, serializer, method, token, ptr, ttlArray.Length, (uint)(ttlArray.Length - hdr.Length), ref callInfo);
-            }
-        }
-
-        ttlArray = new byte[byteCt];
-        Buffer.BlockCopy(hdr, 0, ttlArray, 0, hdr.Length);
-        int index = hdr.Length - 1;
-        foreach (byte b in bytes)
-        {
-            ttlArray[++index] = b;
-        }
-
-        fixed (byte* ptr = ttlArray)
-        {
-            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
-        }
-    }
     private static void EmitCalculateIdSize(IOpCodeEmitter il, LocalBuilder lclOverheadSize, bool isOnce, FieldInfo? idField, LocalBuilder lclSerializer, ref TypeCode tc, ref LocalBuilder? lclIdTypeSize, ref string? idTypeName, ref LocalBuilder? lclKnownTypeId, ref LocalBuilder? lclHasKnownTypeId, ref bool canQuickSerialize, ref bool passByRef, ref LocalBuilder? lclPreCalcId)
     {
         if (idField == null)

@@ -609,26 +609,35 @@ internal static class TypeUtility
 
     private static void CreateAssemblyQualifiedNameSlow(Type type, StringBuilder bldr, Type[]? args, bool nested = false)
     {
-        if (!nested && !string.IsNullOrEmpty(type.Namespace))
+        Type elementType = type;
+        while (true)
         {
-            bldr.Append(EscapeAssemblyQualifiedName(type.Namespace))
+            if (elementType.HasElementType)
+                elementType = elementType.GetElementType()!;
+            else
+                break;
+        }
+
+        if (!nested && !string.IsNullOrEmpty(elementType.Namespace))
+        {
+            bldr.Append(EscapeAssemblyQualifiedName(elementType.Namespace))
                 .Append('.');
         }
 
-        if (type.DeclaringType != null)
+        if (elementType.DeclaringType != null)
         {
-            CreateAssemblyQualifiedNameSlow(type.DeclaringType, bldr, null, nested: true);
+            CreateAssemblyQualifiedNameSlow(elementType.DeclaringType, bldr, null, nested: true);
             bldr.Append('+');
         }
 
-        bldr.Append(EscapeAssemblyQualifiedName(type.Name));
+        bldr.Append(EscapeAssemblyQualifiedName(elementType.Name));
 
         if (nested)
             return;
 
-        if (type.IsConstructedGenericType)
+        if (elementType.IsConstructedGenericType)
         {
-            args ??= type.GetGenericArguments();
+            args ??= elementType.GetGenericArguments();
             bldr.Append('[');
 
             for (int i = 0; i < args.Length; ++i)
@@ -644,8 +653,48 @@ internal static class TypeUtility
             }
 
             bldr.Append(']');
-
         }
+
+        elementType = type;
+        while (true)
+        {
+            if (elementType.IsArray)
+            {
+                int rank = elementType.GetArrayRank();
+                switch (rank)
+                {
+                    case 0:
+                        break;
+
+                    case 1:
+#if NETCOREAPP2_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                        bldr.Append(elementType.IsSZArray ? "[]" : "[*]");
+#else
+                        bldr.Append(elementType == elementType.GetElementType()!.MakeArrayType() ? "[]" : "[*]");
+#endif
+                        break;
+
+                    default:
+                        bldr.Append('[').Append(',', rank - 1).Append(']');
+                        break;
+                }
+
+                elementType = elementType.GetElementType()!;
+            }
+            else if (elementType.IsPointer)
+            {
+                bldr.Append('*');
+                elementType = elementType.GetElementType()!;
+            }
+            else if (elementType.IsByRef)
+            {
+                bldr.Append('&');
+                elementType = elementType.GetElementType()!;
+            }
+            else
+                break;
+        }
+
 
         Assembly? asm = type.Assembly;
         if (asm == Accessor.MSCoreLib || asm == null)
@@ -668,7 +717,7 @@ internal static class TypeUtility
         return GetAssemblyQualifiedNameNoVersion(type).Equals(asmQualifiedName, StringComparison.Ordinal);
     }
 
-    private static readonly char[] AssemblyQualifiedEscapables = ['\n', '\r', '\t', '\v', '\\', ',', '+', '[', ']'];
+    private static readonly char[] AssemblyQualifiedEscapables = ['\n', '\r', '\t', '\v', '\\', ',', '+', '[', ']', '*', '&'];
 
     private static string EscapeAssemblyQualifiedName(string? value)
     {
@@ -679,7 +728,7 @@ internal static class TypeUtility
         string s = value;
         for (int i = 0; i < s.Length; ++i)
         {
-            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+' or '[' or ']')
+            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+' or '[' or ']' or '*' or '&')
                 ++c;
         }
 

@@ -11,16 +11,18 @@ internal readonly struct ReceiveMethodSnippetGenerator
     public readonly SourceProductionContext Context;
     public readonly CSharpCompilation Compilation;
     public readonly RpcMethodDeclaration Method;
+    public readonly RpcClassDeclaration Class;
     public readonly RpcReceiveAttribute Receive;
     public readonly ReceiveMethodInfo Info;
 
-    internal ReceiveMethodSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, ReceiveMethodInfo method)
+    internal ReceiveMethodSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, ReceiveMethodInfo method, RpcClassDeclaration @class)
     {
         Context = context;
         Method = method.Method;
         Receive = (RpcReceiveAttribute)method.Method.Target;
         Info = method;
         Compilation = compilation;
+        Class = @class;
     }
 
     // method signature:
@@ -539,7 +541,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
         if (!Method.IsStatic)
         {
             bldr.String("if (targetObject == null)")
-                .In().Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInstanceNull, \"{TypeHelper.Escape(Method.Type.Type.FullyQualifiedName)}\", \"{TypeHelper.Escape(Method.DisplayString)}\"));")
+                .In().Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInstanceNull, \"{TypeHelper.Escape(Class.Type.FullyQualifiedName)}\", \"{TypeHelper.Escape(Method.DisplayString)}\"));")
                 .Out()
                 .Empty();
         }
@@ -565,22 +567,22 @@ internal readonly struct ReceiveMethodSnippetGenerator
             {
                 if (hasReturnValue)
                 {
-                    bldr.Build($"rtnValue = (({Method.Type.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
+                    bldr.Build($"rtnValue = (({Class.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
                 }
                 else
                 {
-                    bldr.Build($"(({Method.Type.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
+                    bldr.Build($"(({Class.Type.GloballyQualifiedName})targetObject).@{Method.Name}(");
                 }
             }
             else
             {
                 if (hasReturnValue)
                 {
-                    bldr.Build($"rtnValue = @{Method.Type.Type.Name}.@{Method.Name}(");
+                    bldr.Build($"rtnValue = @{Class.Type.Name}.@{Method.Name}(");
                 }
                 else
                 {
-                    bldr.Build($"@{Method.Type.Type.Name}.@{Method.Name}(");
+                    bldr.Build($"@{Class.Type.Name}.@{Method.Name}(");
                 }
             }
 

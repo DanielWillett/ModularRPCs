@@ -9,9 +9,9 @@ namespace ModularRPCs.Test
     internal unsafe class AssemblyQualifiedNameTests
     {
 #if NET7_0_OR_GREATER
-        private const int OptionCt = 14;
+        private const int OptionCt = 15;
 #else
-        private const int OptionCt = 16;
+        private const int OptionCt = 17;
 #endif
 
         // ReSharper disable once UseCollectionExpression
@@ -33,6 +33,7 @@ namespace ModularRPCs.Test
             typeof(int[][,]),
             typeof(int[,][]),
             typeof(int*[,][]),
+            null, // ref Struct
 #if NET7_0_OR_GREATER
             typeof(int[,]*[]),
             typeof(int[,][]*),
@@ -43,7 +44,7 @@ namespace ModularRPCs.Test
         [Test]
         public void AsmQualifiedNameNoVersion([Range(0, OptionCt - 1)] int num)
         {
-            Type expected = Options[num];
+            Type expected = Options[num] ?? typeof(Struct).MakeByRefType();
             string name = TypeUtility.GetAssemblyQualifiedNameNoVersion(expected);
 
             Console.WriteLine($"Generated: \"{name}\".");

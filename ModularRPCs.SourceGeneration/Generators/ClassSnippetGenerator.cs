@@ -17,12 +17,12 @@ internal readonly struct ClassSnippetGenerator
     public readonly EquatableList<RpcMethodDeclaration> MethodDeclarations;
     public readonly CSharpCompilation Compilation;
 
-    internal ClassSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, RpcClassDeclaration @class, EquatableList<RpcMethodDeclaration> methodDeclarations)
+    internal ClassSnippetGenerator(SourceProductionContext context, CSharpCompilation compilation, RpcClassDeclaration @class)
     {
         Compilation = compilation;
         Context = context;
         Class = @class;
-        MethodDeclarations = methodDeclarations;
+        MethodDeclarations = @class.Methods;
     }
 
     public void GenerateClassSnippet()
@@ -533,7 +533,7 @@ internal readonly struct ClassSnippetGenerator
             bldr.Build($"{(method.Method.NeedsUnsafe ? "unsafe " : string.Empty)}{method.Method.Definition}")
                 .String("{").In();
 
-            new SendMethodSnippetGenerator(Context, Compilation, method)
+            new SendMethodSnippetGenerator(Context, Compilation, method, Class)
                 .GenerateMethodBodySnippet(bldr);
 
             bldr.Out()
@@ -579,7 +579,7 @@ internal readonly struct ClassSnippetGenerator
             bldr.String("global::System.Threading.CancellationToken token)").Out()
                 .String("{").In();
 
-            ReceiveMethodSnippetGenerator generator = new ReceiveMethodSnippetGenerator(Context, Compilation, method);
+            ReceiveMethodSnippetGenerator generator = new ReceiveMethodSnippetGenerator(Context, Compilation, method, Class);
             generator.GenerateMethodBodySnippet(bldr, stream: false);
 
             bldr.Out()

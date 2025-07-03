@@ -317,11 +317,11 @@ public static class TypeHelper
         }
     }
 
-    private static string GetMetadataNameStr(Compilation compilation, ITypeSymbol type)
+    private static string GetMetadataNameStr(Compilation compilation, ITypeSymbol type, bool byRef)
     {
         if (type.ContainingType != null)
         {
-            return GetMetadataNameSlow(compilation, type);
+            return GetMetadataNameSlow(compilation, type, byRef);
         }
 
         string metaName = EscapeAssemblyQualifiedName(type.MetadataName);
@@ -332,6 +332,9 @@ public static class TypeHelper
             string ns = EscapeAssemblyQualifiedName(type.ContainingNamespace.ToDisplayString(CustomFormats.FullTypeNameFormat));
             metaName = ns + "." + metaName;
         }
+
+        if (byRef)
+            metaName += "&";
         
         if (IsAssemblyMscorlib(compilation, type))
         {
@@ -342,21 +345,21 @@ public static class TypeHelper
         return metaName + ", " + asmName;
     }
 
-    public static string GetAssemblyQualifiedNameNoVersion(Compilation compilation, ITypeSymbol type)
+    public static string GetAssemblyQualifiedNameNoVersion(Compilation compilation, ITypeSymbol type, bool byRef = false)
     {
         if (type is not INamedTypeSymbol n || !n.IsGenericType || n.IsUnboundGenericType)
-            return GetMetadataNameStr(compilation, type);
+            return GetMetadataNameStr(compilation, type, byRef);
 
         if (n.TypeArguments.Any(x => x is IErrorTypeSymbol))
-            return GetMetadataNameStr(compilation, n);
+            return GetMetadataNameStr(compilation, n, byRef);
 
-        return GetMetadataNameSlow(compilation, type);
+        return GetMetadataNameSlow(compilation, type, byRef);
     }
 
-    private static string GetMetadataNameSlow(Compilation compilation, ITypeSymbol type)
+    private static string GetMetadataNameSlow(Compilation compilation, ITypeSymbol type, bool byRef)
     {
         StringBuilder sb = new StringBuilder(32 * (((type as INamedTypeSymbol)?.TypeArguments.Length ?? 0) + 1));
-        GetMetadataName(compilation, type, sb);
+        GetMetadataName(compilation, type, sb, byRef: byRef);
         return sb.ToString();
     }
 
@@ -409,7 +412,7 @@ public static class TypeHelper
         return foundType != null;
     }
 
-    private static void GetMetadataName(Compilation compilation, ITypeSymbol type, StringBuilder bldr, bool nested = false)
+    private static void GetMetadataName(Compilation compilation, ITypeSymbol type, StringBuilder bldr, bool nested = false, bool byRef = false)
     {
         ITypeSymbol elementType = type;
         while (true)
@@ -488,6 +491,9 @@ public static class TypeHelper
             }
         }
 
+        if (byRef)
+            bldr.Append('&');
+
         elementType = type;
         while (true)
         {
@@ -529,7 +535,7 @@ public static class TypeHelper
     }
 
     private static readonly char[] Escapables = [ '\n', '\r', '\t', '\v', '\\', '\"', '\'' ];
-    private static readonly char[] AssemblyQualifiedEscapables = [ '\n', '\r', '\t', '\v', '\\', ',', '+', '[', ']'];
+    private static readonly char[] AssemblyQualifiedEscapables = [ '\n', '\r', '\t', '\v', '\\', ',', '+', '[', ']', '*', '&' ];
     public static string Escape(string value)
     {
         int c = 0;
@@ -596,7 +602,7 @@ public static class TypeHelper
         string s = value;
         for (int i = 0; i < s.Length; ++i)
         {
-            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+' or '[' or ']')
+            if (s[i] is <= '\r' and ('\n' or '\r' or '\t' or '\v') or '\\' or ',' or '+' or '[' or ']' or '*' or '&')
                 ++c;
         }
 

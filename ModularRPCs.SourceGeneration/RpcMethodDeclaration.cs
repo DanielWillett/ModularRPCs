@@ -19,7 +19,6 @@ public record RpcMethodDeclaration
     public required bool IsStatic { get; init; }
     public required Accessibility Visibility { get; init; }
     public required RpcTargetAttribute Target { get; init; }
-    public required RpcClassDeclaration Type { get; init; }
     public required EquatableList<RpcParameterDeclaration> Parameters { get; init; }
     public required TypeSymbolInfo ReturnType { get; init; }
     public required int SignatureHash { get; init; }

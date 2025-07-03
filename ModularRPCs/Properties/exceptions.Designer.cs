@@ -610,6 +610,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to There must be exactly one integer parameter (byteCount) when using {0} for a raw RPC method..
+        /// </summary>
+        internal static string RpcInjectionExceptionNoByteCount {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionNoByteCount", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There must be exactly one binary data parameter (bytes) for a raw RPC method..
+        /// </summary>
+        internal static string RpcInjectionExceptionNoByteData {
+            get {
+                return ResourceManager.GetString("RpcInjectionExceptionNoByteData", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A parameter in an RPC is not serializable..
         /// </summary>
         internal static string RpcInvalidParameterException {
