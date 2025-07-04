@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 internal static class NamespaceHelper
 {
     private static readonly Regex NamespaceSanitizeRegex = new Regex(@"@{0,1}([^\\.]+)", RegexOptions.Compiled);

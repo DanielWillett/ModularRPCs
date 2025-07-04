@@ -1,9 +1,8 @@
-using JetBrains.Annotations;
 using System;
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 
 public sealed class SourceStringBuilder
 {
@@ -117,7 +116,7 @@ public sealed class SourceStringBuilder
     /// <summary>
     /// Append an interpolated line.
     /// </summary>
-    public SourceStringBuilder Build([InterpolatedStringHandlerArgument(""), UsedImplicitly] SourceStringBuilderInterpolatedStringHandler handler)
+    public SourceStringBuilder Build([InterpolatedStringHandlerArgument("")] SourceStringBuilderInterpolatedStringHandler handler)
     {
         return this;
     }
@@ -152,8 +151,8 @@ public sealed class SourceStringBuilder
             _builder._hasNewLine = false;
         }
 
-        public void AppendFormatted(string? value, [UsedImplicitly] string? format) => AppendFormatted(value);
-        public void AppendFormatted(string? value, int alignment, [UsedImplicitly] string? format) => AppendFormatted(value, alignment);
+        public void AppendFormatted(string? value, string? format) => AppendFormatted(value);
+        public void AppendFormatted(string? value, int alignment, string? format) => AppendFormatted(value, alignment);
         public void AppendFormatted(string? value, int alignment)
         {
             _builder.StartLine();
@@ -183,8 +182,8 @@ public sealed class SourceStringBuilder
             AppendReadOnlySpan(value);
         }
 
-        public void AppendFormatted(ReadOnlySpan<char> value, [UsedImplicitly] string? format) => AppendFormatted(value);
-        public void AppendFormatted(ReadOnlySpan<char> value, int alignment, [UsedImplicitly] string? format) => AppendFormatted(value, alignment);
+        public void AppendFormatted(ReadOnlySpan<char> value, string? format) => AppendFormatted(value);
+        public void AppendFormatted(ReadOnlySpan<char> value, int alignment, string? format) => AppendFormatted(value, alignment);
         public void AppendFormatted(ReadOnlySpan<char> value, int alignment)
         {
             _builder.StartLine();
@@ -218,7 +217,7 @@ public sealed class SourceStringBuilder
             AppendFormattedValue(value);
         }
 
-        public void AppendFormatted<T>(T? value, [UsedImplicitly] string? format)
+        public void AppendFormatted<T>(T? value, string? format)
         {
             if (value is IFormattable f)
             {
@@ -230,7 +229,7 @@ public sealed class SourceStringBuilder
             }
         }
 
-        public void AppendFormatted<T>(T? value, int alignment, [UsedImplicitly] string? format)
+        public void AppendFormatted<T>(T? value, int alignment, string? format)
         {
             if (value is IFormattable f)
             {

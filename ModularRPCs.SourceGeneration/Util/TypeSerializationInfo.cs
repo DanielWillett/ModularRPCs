@@ -1,8 +1,8 @@
-using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
+using Microsoft.CodeAnalysis;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 
 public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
 {

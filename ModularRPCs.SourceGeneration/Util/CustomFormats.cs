@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 
 public static class CustomFormats
 {

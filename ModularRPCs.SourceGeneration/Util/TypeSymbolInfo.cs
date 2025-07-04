@@ -1,7 +1,7 @@
-using Microsoft.CodeAnalysis;
 using System;
+using Microsoft.CodeAnalysis;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 
 public class TypeSymbolInfo : IEquatable<TypeSymbolInfo>, IEquatable<string>
 {

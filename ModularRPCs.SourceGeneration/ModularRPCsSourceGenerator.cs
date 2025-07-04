@@ -1,19 +1,19 @@
-using DanielWillett.ModularRpcs.Annotations;
-using DanielWillett.ModularRpcs.Protocol;
-using DanielWillett.ModularRpcs.SourceGeneration.Generators;
-using DanielWillett.ModularRpcs.SourceGeneration.Util;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using DanielWillett.ModularRpcs.Annotations;
+using DanielWillett.ModularRpcs.Protocol;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using ModularRPCs.Generators;
+using ModularRPCs.Util;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration;
+namespace ModularRPCs;
 
 [Generator(LanguageNames.CSharp)]
 public class ModularRPCsSourceGenerator : IIncrementalGenerator

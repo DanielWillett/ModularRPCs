@@ -1,14 +1,14 @@
-using DanielWillett.ModularRpcs.SourceGeneration.Util;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Text;
+using ModularRPCs.Util;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
+namespace ModularRPCs.Generators;
 
 internal readonly struct ClassSnippetGenerator
 {

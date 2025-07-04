@@ -1,7 +1,7 @@
-using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
+using ModularRPCs.Util;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration;
+namespace ModularRPCs;
 
 public record RpcParameterDeclaration
 {

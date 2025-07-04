@@ -3,7 +3,7 @@
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease13</VersionSuffix>
+    <VersionSuffix>prerelease14</VersionSuffix>
 
     <PackageReleaseNotes></PackageReleaseNotes>
 
@@ -50,7 +50,7 @@
 
   <PropertyGroup>
     <RootNamespace>DanielWillett.ModularRpcs</RootNamespace>
-    <AssemblyTitle>DanielWillett.ModularRPCs</AssemblyTitle>
+    <AssemblyTitle>ModularRPCs</AssemblyTitle>
     <AssemblyName>$(AssemblyTitle)</AssemblyName>
     <Product>$(PackageId)</Product>
 

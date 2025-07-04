@@ -1,10 +1,9 @@
-using System;
 using DanielWillett.ModularRpcs.Annotations;
-using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using ModularRPCs.Util;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
+namespace ModularRPCs.Generators;
 
 internal readonly struct ReceiveMethodSnippetGenerator
 {
