@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Examples.Samples;
 
-[RpcClass]
+
 public class SampleClass : IRpcObject<int>
 {
 

@@ -19,8 +19,17 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.SourceGen
 {
+    [NonParallelizable, TestFixture]
     public class SourceGenPlayground
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         internal static int DidInvokeMethod;
 
         internal const int Val1 = 32;
@@ -29,7 +38,7 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task TestConsistantMethodSignatures()
         {
-            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, false);
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
 
@@ -48,7 +57,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             DidInvokeMethod = -1;
 
-            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, useStreams);
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, useStreams, out _disposable);
 
             SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
 
@@ -62,7 +71,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             DidInvokeMethod = -1;
 
-            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out _, out IServiceProvider client, useStreams);
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out _, out IServiceProvider client, useStreams, out _disposable);
 
             SourceGenPlaygroundTestClass proxy = client.GetRequiredService<SourceGenPlaygroundTestClass>();
 
@@ -76,7 +85,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             DidInvokeMethod = -1;
 
-            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, useStreams);
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, useStreams, out _disposable);
 
             SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
 
@@ -90,7 +99,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             DidInvokeMethod = -1;
 
-            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out _, out IServiceProvider client, useStreams);
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out _, out IServiceProvider client, useStreams, out _disposable);
 
             SourceGenPlaygroundTestClass proxy = client.GetRequiredService<SourceGenPlaygroundTestClass>();
 
@@ -150,7 +159,7 @@ namespace ModularRPCs.Test.SourceGen
     }
 
 #nullable enable
-    [RpcClass, GenerateRpcSource]
+    [GenerateRpcSource]
     public sealed partial class SourceGenPlaygroundTestClass
     {
         [RpcSend(nameof(Receive))]

@@ -41,7 +41,7 @@
 
   <PropertyGroup>
     <RootNamespace>DanielWillett.ModularRpcs.WebSockets</RootNamespace>
-    <AssemblyTitle>DanielWillett.ModularRPCs.WebSockets</AssemblyTitle>
+    <AssemblyTitle>ModularRPCs.WebSockets</AssemblyTitle>
     <AssemblyName>$(AssemblyTitle)</AssemblyName>
     <Product>$(PackageId)</Product>
 

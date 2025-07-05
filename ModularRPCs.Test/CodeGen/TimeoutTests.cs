@@ -14,6 +14,14 @@ namespace ModularRPCs.Test.CodeGen
     [NonParallelizable, TestFixture]
     public class TimeoutTests
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         private const int MsTimeout = 100;
         private const int MsTolerance = 50;
 
@@ -21,7 +29,7 @@ namespace ModularRPCs.Test.CodeGen
         public async Task ServerToClientBytes()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -35,7 +43,7 @@ namespace ModularRPCs.Test.CodeGen
         [Test]
         public async Task ClientToServerBytes()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -50,7 +58,7 @@ namespace ModularRPCs.Test.CodeGen
         public async Task ServerToClientStream()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -64,7 +72,7 @@ namespace ModularRPCs.Test.CodeGen
         [Test]
         public async Task ClientToServerStream()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -75,7 +83,7 @@ namespace ModularRPCs.Test.CodeGen
             Assert.That(timer.ElapsedMilliseconds, Is.InRange(MsTimeout - MsTolerance, MsTimeout + MsTolerance));
         }
 
-        [RpcClass]
+        
         public class TestClass
         {
             [RpcSend(nameof(Receive)), RpcTimeout(MsTimeout)]

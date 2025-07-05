@@ -183,14 +183,18 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
 
     private static IEnumerable<RpcMethodDeclaration> EnumerateMethods(Compilation compilation, INamedTypeSymbol symbol, RpcClassDeclaration decl, CancellationToken token)
     {
-        foreach (IMethodSymbol method in symbol.GetMembers().OfType<IMethodSymbol>())
+        List<IMethodSymbol> methods = symbol.GetMembers().OfType<IMethodSymbol>().ToList();
+        foreach (IMethodSymbol method in methods)
         {
             RpcTargetAttribute? attribute = method.GetAttributes()
                                                   .Select(a => GetRpcTypeAttribute(compilation, a, symbol))
                                                   .FirstOrDefault(x => x != null);
-            if (attribute == null)
+            if (attribute == null
+                || attribute is RpcReceiveAttribute && method.HasAttribute("global::DanielWillett.ReflectionTools.IgnoreAttribute"))
+            {
                 continue;
-            
+            }
+
             token.ThrowIfCancellationRequested();
 
             bool isFireAndForget = false;
@@ -228,13 +232,15 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             // check if targets self
             if (!isBroadcast)
             {
-                if ((attribute.TypeName == null || TypeHelper.TypesEqual(attribute.TypeName, decl.Type.AssemblyQualifiedName))
+                if ((attribute.TypeName == null || TypeHelper.TypesEqual(attribute.TypeName.AsSpan(), decl.Type.AssemblyQualifiedName.AsSpan()))
                     && string.Equals(attribute.MethodName, method.Name, StringComparison.Ordinal)
                     && (attribute.ParameterTypeNames == null || ParametersMatchMethod(attribute.ParameterTypeNames, parameters, attribute.ParametersAreBindedParametersOnly)))
                 {
                     isBroadcast = true;
                 }
             }
+
+            bool injectsCancellationToken = parameters.Exists(x => x.Type.Equals("global::System.Threading.CancellationToken"));
 
             yield return new RpcMethodDeclaration
             {
@@ -254,7 +260,9 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                 Timeout = GetTimeout(method),
                 ReturnTypeAwaitableInfo = attribute is RpcReceiveAttribute ? ParameterHelper.GetAwaitableInfo(compilation, method.ReturnType) : null,
                 NeedsUnsafe = method.Parameters.Any(x => x.Type.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer),
-                DelegateType = new DelegateType(method)
+                DelegateType = new DelegateType(method),
+                InjectsCancellationToken = injectsCancellationToken,
+                NeedsSignatureCheck = methods.Exists(x => !ReferenceEquals(method, x) && x.Name.Equals(method.Name, StringComparison.Ordinal))
             };
         }
     }
@@ -275,7 +283,7 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
             RpcParameterDeclaration p = toBind[i];
             string typeName = parameterTypeNames[i];
             
-            if (TypeHelper.TypesEqual(typeName, p.Type.AssemblyQualifiedName))
+            if (TypeHelper.TypesEqual(typeName.AsSpan(), p.Type.AssemblyQualifiedName.AsSpan()))
                 continue;
 
             return false;
@@ -301,25 +309,25 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
         if (!isSend && !isReceive)
             return null;
 
-        AttributeData? rpcClassAttribute = owner.GetAttribute("global::DanielWillett.ModularRpcs.Annotations.RpcClassAttribute");
-        string? defaultType = null;
-        if (rpcClassAttribute != null)
+        AttributeData? rpcClassAttribute = owner.GetAttribute("global::DanielWillett.ModularRpcs.Annotations.RpcDefaultTargetTypeAttribute");
+        string? defaultType;
+        if (rpcClassAttribute is { ConstructorArguments.Length: 1 })
         {
-            KeyValuePair<string, TypedConstant> defaultTypeName = rpcClassAttribute.NamedArguments.FirstOrDefault(
-                x => x.Key.Equals(nameof(RpcClassAttribute.DefaultTypeName), StringComparison.Ordinal)
-            );
-            if (defaultTypeName.Key is not null && defaultTypeName.Value is { Kind: TypedConstantKind.Primitive, Value: string defaultTypeNameValue })
+            TypedConstant defaultTypeProp = rpcClassAttribute.ConstructorArguments[0];
+            defaultType = defaultTypeProp.Kind switch
             {
-                defaultType = defaultTypeNameValue;
-            }
+                TypedConstantKind.Type when defaultTypeProp.Value is ITypeSymbol defaultTypePropValue
+                    => TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, defaultTypePropValue),
 
-            KeyValuePair<string, TypedConstant> defaultTypeProp = rpcClassAttribute.NamedArguments.FirstOrDefault(
-                x => x.Key.Equals(nameof(RpcClassAttribute.DefaultType), StringComparison.Ordinal)
-            );
-            if (defaultTypeProp.Key is not null && defaultTypeProp.Value is { Kind: TypedConstantKind.Type, Value: ITypeSymbol defaultTypePropValue })
-            {
-                defaultType = TypeHelper.GetAssemblyQualifiedNameNoVersion(compilation, defaultTypePropValue);
-            }
+                TypedConstantKind.Primitive when defaultTypeProp.Value is string defaultTypeNameValue
+                    => defaultTypeNameValue,
+
+                _ => null
+            };
+        }
+        else
+        {
+            defaultType = null;
         }
 
         RpcTargetAttribute attribute;

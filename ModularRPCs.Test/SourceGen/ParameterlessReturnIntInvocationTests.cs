@@ -14,6 +14,14 @@ namespace ModularRPCs.Test.SourceGen
     [NonParallelizable, TestFixture]
     public partial class ParameterlessReturnIntInvocationTests
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         private static bool _wasInvoked;
         private const int RtnValue = 3;
         [Test]
@@ -22,7 +30,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -37,7 +45,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -53,7 +61,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -68,7 +76,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -85,7 +93,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -100,7 +108,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -116,7 +124,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -131,7 +139,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -148,7 +156,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -163,7 +171,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -179,7 +187,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -194,7 +202,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -213,7 +221,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -232,7 +240,7 @@ namespace ModularRPCs.Test.SourceGen
 
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -252,7 +260,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -271,7 +279,7 @@ namespace ModularRPCs.Test.SourceGen
 
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -292,7 +300,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -311,7 +319,7 @@ namespace ModularRPCs.Test.SourceGen
 
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -331,7 +339,7 @@ namespace ModularRPCs.Test.SourceGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -350,7 +358,7 @@ namespace ModularRPCs.Test.SourceGen
 
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -362,7 +370,7 @@ namespace ModularRPCs.Test.SourceGen
             ProxyGenerator.Instance.UseConfigureAwaitWhenAwaitingRpcInvocations = true;
         }
 
-        [RpcClass, GenerateRpcSource]
+        [GenerateRpcSource]
         public partial class TestClass
         {
             [RpcSend(nameof(Receive))]

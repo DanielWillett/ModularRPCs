@@ -26,6 +26,8 @@ public record RpcMethodDeclaration
     public required TimeSpan Timeout { get; init; }
     public required AwaitableInfo? ReturnTypeAwaitableInfo { get; init; }
     public required bool NeedsUnsafe { get; init; }
+    public required bool InjectsCancellationToken { get; init; }
+    public required bool NeedsSignatureCheck { get; init; }
     public required DelegateType DelegateType { get; init; }
 }
 

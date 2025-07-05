@@ -1837,7 +1837,7 @@ internal static class TypeUtility
         if (declaringType == null
             && declaringTypeName == null
             && decoratingMethod?.DeclaringType is { } methodDeclaringType
-            && methodDeclaringType.TryGetAttributeSafe(out RpcClassAttribute classAttribute)
+            && methodDeclaringType.TryGetAttributeSafe(out RpcDefaultTargetTypeAttribute classAttribute)
             && (classAttribute.DefaultType != null || !string.IsNullOrEmpty(classAttribute.DefaultTypeName)))
         {
             declaringType = classAttribute.DefaultType;

@@ -96,6 +96,7 @@ public class LoopbackEndpoint : IModularRpcRemoteEndpoint
                 serverServices.GetRequiredService<IRpcSerializer>(),
                 serverServices.GetRequiredService<IRpcConnectionLifetime>(),
                 UseStreams, AdvertiseLoopback);
+            
             LoopbackRpcClientsideRemoteConnection clientRemote = new LoopbackRpcClientsideRemoteConnection(CreateOtherSide(),
                 clientServices.GetRequiredService<IRpcRouter>(),
                 clientServices.GetRequiredService<IRpcSerializer>(),
@@ -117,7 +118,9 @@ public class LoopbackEndpoint : IModularRpcRemoteEndpoint
             await serverConnection.Local.InitializeConnectionAsync(token).ConfigureAwait(false);
 
             await serverConnection.Lifetime!.TryAddNewConnection(serverConnection, token).ConfigureAwait(false);
+            
             await clientRemote.Lifetime!.TryAddNewConnection(clientRemote, token).ConfigureAwait(false);
+            
             return serverConnection;
         }
 
@@ -132,7 +135,7 @@ public class LoopbackEndpoint : IModularRpcRemoteEndpoint
             clientServices.GetRequiredService<IRpcConnectionLifetime>(),
             serverRemote,
             UseStreams, AdvertiseLoopback);
-
+        
         if (serverLoggerFactory != null)
         {
             serverRemote.SetLogger(serverLoggerFactory.CreateLogger<LoopbackRpcServersideRemoteConnection>());
@@ -143,11 +146,13 @@ public class LoopbackEndpoint : IModularRpcRemoteEndpoint
             clientConnection.SetLogger(clientLoggerFactory.CreateLogger<LoopbackRpcClientsideRemoteConnection>());
             clientConnection.Local.SetLogger(clientLoggerFactory.CreateLogger<LoopbackRpcClientsideLocalConnection>());
         }
-
+        
         await serverRemote.Local.InitializeConnectionAsync(token).ConfigureAwait(false);
-
+        
         await serverRemote.Lifetime!.TryAddNewConnection(serverRemote, token).ConfigureAwait(false);
+        
         await clientConnection.Lifetime!.TryAddNewConnection(clientConnection, token).ConfigureAwait(false);
+        
         return clientConnection;
     }
 

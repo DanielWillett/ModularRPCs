@@ -152,6 +152,42 @@ public class RpcEndpoint : IRpcInvocationPoint
         CalculateSize();
     }
 
+    internal RpcEndpoint(uint knownId, MethodInfo method, bool needsParameters, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+        : this(method, needsParameters, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+    {
+        EndpointId = knownId;
+    }
+    internal RpcEndpoint(MethodInfo method, bool needsParameters, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+    {
+        IsStatic = false;
+        DeclaringType = method.DeclaringType;
+        DeclaringTypeName = DeclaringType != null ? TypeUtility.GetAssemblyQualifiedNameNoVersion(DeclaringType) : string.Empty;
+        MethodName = method.Name;
+        SignatureHash = signatureHash;
+        IgnoreSignatureHash = ignoreSignatureHash;
+        ParametersAreBindedParametersOnly = argsAreBindOnly;
+        if (needsParameters)
+        {
+            ParameterInfo[] parameters = method.GetParameters();
+            string[] paramTypes = new string[parameters.Length];
+            for (int i = 0; i < parameters.Length; ++i)
+            {
+                Type type = parameters[i].ParameterType;
+                paramTypes[i] = TypeUtility.GetAssemblyQualifiedNameNoVersion(type);
+            }
+
+            ParameterTypeNames = paramTypes;
+        }
+
+        SupportsRemoteCancellation = supportsRemoteCancellation;
+        IsBroadcast = isBroadcast;
+
+        Method = method;
+        IsStatic = method.IsStatic;
+
+        CalculateSize();
+    }
+
     [Pure]
     public override string ToString()
     {
@@ -242,7 +278,7 @@ public class RpcEndpoint : IRpcInvocationPoint
         Type? firstRtnType = null;
         fixed (byte* ptr = rawData.Span)
         {
-            foreach (MethodInfo method in FindBroadcastListeners(router))
+            foreach (MethodInfo method in FindBroadcastListeners())
             {
                 if (!method.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
                 {
@@ -341,7 +377,7 @@ public class RpcEndpoint : IRpcInvocationPoint
 
         bool any = false;
         List<Exception>? exceptions = null;
-        foreach (MethodInfo method in FindBroadcastListeners(router))
+        foreach (MethodInfo method in FindBroadcastListeners())
         {
             if (!method.TryGetAttributeSafe(out RpcReceiveAttribute targetAttribute))
             {
@@ -1204,12 +1240,14 @@ public class RpcEndpoint : IRpcInvocationPoint
             return identifier;
         }
     }
-    private IEnumerable<MethodInfo> FindBroadcastListeners(IRpcRouter router)
+    private IEnumerable<MethodInfo> FindBroadcastListeners()
     {
         if (!IsBroadcast)
             throw new InvalidOperationException();
 
-        if (!router.BroadcastTargets.TryGetValue(DeclaringTypeName, out IReadOnlyList<RpcEndpointTarget>? targets))
+
+        if (DeclaringType == null
+            || !ProxyGenerator.Instance.BroadcastTargets.TryGetValue(DeclaringType, out IReadOnlyList<RpcEndpointTarget>? targets))
             return Array.Empty<MethodInfo>();
 
         MethodInfo? match = null;

@@ -81,6 +81,14 @@ namespace ModularRPCs.Test.CodeGen
     [NonParallelizable, TestFixture]
     public class RpcSerializableTypes
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         private const int Param1 = 48;
         private const int Param2 = -94;
         private const int Int32 = 35;
@@ -158,7 +166,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -181,7 +189,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -205,7 +213,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -228,7 +236,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -252,7 +260,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -275,7 +283,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -299,7 +307,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -322,7 +330,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -347,7 +355,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -368,7 +376,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -390,7 +398,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -411,7 +419,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -433,7 +441,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -456,7 +464,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -480,7 +488,7 @@ namespace ModularRPCs.Test.CodeGen
             _wasInvoked = false;
 
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -503,7 +511,7 @@ namespace ModularRPCs.Test.CodeGen
         {
             _wasInvoked = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -521,7 +529,7 @@ namespace ModularRPCs.Test.CodeGen
             }
         }
 
-        [RpcClass]
+        
         public class TestClass
         {
             [RpcSend(nameof(Receive)), RpcTimeout(15 * Timeouts.Seconds)]

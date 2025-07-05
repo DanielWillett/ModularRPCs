@@ -58,8 +58,8 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <AssemblyTitle>DanielWillett.ModularRPCs.Unity</AssemblyTitle>
     <RootNamespace>DanielWillett.ModularRpcs</RootNamespace>
+    <AssemblyTitle>ModularRPCs.Unity</AssemblyTitle>
     <AssemblyName>$(AssemblyTitle)</AssemblyName>
     <Product>$(PackageId)</Product>
 

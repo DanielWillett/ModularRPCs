@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using DanielWillett.ModularRpcs;
 using DanielWillett.ModularRpcs.Annotations;
@@ -46,6 +48,26 @@ internal readonly struct SendMethodSnippetGenerator
 
         bool canUnsignedRightShift = Compilation.LanguageVersion >= LanguageVersion.CSharp11;
 
+        int injectedConnectionArg = -1;
+        int cancellationTokenArg = -1;
+        for (int i = 0; i < toInject.Length; i++)
+        {
+            RpcParameterDeclaration param = toInject[i];
+            if (param.RefKind == RefKind.Out)
+                continue;
+
+            if (param.Type.Equals("global::System.Threading.CancellationToken"))
+            {
+                cancellationTokenArg = i;
+                continue;
+            }
+
+            if (injectedConnectionArg == -1 && (param.Type.Info.IsMultipleConnections || param.Type.Info.IsSingleConnection))
+            {
+                injectedConnectionArg = i;
+            }
+        }
+
         bldr.String("global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState = default;");
 
         bldr.String("__modularRpcsGeneratedState.Router = this.__modularRpcsGeneratedProxyContext.Router;")
@@ -56,6 +78,34 @@ internal readonly struct SendMethodSnippetGenerator
         RpcParameterDeclaration? rawBytesPosition = null,
                                  rawCountPosition = null,
                                  rawCanTakeOwnershipPosition = null;
+
+        bldr.String("__modularRpcsGeneratedState.OverheadSize = __modularRpcsGeneratedState.Router.GetOverheadSize(")
+            .In()
+                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,")
+                .Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName}").Out()
+            .String(");")
+            .Empty();
+
+        // PreOverheadSize includes overhead but not ID
+
+        bldr.String("__modularRpcsGeneratedState.PreOverheadSize = __modularRpcsGeneratedState.OverheadSize;");
+
+        GenerateGetIdSize(
+            bldr,
+            Class,
+            out string? escapedIdTypeName,
+            "__modularRpcsGeneratedState.IdTypeSize",
+            "__modularRpcsGeneratedState.IdSize",
+            "__modularRpcsGeneratedState.Serializer",
+            "__modularRpcsGeneratedState.HasKnownTypeId",
+            "__modularRpcsGeneratedState.KnownTypeId",
+            "__modularRpcsGeneratedState.PreCalc",
+            "__modularRpcsGeneratedState.OverheadSize",
+            out bool passIdByRef,
+            "this"
+        );
+
+        bldr.String("__modularRpcsGeneratedState.OverheadSize += __modularRpcsGeneratedState.IdTypeSize;");
 
         if (!raw && toBind.Length > 0)
         {
@@ -221,10 +271,6 @@ internal readonly struct SendMethodSnippetGenerator
                             case ParameterHelper.RawByteInjectType.ByRefByte:
                                 needsCountParam = true;
                                 break;
-
-                            default:
-                                bldr.Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInvalidRawParameter, \"{TypeHelper.Escape(param.Name)}\", \"{TypeHelper.Escape(param.Type.FullyQualifiedName)}\"));");
-                                break;
                         }
                         break;
                 }
@@ -242,80 +288,164 @@ internal readonly struct SendMethodSnippetGenerator
                 return;
             }
 
+            string? methodName = rawBytesPosition.RawInjectType switch
+            {
+                ParameterHelper.RawByteInjectType.Pointer => "InvokeRpcInvokerByPointer",
+                ParameterHelper.RawByteInjectType.Array => "InvokeRpcInvokerByArray",
+                ParameterHelper.RawByteInjectType.Stream => "InvokeRpcInvokerByStream",
+                ParameterHelper.RawByteInjectType.Memory => "InvokeRpcInvokerByMemory",
+                ParameterHelper.RawByteInjectType.ReadOnlyMemory => "InvokeRpcInvokerByReadOnlyMemory",
+                ParameterHelper.RawByteInjectType.Span => "InvokeRpcInvokerBySpan",
+                ParameterHelper.RawByteInjectType.ReadOnlySpan => "InvokeRpcInvokerByReadOnlySpan",
+                ParameterHelper.RawByteInjectType.ArraySegment => "InvokeRpcInvokerByArraySegment",
+                ParameterHelper.RawByteInjectType.IList
+                    or ParameterHelper.RawByteInjectType.List
+                    or ParameterHelper.RawByteInjectType.ICollection => "InvokeRpcInvokerByCollection",
+                ParameterHelper.RawByteInjectType.IReadOnlyList
+                    or ParameterHelper.RawByteInjectType.ReadOnlyCollection
+                    or ParameterHelper.RawByteInjectType.IReadOnlyCollection => "InvokeRpcInvokerByReadOnlyCollection",
+                ParameterHelper.RawByteInjectType.ArrayList => "InvokeRpcInvokerByArrayList",
+                ParameterHelper.RawByteInjectType.ByRefByte => "InvokeRpcInvokerByReference",
+                ParameterHelper.RawByteInjectType.ByteWriter => "InvokeRpcInvokerByByteWriter",
+                ParameterHelper.RawByteInjectType.ByteReader => "InvokeRpcInvokerByByteReader",
+                _ => null
+            };
+
+            if (methodName == null)
+            {
+                bldr.Build($"throw new global::DanielWillett.ModularRpcs.Exceptions.RpcInjectionException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcInjectionExceptionInvalidRawParameter, \"{TypeHelper.Escape(rawBytesPosition.Name)}\", \"{TypeHelper.Escape(rawBytesPosition.Type.FullyQualifiedName)}\"));");
+                return;
+            }
+            
+            bldr.String("byte[] __modularRpcsGeneratedHeader = new byte[__modularRpcsGeneratedState.OverheadSize];");
+
+            if (Class.IdType == null)
+            {
+                bldr.String("// TypeCode: Empty")
+                    .String("__modularRpcsGeneratedHeader[__modularRpcsGeneratedState.PreOverheadSize] = 0;");
+            }
+            else
+            {
+                if (!Method.NeedsUnsafe)
+                {
+                    bldr.String("unsafe")
+                        .String("{")
+                        .In();
+                }
+
+                bldr.String("fixed (byte* __modularRpcsGeneratedHeaderPointer = __modularRpcsGeneratedHeader)")
+                    .String("{")
+                    .In()
+                    .String("__modularRpcsGeneratedState.Buffer = __modularRpcsGeneratedHeaderPointer;");
+
+                WriteIdentifier(bldr, canUnsignedRightShift, escapedIdTypeName);
+
+                bldr.Out()
+                    .String("}");
+
+                if (!Method.NeedsUnsafe)
+                {
+                    bldr.Out()
+                        .String("}");
+                }
+            }
+
+            bldr.Build($"{returnStr}global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.{methodName}(")
+                .In()
+                .String("__modularRpcsGeneratedState.Router,");
+
+            LoadConnection(bldr, injectedConnectionArg, toInject);
+
+            bldr.String("__modularRpcsGeneratedState.Serializer,")
+                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,");
+
+            LoadCancellationToken(bldr, cancellationTokenArg, toInject);
+
             switch (rawBytesPosition.RawInjectType)
             {
-                case ParameterHelper.RawByteInjectType.Pointer:
-                    bldr.Build($"{returnStr}global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.InvokeRpcInvokerByPointer(__modularRpcsGeneratedState.Router, ");
-                    break;
-                case ParameterHelper.RawByteInjectType.Array:
-                    break;
-                case ParameterHelper.RawByteInjectType.Stream:
-                    break;
-                case ParameterHelper.RawByteInjectType.Memory:
-                    break;
-                case ParameterHelper.RawByteInjectType.ReadOnlyMemory:
-                    break;
-                case ParameterHelper.RawByteInjectType.Span:
-                    break;
-                case ParameterHelper.RawByteInjectType.ReadOnlySpan:
-                    break;
-                case ParameterHelper.RawByteInjectType.ArraySegment:
-                    break;
-                case ParameterHelper.RawByteInjectType.IList:
-                    break;
-                case ParameterHelper.RawByteInjectType.IReadOnlyList:
-                    break;
-                case ParameterHelper.RawByteInjectType.ICollection:
-                    break;
-                case ParameterHelper.RawByteInjectType.IEnumerable:
-                    break;
-                case ParameterHelper.RawByteInjectType.IReadOnlyCollection:
-                    break;
-                case ParameterHelper.RawByteInjectType.List:
-                    break;
-                case ParameterHelper.RawByteInjectType.ArrayList:
-                    break;
-                case ParameterHelper.RawByteInjectType.ReadOnlyCollection:
-                    break;
                 case ParameterHelper.RawByteInjectType.ByRefByte:
+                    bldr.Build($"ref @{rawBytesPosition.Name},");
                     break;
-                case ParameterHelper.RawByteInjectType.ByteWriter:
-                    break;
-                case ParameterHelper.RawByteInjectType.ByteReader:
-                    break;
+
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    bldr.Build($"@{rawBytesPosition.Name},");
+                    break;
             }
+
+            if (rawCountPosition != null)
+            {
+                switch (rawCountPosition.Type.PrimitiveType)
+                {
+                    case TypeHelper.PrimitiveLikeType.SByte:
+                    case TypeHelper.PrimitiveLikeType.Int16:
+                    case TypeHelper.PrimitiveLikeType.Int32:
+                    case TypeHelper.PrimitiveLikeType.Int64:
+                    case TypeHelper.PrimitiveLikeType.UInt64:
+                    case TypeHelper.PrimitiveLikeType.IntPtr:
+                    case TypeHelper.PrimitiveLikeType.UIntPtr:
+                        bldr.Build($"checked ( (uint)@{rawCountPosition.Name} ),");
+                        break;
+
+                    default:
+                        bldr.Build($"@{rawCountPosition.Name},");
+                        break;
+                }
+            }
+            else
+            {
+                switch (rawBytesPosition.RawInjectType)
+                {
+                    case ParameterHelper.RawByteInjectType.Stream:
+                        bldr.Build($"checked ( (uint)(@{rawBytesPosition.Name}.Length - @{rawBytesPosition.Name}.Position) ),");
+                        break;
+
+                    case ParameterHelper.RawByteInjectType.Array:
+                    case ParameterHelper.RawByteInjectType.Memory:
+                    case ParameterHelper.RawByteInjectType.ReadOnlyMemory:
+                    case ParameterHelper.RawByteInjectType.Span:
+                    case ParameterHelper.RawByteInjectType.ReadOnlySpan:
+                        bldr.Build($"(uint)@{rawBytesPosition.Name}.Length,");
+                        break;
+
+                    case ParameterHelper.RawByteInjectType.IList:
+                    case ParameterHelper.RawByteInjectType.ArraySegment:
+                    case ParameterHelper.RawByteInjectType.IReadOnlyList:
+                    case ParameterHelper.RawByteInjectType.ICollection:
+                    case ParameterHelper.RawByteInjectType.IReadOnlyCollection:
+                    case ParameterHelper.RawByteInjectType.List:
+                    case ParameterHelper.RawByteInjectType.ArrayList:
+                    case ParameterHelper.RawByteInjectType.ReadOnlyCollection:
+                    case ParameterHelper.RawByteInjectType.ByteWriter:
+                        bldr.Build($"(uint)@{rawBytesPosition.Name}.Count,");
+                        break;
+
+                    case ParameterHelper.RawByteInjectType.IEnumerable:
+                    case ParameterHelper.RawByteInjectType.ByteReader:
+                        bldr.String("uint.MaxValue,");
+                        break;
+                }
+            }
+
+            bldr.String("__modularRpcsGeneratedHeader,");
+
+            if (rawBytesPosition.RawInjectType == ParameterHelper.RawByteInjectType.Stream)
+            {
+                if (rawCanTakeOwnershipPosition != null)
+                {
+                    bldr.Build($"!@{rawCanTakeOwnershipPosition.Name},");
+                }
+                else
+                {
+                    bldr.String("true,");
+                }
+            }
+
+            bldr.Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName}")
+                .Out()
+                .String(");");
+
             return;
         }
-
-        bldr.String("__modularRpcsGeneratedState.OverheadSize = __modularRpcsGeneratedState.Router.GetOverheadSize(")
-            .In()
-                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,")
-                .Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName}").Out()
-            .String(");")
-            .Empty();
-
-        // preOverheadSize includes overhead but not ID
-
-        bldr.String("__modularRpcsGeneratedState.PreOverheadSize = __modularRpcsGeneratedState.OverheadSize;");
-
-        GenerateGetIdSize(
-            bldr,
-            Class,
-            out string? escapedIdTypeName,
-            "__modularRpcsGeneratedState.IdTypeSize",
-            "__modularRpcsGeneratedState.IdSize",
-            "__modularRpcsGeneratedState.Serializer",
-            "__modularRpcsGeneratedState.HasKnownTypeId",
-            "__modularRpcsGeneratedState.KnownTypeId",
-            "__modularRpcsGeneratedState.PreCalc",
-            "__modularRpcsGeneratedState.OverheadSize",
-            out bool passIdByRef,
-            "this"
-        );
-
-        bldr.String("__modularRpcsGeneratedState.OverheadSize += __modularRpcsGeneratedState.IdTypeSize;");
 
         bldr.String("__modularRpcsGeneratedState.Size += __modularRpcsGeneratedState.OverheadSize;");
 
@@ -371,72 +501,7 @@ internal readonly struct SendMethodSnippetGenerator
             .String("{")
             .In();
 
-        if (Class.IdType == null)
-        {
-            bldr.String("// TypeCode: Empty")
-                .String("__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = 0;");
-        }
-        else
-        {
-            bldr.Build($"#region Write ID ({Class.IdType.Name})")
-                .Build($"// TypeCode: {Class.IdTypeCode.ToTypeCodeString()}")
-                .Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = {(byte)Class.IdTypeCode};")
-                .Empty();
-                
-            if (Class.IdTypeCode == TypeCode.Object)
-            {
-                bldr.String("uint __modularRpcsGeneratedIdPos;")
-                    .String("if (__modularRpcsGeneratedState.HasKnownTypeId)")
-                    .String("{")
-                    .In();
-
-                bldr.Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize + 1] = {(byte)RpcEndpoint.IdentifierFlags.IsKnownTypeOnly};")
-                    .Empty()
-                    .String("byte* __modularRpcsGeneratedKnownTypeIdBufferLocation = __modularRpcsGeneratedState.Buffer + __modularRpcsGeneratedState.PreOverheadSize + 2;")
-                    .Preprocessor("#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER")
-                    .String("uint __modularRpcsGeneratedKnownTypeIdEndiannessApplied = global::System.BitConverter.IsLittleEndian ? __modularRpcsGeneratedState.KnownTypeId : global::System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(__modularRpcsGeneratedState.KnownTypeId);")
-                    .Preprocessor("#else")
-                    .String("uint __modularRpcsGeneratedKnownTypeIdEndiannessApplied;")
-                    .String("if (global::System.BitConverter.IsLittleEndian)")
-                    .In().String("__modularRpcsGeneratedKnownTypeIdEndiannessApplied = __modularRpcsGeneratedState.KnownTypeId;").Out()
-                    .String("else")
-                    .In().String("__modularRpcsGeneratedKnownTypeIdEndiannessApplied = (__modularRpcsGeneratedState.KnownTypeId & 0x000000ffu) << 24 | (__modularRpcsGeneratedState.KnownTypeId & 0x0000ff00u) << 8 | (__modularRpcsGeneratedState.KnownTypeId & 0x00ff0000u) >> 8 | (__modularRpcsGeneratedState.KnownTypeId & 0xff000000u) >> 24;").Out()
-                    .Preprocessor("#endif")
-                    .Empty()
-                    .String("if ((nint)__modularRpcsGeneratedKnownTypeIdBufferLocation % sizeof(uint) == 0)")
-                    .In().String("*(uint*)__modularRpcsGeneratedKnownTypeIdBufferLocation = __modularRpcsGeneratedKnownTypeIdEndiannessApplied;").Out()
-                    .String("else")
-                    .String("{").In()
-                        .String("*__modularRpcsGeneratedKnownTypeIdBufferLocation   = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied) );")
-                        .String("__modularRpcsGeneratedKnownTypeIdBufferLocation[1] = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied >>  8) );")
-                        .String("__modularRpcsGeneratedKnownTypeIdBufferLocation[2] = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied >> 16) );")
-                        .String("__modularRpcsGeneratedKnownTypeIdBufferLocation[3] = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied >> 24) );")
-                    .Out()
-                    .String("}")
-                    .Empty()
-                    .String("__modularRpcsGeneratedIdPos = __modularRpcsGeneratedState.PreOverheadSize + 6u;");
-
-                bldr.Out()
-                    .String("}")
-                    .String("else")
-                    .String("{").In();
-
-                bldr.Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize + 1] = {(byte)RpcEndpoint.IdentifierFlags.IsTypeNameOnly};")
-                    .Empty()
-                    .String($"__modularRpcsGeneratedIdPos = checked ( (uint)__modularRpcsGeneratedState.Serializer.WriteObject<string>(\"{escapedIdTypeName}\", __modularRpcsGeneratedState.Buffer + __modularRpcsGeneratedState.PreOverheadSize + 2, __modularRpcsGeneratedState.IdTypeSize - 2u) ) + __modularRpcsGeneratedState.PreOverheadSize + 2u;");
-
-                bldr.Out()
-                    .String("}");
-            }
-            else
-            {
-                bldr.String("uint __modularRpcsGeneratedIdPos = __modularRpcsGeneratedState.PreOverheadSize + 1u;");
-            }
-
-            WriteValue(bldr, Class.IdType, canUnsignedRightShift, "__modularRpcsGeneratedIdPos", "__modularRpcsGeneratedId", "__modularRpcsGeneratedState.IdSize");
-
-            bldr.String("#endregion");
-        }
+        WriteIdentifier(bldr, canUnsignedRightShift, escapedIdTypeName);
 
         bldr.Empty();
 
@@ -469,26 +534,98 @@ internal readonly struct SendMethodSnippetGenerator
             }
         }
 
-        int injectedConnectionArg = -1;
-        int cancellationTokenArg = -1;
-        for (int i = 0; i < toInject.Length; i++)
+        bldr.Build($"{returnStr}__modularRpcsGeneratedState.Router.InvokeRpc(")
+            .In();
+
+        LoadConnection(bldr, injectedConnectionArg, toInject);
+
+        bldr    .String("__modularRpcsGeneratedState.Serializer,")
+                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,");
+
+        LoadCancellationToken(bldr, cancellationTokenArg, toInject);
+
+        bldr    .String("__modularRpcsGeneratedState.Buffer,")
+                .String("checked ( (int)__modularRpcsGeneratedState.Size ),")
+                .String("__modularRpcsGeneratedState.Size - __modularRpcsGeneratedState.OverheadSize,")
+                .Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName},")
+                .String("global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Default | global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Generated").Out()
+            .String(");");
+
+        bldr.Out()
+            .String("}");
+    }
+
+    private void WriteIdentifier(SourceStringBuilder bldr, bool canUnsignedRightShift, string? escapedIdTypeName)
+    {
+        if (Class.IdType == null)
         {
-            RpcParameterDeclaration param = toInject[i];
-            if (param.RefKind == RefKind.Out)
-                continue;
-
-            if (param.Type.Equals("global::System.Threading.CancellationToken"))
-            {
-                cancellationTokenArg = i;
-                continue;
-            }
-
-            if (injectedConnectionArg == -1 && (param.Type.Info.IsMultipleConnections || param.Type.Info.IsSingleConnection))
-            {
-                injectedConnectionArg = i;
-            }
+            bldr.String("// TypeCode: Empty")
+                .String("__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = 0;");
+            return;
         }
 
+        bldr.Build($"#region Write ID ({Class.IdType.Name})")
+            .Build($"// TypeCode: {Class.IdTypeCode.ToTypeCodeString()}")
+            .Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize] = {(byte)Class.IdTypeCode};")
+            .Empty();
+
+        if (Class.IdTypeCode == TypeCode.Object)
+        {
+            bldr.String("uint __modularRpcsGeneratedIdPos;")
+                .String("if (__modularRpcsGeneratedState.HasKnownTypeId)")
+                .String("{")
+                .In();
+
+            bldr.Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize + 1] = {(byte)RpcEndpoint.IdentifierFlags.IsKnownTypeOnly};")
+                .Empty()
+                .String("byte* __modularRpcsGeneratedKnownTypeIdBufferLocation = __modularRpcsGeneratedState.Buffer + __modularRpcsGeneratedState.PreOverheadSize + 2;")
+                .Preprocessor("#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_1_OR_GREATER")
+                .String("uint __modularRpcsGeneratedKnownTypeIdEndiannessApplied = global::System.BitConverter.IsLittleEndian ? __modularRpcsGeneratedState.KnownTypeId : global::System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(__modularRpcsGeneratedState.KnownTypeId);")
+                .Preprocessor("#else")
+                .String("uint __modularRpcsGeneratedKnownTypeIdEndiannessApplied;")
+                .String("if (global::System.BitConverter.IsLittleEndian)")
+                .In().String("__modularRpcsGeneratedKnownTypeIdEndiannessApplied = __modularRpcsGeneratedState.KnownTypeId;").Out()
+                .String("else")
+                .In().String("__modularRpcsGeneratedKnownTypeIdEndiannessApplied = (__modularRpcsGeneratedState.KnownTypeId & 0x000000ffu) << 24 | (__modularRpcsGeneratedState.KnownTypeId & 0x0000ff00u) << 8 | (__modularRpcsGeneratedState.KnownTypeId & 0x00ff0000u) >> 8 | (__modularRpcsGeneratedState.KnownTypeId & 0xff000000u) >> 24;").Out()
+                .Preprocessor("#endif")
+                .Empty()
+                .String("if ((nint)__modularRpcsGeneratedKnownTypeIdBufferLocation % sizeof(uint) == 0)")
+                .In().String("*(uint*)__modularRpcsGeneratedKnownTypeIdBufferLocation = __modularRpcsGeneratedKnownTypeIdEndiannessApplied;").Out()
+                .String("else")
+                .String("{").In()
+                    .String("*__modularRpcsGeneratedKnownTypeIdBufferLocation   = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied) );")
+                    .String("__modularRpcsGeneratedKnownTypeIdBufferLocation[1] = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied >>  8) );")
+                    .String("__modularRpcsGeneratedKnownTypeIdBufferLocation[2] = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied >> 16) );")
+                    .String("__modularRpcsGeneratedKnownTypeIdBufferLocation[3] = unchecked( (byte)(__modularRpcsGeneratedKnownTypeIdEndiannessApplied >> 24) );")
+                .Out()
+                .String("}")
+                .Empty()
+                .String("__modularRpcsGeneratedIdPos = __modularRpcsGeneratedState.PreOverheadSize + 6u;");
+
+            bldr.Out()
+                .String("}")
+                .String("else")
+                .String("{").In();
+
+            bldr.Build($"__modularRpcsGeneratedState.Buffer[__modularRpcsGeneratedState.PreOverheadSize + 1] = {(byte)RpcEndpoint.IdentifierFlags.IsTypeNameOnly};")
+                .Empty()
+                .String($"__modularRpcsGeneratedIdPos = checked ( (uint)__modularRpcsGeneratedState.Serializer.WriteObject<string>(\"{escapedIdTypeName}\", __modularRpcsGeneratedState.Buffer + __modularRpcsGeneratedState.PreOverheadSize + 2, __modularRpcsGeneratedState.IdTypeSize - 2u) ) + __modularRpcsGeneratedState.PreOverheadSize + 2u;");
+
+            bldr.Out()
+                .String("}");
+        }
+        else
+        {
+            bldr.String("uint __modularRpcsGeneratedIdPos = __modularRpcsGeneratedState.PreOverheadSize + 1u;");
+        }
+
+        WriteValue(bldr, Class.IdType, canUnsignedRightShift, "__modularRpcsGeneratedIdPos", "__modularRpcsGeneratedId", "__modularRpcsGeneratedState.IdSize");
+
+        bldr.String("#endregion");
+    }
+
+    private void LoadConnection(SourceStringBuilder bldr, int injectedConnectionArg, IList<RpcParameterDeclaration> toInject)
+    {
         string? thisConnection = null;
         if (injectedConnectionArg == -1)
         {
@@ -501,9 +638,6 @@ internal readonly struct SendMethodSnippetGenerator
                 thisConnection = Class.IsMultipleConnectionExplicit ? "((global::DanielWillett.ModularRpcs.Protocol.IRpcMultipleConnectionsObject)this).Connections" : "this.Connections";
             }
         }
-
-        bldr.Build($"{returnStr}__modularRpcsGeneratedState.Router.InvokeRpc(")
-            .In();
 
         if (thisConnection != null)
         {
@@ -521,9 +655,10 @@ internal readonly struct SendMethodSnippetGenerator
         {
             bldr.String("null,");
         }
-        bldr    .String("__modularRpcsGeneratedState.Serializer,")
-                .Build($"@{Class.Type.Name}.{Info.MethodInfoFieldName}.MethodHandle,");
+    }
 
+    private static void LoadCancellationToken(SourceStringBuilder bldr, int cancellationTokenArg, RpcParameterDeclaration[] toInject)
+    {
         if (cancellationTokenArg != -1)
         {
             bldr.Build($"@{toInject[cancellationTokenArg].Name},");
@@ -532,16 +667,6 @@ internal readonly struct SendMethodSnippetGenerator
         {
             bldr.String("global::System.Threading.CancellationToken.None,");
         }
-
-        bldr    .String("__modularRpcsGeneratedState.Buffer,")
-                .String("checked ( (int)__modularRpcsGeneratedState.Size ),")
-                .String("__modularRpcsGeneratedState.Size - __modularRpcsGeneratedState.OverheadSize,")
-                .Build($"ref @{Class.Type.Name}.{Info.MethodInfoFieldName},")
-                .String("global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Default | global::DanielWillett.ModularRpcs.Routing.RpcInvokeOptions.Generated").Out()
-            .String(");");
-
-        bldr.Out()
-            .String("}");
     }
 
     internal static void GenerateGetIdSize(SourceStringBuilder bldr, RpcClassDeclaration @class, out string? escapedIdTypeName, string idTypeSize, string idSize, string serializer, string? hasKnownTypeId, string knownTypeId, string preCalc, string overheadSize, out bool passIdByRef, string @this)

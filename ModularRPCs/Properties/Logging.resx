@@ -135,6 +135,12 @@
   <data name="GenerateInvokeMethodImplementationNotFound" xml:space="preserve">
     <value>Generated invoke method not found in {0}: \"{1}\".</value>
   </data>
+  <data name="LogFailedToInvoke" xml:space="preserve">
+    <value>Failed to invoke event: "{0}".</value>
+  </data>
+  <data name="LogFailedToReplyException" xml:space="preserve">
+    <value>Failed to notify '{0}' of a {1} because the connection was closed.</value>
+  </data>
   <data name="MethodNotVisibileToOverridingClasses" xml:space="preserve">
     <value>The method '{0}' in type '{1}' is not accessible or overridable by the proxy class.</value>
   </data>

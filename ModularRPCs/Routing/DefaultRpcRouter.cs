@@ -12,6 +12,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -20,6 +21,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using ObjectDisposedException = System.ObjectDisposedException;
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Runtime.InteropServices;
 #endif
@@ -34,7 +36,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     private long _lastMsgId;
     private readonly ConcurrentDictionary<ulong, RpcTask> _listeningTasks = new ConcurrentDictionary<ulong, RpcTask>();
     private readonly ConcurrentDictionary<UniqueMessageKey, CancellationTokenSource> _pendingCancellableMessages = new ConcurrentDictionary<UniqueMessageKey, CancellationTokenSource>();
-    private readonly Dictionary<string, IReadOnlyList<RpcEndpointTarget>> _broadcastListeners = new Dictionary<string, IReadOnlyList<RpcEndpointTarget>>(StringComparer.Ordinal);
 
     [EditorBrowsable(EditorBrowsableState.Never)]
     public readonly struct UniqueMessageKey : IEquatable<UniqueMessageKey>
@@ -51,9 +52,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         public override bool Equals(object? obj) => obj is UniqueMessageKey key && key.MessageId == MessageId && Sender.Equals(key.Sender);
         public override int GetHashCode() => HashCode.Combine(MessageId, Sender);
     }
-
-    /// <inheritdoc />
-    public IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
 
     /// <summary>
     /// A dictionary of unique IDs to invocation points.
@@ -78,43 +76,11 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     /// </summary>
     public IRpcSerializer Serializer => _defaultSerializer;
 
-    /// <summary>
-    /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in the given <paramref name="scannableAssemblies"/>.
-    /// </summary>
-    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, IEnumerable<Assembly> scannableAssemblies)
+    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator)
     {
         _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
         _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
         _proxyGenerator = proxyGenerator;
-        BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastListeners);
-
-        foreach (Assembly asm in scannableAssemblies ?? throw new ArgumentNullException(nameof(scannableAssemblies)))
-            ScanAssemblyForRpcClasses(asm);
-    }
-
-    /// <summary>
-    /// Create an <see cref="IRpcRouter"/> that looks for <see cref="RpcClassAttribute"/>'s in all referenced assemblies to the one calling this method.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator) : this(defaultSerializer, lifetime, proxyGenerator, Assembly.GetCallingAssembly()) { }
-    protected internal DefaultRpcRouter(IRpcSerializer defaultSerializer, IRpcConnectionLifetime lifetime, ProxyGenerator proxyGenerator, Assembly callingAssembly)
-    {
-        _defaultSerializer = defaultSerializer ?? throw new ArgumentNullException(nameof(defaultSerializer));
-        _connectionLifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
-        _proxyGenerator = proxyGenerator;
-        BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastListeners);
-
-        ScanAssemblyForRpcClasses(callingAssembly);
-        foreach (AssemblyName asmName in callingAssembly.GetReferencedAssemblies())
-        {
-            try
-            {
-                ScanAssemblyForRpcClasses(Assembly.Load(asmName));
-            }
-            catch (FileNotFoundException) { }
-            catch (FileLoadException) { }
-            catch (BadImageFormatException) { }
-        }
     }
 
     public void CleanupConnection(IModularRpcConnection connection)
@@ -132,58 +98,6 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
     }
 
-    private void ScanAssemblyForRpcClasses(Assembly assembly)
-    {
-        List<RpcEndpointTarget> broadcastInfos = new List<RpcEndpointTarget>();
-        foreach (Type type in Accessor.GetTypesSafe(assembly))
-        {
-            if (type.IsIgnored() || !type.IsDefinedSafe<RpcClassAttribute>())
-                continue;
-
-            MethodInfo[] methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
-
-            foreach (MethodInfo method in methods)
-            {
-                RpcReceiveAttribute? receiveAttribute = method.GetAttributeSafe<RpcReceiveAttribute>();
-
-                if (receiveAttribute == null || method.IsIgnored() || receiveAttribute.MethodName == null)
-                    continue;
-
-                RpcEndpointTarget info = RpcEndpointTarget.FromReceiveMethod(method);
-                info.OwnerMethodInfo = method;
-                broadcastInfos.Add(info);
-            }
-        }
-
-        broadcastInfos.Sort((a, b) => string.Compare(a.DeclaringTypeName, b.DeclaringTypeName, CultureInfo.InvariantCulture, CompareOptions.StringSort));
-
-        for (int i = 0; i < broadcastInfos.Count; ++i)
-        {
-            RpcEndpointTarget target = broadcastInfos[i];
-
-            int nextInd = i + 1;
-            while (nextInd < broadcastInfos.Count && string.Equals(target.DeclaringTypeName, broadcastInfos[nextInd].DeclaringTypeName))
-                ++nextInd;
-
-            int ct = nextInd - i;
-            if (_broadcastListeners.TryGetValue(target.DeclaringTypeName, out IReadOnlyList<RpcEndpointTarget>? value))
-            {
-                RpcEndpointTarget[] oldArr = (RpcEndpointTarget[])value;
-                RpcEndpointTarget[] newArr = new RpcEndpointTarget[oldArr.Length + ct];
-                Array.Copy(oldArr, newArr, oldArr.Length);
-                broadcastInfos.CopyTo(i, newArr, oldArr.Length, ct);
-            }
-            else
-            {
-                RpcEndpointTarget[] newArr = new RpcEndpointTarget[ct];
-                value = newArr;
-                broadcastInfos.CopyTo(i, newArr, 0, ct);
-            }
-
-            _broadcastListeners[target.DeclaringTypeName] = value;
-            i = nextInd - 1;
-        }
-    }
     private ulong GetNewMessageId()
     {
         return unchecked( (ulong)Interlocked.Increment(ref _lastMsgId) );
@@ -1373,8 +1287,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 ex.Message)
         );
     }
-    private static unsafe ValueTask ReplyRpcException(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, Exception ex, IRpcSerializer serializer)
+    private unsafe ValueTask ReplyRpcException(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, Exception ex, IRpcSerializer serializer)
     {
+        if (connection.IsClosed)
+        {
+            this.LogWarning(string.Format(Properties.Logging.LogFailedToReplyException, connection, Accessor.Formatter.Format(ex.GetType())));
+            return default;
+        }
+
         uint size = GetExceptionSize(ex, serializer);
         uint pfxSize = GetPrefixSize(serializer);
         size += pfxSize;
@@ -1402,7 +1322,31 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             span = buffer.AsSpan(0, (int)index);
         }
 
-        return connection.SendDataAsync(serializer, span, !didStackAlloc, CancellationToken.None);
+        if (connection.IsClosed)
+        {
+            this.LogWarning(string.Format(Properties.Logging.LogFailedToReplyException, connection, Accessor.Formatter.Format(ex.GetType())));
+            return default;
+        }
+
+        try
+        {
+            return connection.SendDataAsync(serializer, span, !didStackAlloc, CancellationToken.None);
+        }
+        catch (RpcConnectionClosedException)
+        {
+            this.LogWarning(string.Format(Properties.Logging.LogFailedToReplyException, connection, Accessor.Formatter.Format(ex.GetType())));
+            return default;
+        }
+        catch (ObjectDisposedException)
+        {
+            this.LogWarning(string.Format(Properties.Logging.LogFailedToReplyException, connection, Accessor.Formatter.Format(ex.GetType())));
+            return default;
+        }
+        catch (Exception ex2)
+        {
+            this.LogError(ex2, string.Format(Properties.Logging.LogFailedToReplyException, connection, Accessor.Formatter.Format(ex.GetType())));
+            return default;
+        }
     }
 
     private static unsafe ValueTask FollowupRpcCancel(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)

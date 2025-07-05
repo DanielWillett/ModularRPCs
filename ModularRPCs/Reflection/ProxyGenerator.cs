@@ -12,10 +12,10 @@ using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
 using DanielWillett.ReflectionTools.Formatting;
-using DanielWillett.SpeedBytes;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -64,6 +64,9 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsBytes =
         new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
+
+    private readonly ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods =
+        new ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>>();
 
 
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
@@ -167,6 +170,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// <remarks>Defaults to 15 seconds.</remarks>
     public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(15d);
 
+    /// <summary>
+    /// Dictionary of types to lists of broadcast targets (receive methods that specify a send method).
+    /// </summary>
+    public IReadOnlyDictionary<Type, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
+
     internal SerializerGenerator SerializerGenerator { get; }
     internal AssemblyBuilder AssemblyBuilder { get; }
     internal ModuleBuilder ModuleBuilder { get; }
@@ -204,15 +212,19 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             [ thisAssembly.GetName().Name ]
         );
 
+        BroadcastTargets = new ReadOnlyDictionary<Type, IReadOnlyList<RpcEndpointTarget>>(_broadcastMethods);
+
         AssemblyBuilder.SetCustomAttribute(attr);
 
         _generatedTypeBuilder = new GeneratedProxyTypeBuilder(
+            this,
             _getCallInfoFunctions,
             _invokeMethodsStream,
             _invokeMethodsBytes,
             _getObjectFunctions,
             _releaseObjectFunctions,
-            _getOverheadSizeFunctions
+            _getOverheadSizeFunctions,
+            _broadcastMethods
         );
         SerializerGenerator.InitializeGeneratedProxyBuilder(_generatedTypeBuilder);
         _generatedTypeBuilderArgs = [ _generatedTypeBuilder ];
@@ -1773,12 +1785,20 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         TypeBuilder builder = StartProxyType(ref typeName, type, typeGivesInternalAccess, unity, out FieldBuilder proxyContextField, out ConstructorBuilder? typeInitializer, out FieldBuilder? idField, out FieldBuilder? unityRouterField);
 
         List<string> takenMethodNames = new List<string>();
+        List<MethodInfo>? broadcastReceivers = null;
         foreach (MethodInfo method in methods)
         {
             if (!method.TryGetAttributeSafe(out RpcSendAttribute targetAttribute) || method.DeclaringType == typeof(object))
             {
                 if (method.IsAbstract && method.DeclaringType == type)
                     throw new ArgumentException(Properties.Exceptions.TypeNotInheritable, nameof(type));
+
+                if (method.TryGetAttributeSafe(out RpcReceiveAttribute recv) && !string.IsNullOrEmpty(recv.MethodName) && !method.IsIgnored())
+                {
+                    // is broadcast
+                    (broadcastReceivers ??= new List<MethodInfo>(4)).Add(method);
+                }
+
                 continue;
             }
 
@@ -2482,6 +2502,18 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             else
                 il.CommentIfDebug("return;");
             il.Emit(OpCodes.Ret);
+        }
+
+        if (broadcastReceivers != null)
+        {
+            List<MethodInfo> r2 = broadcastReceivers;
+            _generatedTypeBuilder.AddBroadcastReceiveMethods(type, r =>
+            {
+                foreach (MethodInfo m in r2)
+                {
+                    r.AddMethod(RpcEndpointTarget.FromReceiveMethod(m));
+                }
+            });
         }
 
         if (typeInitializer != null)

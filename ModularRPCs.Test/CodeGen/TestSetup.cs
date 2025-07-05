@@ -6,13 +6,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NUnit.Framework;
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
+using DanielWillett.ReflectionTools.IoC;
 
 namespace ModularRPCs.Test.CodeGen
 {
     internal static class TestSetup
     {
-        public static Task<LoopbackRpcServersideRemoteConnection> SetupTest<T>(out IServiceProvider server, out IServiceProvider client, bool useStreams) where T : class
+        public static Task<LoopbackRpcServersideRemoteConnection> SetupTest<T>(out IServiceProvider server, out IServiceProvider client, bool useStreams, out IDisposable disposable) where T : class
         {
             ServiceCollection collection = new ServiceCollection();
 
@@ -30,9 +32,7 @@ namespace ModularRPCs.Test.CodeGen
 
             collection.AddLogging(l => l.AddConsole());
 
-            collection.AddSingleton(Accessor.Active);
-            collection.AddTransient(_ => Accessor.Logger);
-            collection.AddTransient(_ => Accessor.Formatter);
+            collection.AddReflectionTools();
             collection.AddModularRpcs(isServer: true);
             collection.AddRpcSingleton<T>();
 
@@ -45,9 +45,7 @@ namespace ModularRPCs.Test.CodeGen
 
             collection.AddLogging(l => l.AddConsole());
 
-            collection.AddSingleton(Accessor.Active);
-            collection.AddTransient(_ => Accessor.Logger);
-            collection.AddTransient(_ => Accessor.Formatter);
+            collection.AddReflectionTools();
             collection.AddModularRpcs(isServer: false);
             collection.AddRpcSingleton<T>();
 
@@ -55,6 +53,8 @@ namespace ModularRPCs.Test.CodeGen
             client = clientProvider;
 
             ProxyGenerator.Instance.DefaultTimeout = TimeSpan.FromSeconds(5d);
+
+            disposable = new TestState(serverProvider as IDisposable, clientProvider as IDisposable);
 
             return Intl();
 
@@ -82,6 +82,33 @@ namespace ModularRPCs.Test.CodeGen
                 Assert.That(remote.Server.Local.IsClosed, Is.False);
 
                 return remote.Server;
+            }
+        }
+
+        private class TestState : IDisposable
+        {
+            private readonly IDisposable _d1;
+            private readonly IDisposable _d2;
+
+            public TestState(IDisposable d1, IDisposable d2)
+            {
+                _d1 = d1;
+                _d2 = d2;
+            }
+
+            public void Dispose()
+            {
+                try
+                {
+                    _d1?.Dispose();
+                }
+                catch
+                {
+                    _d2?.Dispose();
+                    throw;
+                }
+
+                _d2?.Dispose();
             }
         }
     }
