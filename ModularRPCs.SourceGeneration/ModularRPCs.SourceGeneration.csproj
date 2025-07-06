@@ -24,7 +24,7 @@
     <Company>$(Authors)</Company>
 
     <Version>1.0.0</Version>
-		<PackageVersion>$(Version)-prerelease17</PackageVersion>
+		<PackageVersion>$(Version)-prerelease18</PackageVersion>
 
 		<FileVersion>$(Version).0</FileVersion>
 		<AssemblyVersion>$(Version).0</AssemblyVersion>
@@ -70,7 +70,7 @@
 
     <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     <None Include="$(SolutionDir)\README.md" Pack="true" PackagePath="/" />
-    <None Include="build\ModularRPCs.SG.props" Pack="true" PackagePath="buildTransitive" />
+    <None Include="build\DanielWillett.ModularRpcs.SourceGeneration.props" Pack="true" PackagePath="buildTransitive" />
     <None Include="$(PKGDanielWillett_ModularRPCs)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" />
 
   </ItemGroup>
