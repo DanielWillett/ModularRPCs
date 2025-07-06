@@ -3,6 +3,7 @@ using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
 using JetBrains.Annotations;
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -44,8 +45,8 @@ public struct RpcEndpointTarget
     [UsedImplicitly]
     public int SignatureHash;
 
-    [UsedImplicitly]
-    internal MethodInfo? OwnerMethodInfo;
+    [UsedImplicitly, EditorBrowsable(EditorBrowsableState.Never)]
+    public MethodInfo? OwnerMethodInfo;
 
     private static readonly FieldInfo IsDeclaringSendMethodField = typeof(RpcEndpointTarget).GetField(nameof(IsBroadcast), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo MethodNameField = typeof(RpcEndpointTarget).GetField(nameof(MethodName), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;

@@ -203,7 +203,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 #endif
         ModuleBuilder = AssemblyBuilder.DefineDynamicModule(ProxyAssemblyName.Name!);
         _identifierErrorConstructor =
-            typeof(RpcObjectInitializationException).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance,
+            typeof(RpcObjectInitializationException).GetConstructor(BindingFlags.Public | BindingFlags.Instance,
                 null, [ typeof(string) ], null)
             ?? throw new MemberAccessException("Failed to find RpcObjectInitializationException(string).");
 
@@ -245,43 +245,81 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 #endif
     }
 
+#if NET5_0_OR_GREATER
+    private const DynamicallyAccessedMemberTypes CreateProxyDynamicMembers = DynamicallyAccessedMemberTypes.NonPublicMethods
+                                                                             | DynamicallyAccessedMemberTypes.NonPublicMethods
+                                                                             | DynamicallyAccessedMemberTypes.NonPublicProperties
+                                                                             | DynamicallyAccessedMemberTypes.PublicProperties
+#if NET6_0_OR_GREATER
+                                                                             | DynamicallyAccessedMemberTypes.Interfaces
+#endif
+                                                                             | DynamicallyAccessedMemberTypes.NonPublicFields
+                                                                             | DynamicallyAccessedMemberTypes.PublicFields;
+#endif
+
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router) where TRpcClass : class
+
+    public TRpcClass CreateProxy<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | CreateProxyDynamicMembers)]
+#endif
+    TRpcClass
+    >(IRpcRouter router) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic) where TRpcClass : class
+    public TRpcClass CreateProxy<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.NonPublicConstructors | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | CreateProxyDynamicMembers)]
+#endif
+    TRpcClass>(IRpcRouter router, bool nonPublic) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, params object[] constructorParameters)
+    public TRpcClass CreateProxy<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | CreateProxyDynamicMembers)]
+#endif
+    TRpcClass>(IRpcRouter router, params object[] constructorParameters)
         where TRpcClass : class
         => CreateProxy<TRpcClass>(router, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, params object[] constructorParameters)
+    public TRpcClass CreateProxy<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+    TRpcClass>(IRpcRouter router, bool nonPublic, params object[] constructorParameters)
         where TRpcClass : class
         => CreateProxy<TRpcClass>(router, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder,
+    public TRpcClass CreateProxy<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+       TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder,
         object[] constructorParameters) where TRpcClass : class
         => CreateProxy<TRpcClass>(router, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <typeparamref name="TRpcClass"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public TRpcClass CreateProxy<TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder,
+    public TRpcClass CreateProxy<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        TRpcClass>(IRpcRouter router, bool nonPublic, Binder? binder,
         object[] constructorParameters, CultureInfo culture, object[]? activationAttributes) where TRpcClass : class
         => (TRpcClass)CreateProxy(router, typeof(TRpcClass), nonPublic, binder, constructorParameters, culture,
             activationAttributes);
@@ -289,38 +327,62 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public object CreateProxy(IRpcRouter router, Type type)
+    public object CreateProxy(IRpcRouter router,
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | CreateProxyDynamicMembers)]
+#endif
+        Type type)
         => CreateProxy(router, type, false, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic)
+    public object CreateProxy(IRpcRouter router,
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type, bool nonPublic)
         => CreateProxy(router, type, nonPublic, null, Array.Empty<object>(), CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public object CreateProxy(IRpcRouter router, Type type, params object[] constructorParameters)
+    public object CreateProxy(IRpcRouter router,
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type, params object[] constructorParameters)
         => CreateProxy(router, type, false, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, params object[] constructorParameters)
+    public object CreateProxy(IRpcRouter router,
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type, bool nonPublic, params object[] constructorParameters)
         => CreateProxy(router, type, nonPublic, null, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder,
+    public object CreateProxy(IRpcRouter router,
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type, bool nonPublic, Binder? binder,
         object[] constructorParameters)
         => CreateProxy(router, type, nonPublic, binder, constructorParameters, CultureInfo.CurrentCulture, null);
 
     /// <summary>Create an instance of the RPC proxy of <paramref name="type"/>.</summary>
     /// <remarks>If using Unity on a Component, ensure you're using the extension method in ModularRPCs.Unity instead.</remarks>
     [System.Diagnostics.Contracts.Pure]
-    public object CreateProxy(IRpcRouter router, Type type, bool nonPublic, Binder? binder,
+    public object CreateProxy(IRpcRouter router,
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type, bool nonPublic, Binder? binder,
         object[] constructorParameters, CultureInfo culture, object[]? activationAttributes)
     {
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
@@ -432,7 +494,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
     /// <exception cref="ArgumentException"/>
     [System.Diagnostics.Contracts.Pure]
-    public Type GetProxyType<TRpcClass>() where TRpcClass : class
+    public Type GetProxyType<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        TRpcClass>() where TRpcClass : class
         => GetProxyType(typeof(TRpcClass));
 
     /// <summary>
@@ -441,7 +507,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
     /// <exception cref="ArgumentException"/>
     [System.Diagnostics.Contracts.Pure]
-    public Type GetProxyType(Type type)
+    public Type GetProxyType(
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type)
     {
         if (type.Assembly.FullName != null && type.Assembly.FullName.Equals(AssemblyBuilder.FullName))
             type = type.BaseType!;
@@ -462,7 +532,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// Returns the RPC proxy type of <typeparamref name="TRpcClass"/> if it's already been created. For types generated by the source generator, the same type will be returned.
     /// </summary>
     /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
-    public bool TryGetProxyType<TRpcClass>(
+    public bool TryGetProxyType<
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        TRpcClass>(
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         [MaybeNullWhen(false)]
 #endif
@@ -475,7 +549,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// Returns the RPC proxy type of <paramref name="type"/> if it's already been created. For types generated by the source generator, the same type will be returned.
     /// </summary>
     /// <remarks>The RPC proxy type overrides virtual methods decorated with the <see cref="RpcSendAttribute"/>.</remarks>
-    public bool TryGetProxyType(Type type,
+    public bool TryGetProxyType(
+#if NET5_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors | CreateProxyDynamicMembers)]
+#endif
+        Type type,
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         [MaybeNullWhen(false)]
 #endif
@@ -532,7 +610,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// <exception cref="InvalidCastException">The identifier is not the correct type.</exception>
     /// <returns>A weak reference to the object, or <see langword="null"/> if it's not found.</returns>
     [System.Diagnostics.Contracts.Pure]
-    public WeakReference? GetObjectByIdentifier(Type instanceType, object identifier)
+    public WeakReference? GetObjectByIdentifier(
+#if NET6_0_OR_GREATER
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)]
+#endif
+        Type instanceType, object identifier)
     {
         if (identifier == null)
             throw new ArgumentNullException(nameof(identifier));

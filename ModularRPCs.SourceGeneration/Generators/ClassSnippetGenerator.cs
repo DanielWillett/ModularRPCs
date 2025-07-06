@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using DanielWillett.ModularRpcs.Annotations;
 using Microsoft.CodeAnalysis;
@@ -26,6 +28,7 @@ internal readonly struct ClassSnippetGenerator
         MethodDeclarations = @class.Methods;
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public void GenerateClassSnippet()
     {
         Context.CancellationToken.ThrowIfCancellationRequested();
@@ -192,7 +195,8 @@ internal readonly struct ClassSnippetGenerator
             bldr.In().Build($"TypeSetupMethodName = nameof(@{Class.Type.Name}.__ModularRpcsGeneratedSetupStaticGeneratedProxy)").Out();
             bldr.Preprocessor("#endif");
         }
-        bldr.String(")]");
+        bldr.String(")]")
+            .Build($"[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"DanielWillett.ModularRpcs.SourceGeneration\", \"{Assembly.GetExecutingAssembly().GetName().Version.ToString(3)}\")]");
 
         // class {
         bldr.Build($"partial {Class.Definition} : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType")
@@ -434,57 +438,54 @@ internal readonly struct ClassSnippetGenerator
                 .Out()
                 .String("}")
                 .Empty();
-            
-            for (int i = 0; !(i == 1 && !Class.IsUnityType || i > 1); ++i)
+
+            bldr.String("// Use DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject to implement your own finalizer.");
+
+            if (Class.IsUnityType)
             {
-                bldr.String("// Use DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject to implement your own finalizer.");
+                bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .Build($"protected virtual void OnDestroy()");
+            }
+            else
+            {
+                bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .Build($"~@{Class.Type.Name}()");
+            }
 
-                if (i == 1)
-                {
-                    bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                        .Build($"protected virtual void OnDestroy()");
-                }
+            bldr.String("{").In();
+
+            if (Class.HasExplicitFinalizer)
+            {
+                bldr.String("try")
+                    .String("{").In();
+            }
+
+            bldr.String("if (global::System.Threading.Interlocked.Exchange(ref this.__modularRpcsSuppressFinalize, 1) == 0)")
+                .In().Build($"__modularRpcsGeneratedInstances.TryRemove({idVarThis}, out _);").Out();
+
+            if (Class.HasExplicitFinalizer)
+            {
+
+                bldr.Out()
+                    .String("}")
+                    .String("finally")
+                    .String("{").In();
+
+                string src = Class.IsUnityType
+                    ? "global::DanielWillett.ModularRpcs.Protocol.ExplicitFinalizerSource.OnDestroy"
+                    : "global::DanielWillett.ModularRpcs.Protocol.ExplicitFinalizerSource.Finalizer";
+
+                if (Class.IsExplicitFinalizerExplicit)
+                    bldr.Build($"((global::DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject)this).OnFinalizing({src});");
                 else
-                {
-                    bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                        .Build($"~@{Class.Type.Name}()");
-                }
+                    bldr.Build($"this.OnFinalizing({src});");
 
-                bldr.String("{").In();
-                        
-                if (Class.HasExplicitFinalizer)
-                {
-                    bldr.String("try")
-                        .String("{").In();
-                }
-
-                bldr.String("if (global::System.Threading.Interlocked.Exchange(ref this.__modularRpcsSuppressFinalize, 1) == 0)")
-                    .In().Build($"__modularRpcsGeneratedInstances.TryRemove({idVarThis}, out _);").Out(); 
-
-                if (Class.HasExplicitFinalizer)
-                {
-                        
-                    bldr.Out()
-                        .String("}")
-                        .String("finally")
-                        .String("{").In();
-
-                    string src = i == 1
-                        ? "global::DanielWillett.ModularRpcs.Protocol.ExplicitFinalizerSource.OnDestroy"
-                        : "global::DanielWillett.ModularRpcs.Protocol.ExplicitFinalizerSource.Finalizer";
-
-                    if (Class.IsExplicitFinalizerExplicit)
-                        bldr.Build($"((global::DanielWillett.ModularRpcs.Protocol.IExplicitFinalizerRpcObject)this).OnFinalizing({src});");
-                    else
-                        bldr.Build($"this.OnFinalizing({src});");
-
-                    bldr.Out()
-                        .String("}");
-                }
-                
                 bldr.Out()
                     .String("}");
             }
+
+            bldr.Out()
+                .String("}");
 
         }
 

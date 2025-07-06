@@ -14,13 +14,17 @@
     <PackageId>DanielWillett.ModularRpcs.SourceGeneration</PackageId>
     <Title>Modular RPCs Source Generation</Title>
 
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/DanielWillett/ModularRPCs</PackageProjectUrl>
+    <RepositoryUrl>$(PackageProjectUrl).git</RepositoryUrl>
+
 		<Nullable>enable</Nullable>
 
     <Authors>Daniel Willett</Authors>
     <Company>$(Authors)</Company>
 
     <Version>1.0.0</Version>
-		<PackageVersion>$(Version)-prerelease15</PackageVersion>
+		<PackageVersion>$(Version)-prerelease17</PackageVersion>
 
 		<FileVersion>$(Version).0</FileVersion>
 		<AssemblyVersion>$(Version).0</AssemblyVersion>
@@ -45,7 +49,7 @@
 
   <ItemGroup>
     <!-- Generator dependencies -->
-    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease15, 2.0.0)" PrivateAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease16, 2.0.0)" GeneratePathProperty="true" />
   </ItemGroup>
 	
   <PropertyGroup>
