@@ -191,15 +191,16 @@ internal readonly struct ClassSnippetGenerator
         bldr.String("[global::DanielWillett.ModularRpcs.Annotations.RpcGeneratedProxyTypeAttribute(");
         if (sendMethods.Count > 0 || recvMethods.Count > 0)
         {
-            bldr.Preprocessor("#if !NET7_0_OR_GREATER");
             bldr.In().Build($"TypeSetupMethodName = nameof(@{Class.Type.Name}.__ModularRpcsGeneratedSetupStaticGeneratedProxy)").Out();
-            bldr.Preprocessor("#endif");
         }
         bldr.String(")]")
             .Build($"[global::System.CodeDom.Compiler.GeneratedCodeAttribute(\"DanielWillett.ModularRpcs.SourceGeneration\", \"{Assembly.GetExecutingAssembly().GetName().Version.ToString(3)}\")]");
 
         // class {
         bldr.Build($"partial {Class.Definition} : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType")
+            .Preprocessor("#if NET7_0_OR_GREATER")
+            .In().String(", global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyTypeWithSetupMethod").Out()
+            .Preprocessor("#endif")
             .String("{").In()
                 .Empty()
                 .String("#region ModularRPCs class-level infrastructure")

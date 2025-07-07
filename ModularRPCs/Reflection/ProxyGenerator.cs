@@ -217,7 +217,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
         AssemblyBuilder.SetCustomAttribute(attr);
 
         _generatedTypeBuilder = new GeneratedProxyTypeBuilder(
-            this,
             _getCallInfoFunctions,
             _invokeMethodsStream,
             _invokeMethodsBytes,
@@ -1801,7 +1800,11 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             }
 
 #if NET7_0_OR_GREATER
-            InvokeStaticGeneratedTypeSetupMethod(type);
+            if (typeof(IRpcGeneratedProxyTypeWithSetupMethod).IsAssignableFrom(type))
+            {
+                InvokeStaticGeneratedTypeSetupMethod(type);
+            }
+            else
 #else
             if (generatedProxyAttribute.TypeSetupMethodName != null)
             {
@@ -2628,7 +2631,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
 #if NET7_0_OR_GREATER
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor, typeof(GeneratedMethodInvokeStaticSetupMethod<TestGeneratedType>))]
-    private void InvokeStaticGeneratedTypeSetupMethod(Type type)
+    private void InvokeStaticGeneratedTypeSetupMethod([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type type)
     {
         GeneratedMethodInvokeStaticSetupMethod instance = (GeneratedMethodInvokeStaticSetupMethod?)Activator.CreateInstance(typeof(GeneratedMethodInvokeStaticSetupMethod<>).MakeGenericType(type))!;
         instance.Execute(_generatedTypeBuilder);
@@ -2641,7 +2644,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
 
     private class GeneratedMethodInvokeStaticSetupMethod<TGeneratedType>
-        : GeneratedMethodInvokeStaticSetupMethod where TGeneratedType : IRpcGeneratedProxyType
+        : GeneratedMethodInvokeStaticSetupMethod where TGeneratedType : IRpcGeneratedProxyTypeWithSetupMethod
     {
         [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
         public override void Execute(GeneratedProxyTypeBuilder? builder)
@@ -2654,7 +2657,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
 
     [Ignore, UsedImplicitly]
-    private sealed class TestGeneratedType : IRpcGeneratedProxyType
+    private sealed class TestGeneratedType : IRpcGeneratedProxyTypeWithSetupMethod
     {
         void IRpcGeneratedProxyType.SetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info) { }
         public static void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state) { }

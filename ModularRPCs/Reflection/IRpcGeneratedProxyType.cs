@@ -8,16 +8,26 @@ using System.ComponentModel;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
-[EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]
+[EditorBrowsable(EditorBrowsableState.Never), UsedImplicitly]
 public interface IRpcGeneratedProxyType
 {
     [UsedImplicitly]
     void SetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
+}
+
 #if NET7_0_OR_GREATER
+
+/// <summary>
+/// Uses static abstract interface methods instead of a name in the attribute to setup a generated type.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never), UsedImplicitly]
+public interface IRpcGeneratedProxyTypeWithSetupMethod : IRpcGeneratedProxyType
+{
     [UsedImplicitly]
     static abstract void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state);
-#endif
 }
+
+#endif
 
 [EditorBrowsable(EditorBrowsableState.Advanced)]
 public readonly struct GeneratedProxyTypeInfo
@@ -34,8 +44,6 @@ public readonly struct GeneratedProxyTypeInfo
 [EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]
 public class GeneratedProxyTypeBuilder
 {
-    private readonly ProxyGenerator _generator;
-
     private readonly IDictionary<RuntimeMethodHandle, Delegate?> _callInfoGetters;
     private readonly IDictionary<RuntimeMethodHandle, Delegate> _invokeStreamMethods;
     private readonly IDictionary<RuntimeMethodHandle, Delegate> _invokeBytesMethods;
@@ -45,7 +53,7 @@ public class GeneratedProxyTypeBuilder
     private readonly ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods;
     internal IDictionary<RuntimeMethodHandle, int>? MethodSignatures;
 
-    internal GeneratedProxyTypeBuilder(ProxyGenerator generator,
+    internal GeneratedProxyTypeBuilder(
         IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters,
         IDictionary<RuntimeMethodHandle, Delegate> invokeStreamMethods,
         IDictionary<RuntimeMethodHandle, Delegate> invokeBytesMethods,
@@ -54,7 +62,6 @@ public class GeneratedProxyTypeBuilder
         IDictionary<Type, ProxyGenerator.GetOverheadSize?> overheadSizeFunctions,
         ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> broadcastMethods)
     {
-        _generator = generator;
         _callInfoGetters = callInfoGetters;
         _invokeStreamMethods = invokeStreamMethods;
         _invokeBytesMethods = invokeBytesMethods;
