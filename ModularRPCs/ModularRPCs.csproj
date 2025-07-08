@@ -3,7 +3,7 @@
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease18</VersionSuffix>
+    <VersionSuffix>prerelease19</VersionSuffix>
 
     <PackageReleaseNotes></PackageReleaseNotes>
 

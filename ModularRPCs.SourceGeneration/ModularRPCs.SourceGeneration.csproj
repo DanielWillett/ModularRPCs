@@ -24,7 +24,7 @@
     <Company>$(Authors)</Company>
 
     <Version>1.0.0</Version>
-		<PackageVersion>$(Version)-prerelease18</PackageVersion>
+		<PackageVersion>$(Version)-prerelease19</PackageVersion>
 
 		<FileVersion>$(Version).0</FileVersion>
 		<AssemblyVersion>$(Version).0</AssemblyVersion>
@@ -49,7 +49,7 @@
 
   <ItemGroup>
     <!-- Generator dependencies -->
-    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease16, 2.0.0)" GeneratePathProperty="true" />
+    <PackageReference Include="DanielWillett.ModularRPCs" Version="[1.0.0-prerelease19, 2.0.0)" GeneratePathProperty="true" />
   </ItemGroup>
 	
   <PropertyGroup>
