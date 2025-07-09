@@ -38,9 +38,9 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task TestConsistantMethodSignatures()
         {
-            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, false, out _disposable);
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, false, out _disposable);
 
-            SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
+            _ = server.GetRequiredService<SourceGenPlaygroundTestClass>();
 
             MethodInfo method = typeof(SourceGenPlaygroundTestClass).GetMethod("InvokeWithParamsFromClient");
             Assert.That(method, Is.Not.Null);
@@ -50,6 +50,63 @@ namespace ModularRPCs.Test.SourceGen
 
             Assert.That(generated, Is.EqualTo(created));
             Assert.That(generated, Is.Not.Zero);
+        }
+
+        [Test]
+        public async Task ServerToClientInheritedBaseVoid([Values(true, false)] bool useStreams)
+        {
+            DidInvokeMethod = -1;
+
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClassInherited>(out IServiceProvider server, out _, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClassInherited proxy = server.GetRequiredService<SourceGenPlaygroundTestClassInherited>();
+
+            await proxy.InvokeFromServer(connection);
+
+            Assert.That(DidInvokeMethod, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task ClientToServerInheritedBaseVoid([Values(true, false)] bool useStreams)
+        {
+            DidInvokeMethod = -1;
+
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClassInherited>(out _, out IServiceProvider client, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClassInherited proxy = client.GetRequiredService<SourceGenPlaygroundTestClassInherited>();
+
+            await proxy.InvokeFromClient();
+
+            Assert.That(DidInvokeMethod, Is.EqualTo(0));
+        }
+
+
+        [Test]
+        public async Task ServerToClientInheritedVoid([Values(true, false)] bool useStreams)
+        {
+            DidInvokeMethod = -1;
+
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClassInherited>(out IServiceProvider server, out _, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClassInherited proxy = server.GetRequiredService<SourceGenPlaygroundTestClassInherited>();
+
+            await proxy.InvokeFromServer2(connection);
+
+            Assert.That(DidInvokeMethod, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task ClientToServerInheritedVoid([Values(true, false)] bool useStreams)
+        {
+            DidInvokeMethod = -1;
+
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClassInherited>(out _, out IServiceProvider client, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClassInherited proxy = client.GetRequiredService<SourceGenPlaygroundTestClassInherited>();
+
+            await proxy.InvokeFromClient2();
+
+            Assert.That(DidInvokeMethod, Is.EqualTo(0));
         }
 
         [Test]
@@ -158,9 +215,26 @@ namespace ModularRPCs.Test.SourceGen
 
     }
 
+    [GenerateRpcSource]
+    public partial class SourceGenPlaygroundTestClassInherited : SourceGenPlaygroundTestClass
+    {
+        [RpcSend(nameof(Receive2))]
+        public partial RpcTask InvokeFromClient2();
+
+        [RpcSend(nameof(Receive2))]
+        public partial RpcTask InvokeFromServer2(IModularRpcRemoteConnection connection);
+
+        [RpcReceive]
+        private void Receive2()
+        {
+            SourceGenPlayground.DidInvokeMethod = 0;
+        }
+
+    }
+
 #nullable enable
     [GenerateRpcSource]
-    public sealed partial class SourceGenPlaygroundTestClass
+    public partial class SourceGenPlaygroundTestClass
     {
         [RpcSend(nameof(Receive))]
         public partial RpcTask InvokeFromClient();

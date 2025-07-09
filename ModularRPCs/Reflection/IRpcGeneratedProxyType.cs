@@ -2,6 +2,7 @@ using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using JetBrains.Annotations;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 
@@ -12,8 +13,9 @@ public interface IRpcGeneratedProxyType
 {
     [UsedImplicitly]
     void __ModularRpcsGeneratedSetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
-#if NET7_0_OR_GREATER
+}
 
+#if NET7_0_OR_GREATER
 /// <summary>
 /// Uses static abstract interface methods instead of a name in the attribute to setup a generated type.
 /// </summary>
@@ -23,7 +25,6 @@ public interface IRpcGeneratedProxyTypeWithSetupMethod : IRpcGeneratedProxyType
     [UsedImplicitly]
     static abstract void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state);
 }
-
 #endif
 
 [EditorBrowsable(EditorBrowsableState.Advanced)]

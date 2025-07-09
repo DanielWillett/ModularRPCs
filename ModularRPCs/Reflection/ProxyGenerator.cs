@@ -1805,7 +1805,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                 InvokeStaticGeneratedTypeSetupMethod(type);
             }
             else
-#else
+#endif
             if (generatedProxyAttribute.TypeSetupMethodName != null)
             {
                 MethodInfo? method = type.GetMethod(
@@ -1823,7 +1823,6 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
                 method.Invoke(null, _generatedTypeBuilderArgs);
             }
-#endif
 
             info.IsGenerated = true;
             info.Type = type;

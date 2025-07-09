@@ -35,6 +35,8 @@ namespace ModularRPCs.Test.CodeGen
             collection.AddReflectionTools();
             collection.AddModularRpcs(isServer: true);
             collection.AddRpcSingleton<T>();
+            if (typeof(T).BaseType != typeof(object))
+                collection.AddTransient(typeof(T).BaseType, sp => sp.GetRequiredService<T>());
 
             IServiceProvider serverProvider = collection.BuildServiceProvider(opt);
             server = serverProvider;
@@ -48,6 +50,8 @@ namespace ModularRPCs.Test.CodeGen
             collection.AddReflectionTools();
             collection.AddModularRpcs(isServer: false);
             collection.AddRpcSingleton<T>();
+            if (typeof(T).BaseType != typeof(object))
+                collection.AddTransient(typeof(T).BaseType, sp => sp.GetRequiredService<T>());
 
             IServiceProvider clientProvider = collection.BuildServiceProvider(opt);
             client = clientProvider;

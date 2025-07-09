@@ -1,12 +1,11 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using DanielWillett.ModularRpcs;
 using DanielWillett.ModularRpcs.Annotations;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using ModularRPCs.Util;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace ModularRPCs.Generators;
 
@@ -68,12 +67,14 @@ internal readonly struct SendMethodSnippetGenerator
             }
         }
 
-        bldr.String("global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState = default;");
-
-        bldr.String("__modularRpcsGeneratedState.Router = this.__modularRpcsGeneratedProxyContext.Router;")
-            .String("__modularRpcsGeneratedState.Serializer = this.__modularRpcsGeneratedProxyContext.DefaultSerializer;");
-
-        bldr.String("__modularRpcsGeneratedState.PreCalc = __modularRpcsGeneratedState.Serializer.CanFastReadPrimitives;");
+        bldr.String("global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState = default;")
+            .Empty()
+            .String("__modularRpcsGeneratedState.Router = this.__modularRpcsGeneratedProxyContext.Router;")
+            .String("if (__modularRpcsGeneratedState.Router == null)").In()
+                .String("throw new global::System.NotImplementedException(DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcNotImplemented);").Out()
+            .Empty()
+            .String("__modularRpcsGeneratedState.Serializer = this.__modularRpcsGeneratedProxyContext.DefaultSerializer;")
+            .String("__modularRpcsGeneratedState.PreCalc = __modularRpcsGeneratedState.Serializer.CanFastReadPrimitives;");
 
         RpcParameterDeclaration? rawBytesPosition = null,
                                  rawCountPosition = null,

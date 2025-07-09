@@ -43,6 +43,7 @@ public static class SourceGenerationServices
     [UsedImplicitly] public static string ResxInstanceWithThisIdAlreadyExists => Properties.Exceptions.InstanceWithThisIdAlreadyExists;
     [UsedImplicitly] public static string ResxRpcInjectionExceptionNoByteCount => Properties.Exceptions.RpcInjectionExceptionNoByteCount;
     [UsedImplicitly] public static string ResxRpcInjectionExceptionNoByteData => Properties.Exceptions.RpcInjectionExceptionNoByteData;
+    [UsedImplicitly] public static string ResxRpcNotImplemented => Properties.Exceptions.RpcNotImplemented;
 
     [UsedImplicitly]
     public static MethodInfo GetMethodByExpression<TObject, TDelegate>(Expression<Func<TObject, TDelegate>> expr)

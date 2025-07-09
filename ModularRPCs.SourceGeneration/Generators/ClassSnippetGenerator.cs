@@ -270,11 +270,16 @@ internal readonly struct ClassSnippetGenerator
             .Preprocessor("#if NET7_0_OR_GREATER")
             .String("public")
             .Preprocessor("#else")
-            .String("private")
+            .String(@protected)
             .Preprocessor("#endif")
             .String("static unsafe void __ModularRpcsGeneratedSetupStaticGeneratedProxy(").In()
                 .String("global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeBuilder state)").Out()
             .String("{").In();
+
+        if (Class.InheritedGeneratedType != null)
+        {
+            bldr.Build($"{Class.InheritedGeneratedType.GloballyQualifiedName}.__ModularRpcsGeneratedSetupStaticGeneratedProxy(state);");
+        }
 
         if (Class.IdType != null)
         {

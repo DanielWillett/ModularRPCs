@@ -781,7 +781,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to This RPC caller was not inherited by a parent class. Make sure you&apos;re getting this service&apos;s object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions..
+        ///   Looks up a localized string similar to This RPC object was not patched by ModularRPCs. Make sure you&apos;re getting this service&apos;s object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions..
         /// </summary>
         internal static string RpcNotImplemented {
             get {

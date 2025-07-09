@@ -181,7 +181,7 @@
     <value>An {1} of {0}'s identifier was not set in the base constructor.</value>
   </data>
   <data name="RpcNotImplemented" xml:space="preserve">
-    <value>This RPC caller was not inherited by a parent class. Make sure you're getting this service's object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions.</value>
+    <value>This RPC object was not patched by ModularRPCs. Make sure you're getting this service's object from the ProxyGenerator or that the service was registered using one of the Rpc IServiceCollection extensions.</value>
   </data>
   <data name="GetObjectByIdentifierIdentityTypeNotCorrectType" xml:space="preserve">
     <value>The given identifier type is not valid. Expected: '{0}', actual: '{1}'.</value>
