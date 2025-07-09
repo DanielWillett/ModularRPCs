@@ -18,8 +18,18 @@ using System.Threading.Tasks;
 
 namespace ModularRPCs.Test.SourceGen
 {
+    [Ignore("Useless")]
+    [NonParallelizable, TestFixture]
     public class TestManualExplicitProxyClass
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         private static int _invokedMethod;
         private static bool _invokeMethodRan;
 
@@ -32,7 +42,7 @@ namespace ModularRPCs.Test.SourceGen
             _invokedMethod = -1;
             _invokeMethodRan = false;
 
-            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, useStreams);
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, useStreams, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -48,7 +58,7 @@ namespace ModularRPCs.Test.SourceGen
             _invokedMethod = -1;
             _invokeMethodRan = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, useStreams);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, useStreams, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -64,7 +74,7 @@ namespace ModularRPCs.Test.SourceGen
             _invokedMethod = -1;
             _invokeMethodRan = false;
 
-            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, useStreams);
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, useStreams, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -80,7 +90,7 @@ namespace ModularRPCs.Test.SourceGen
             _invokedMethod = -1;
             _invokeMethodRan = false;
 
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, useStreams);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, useStreams, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -92,7 +102,7 @@ namespace ModularRPCs.Test.SourceGen
 
 
 
-        [RpcClass]
+        
         public sealed partial class TestClass
         {
             [RpcSend(nameof(Receive))]

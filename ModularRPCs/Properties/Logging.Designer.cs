@@ -115,6 +115,24 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Failed to invoke event: &quot;{0}&quot;..
+        /// </summary>
+        internal static string LogFailedToInvoke {
+            get {
+                return ResourceManager.GetString("LogFailedToInvoke", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to notify &apos;{0}&apos; of a {1} because the connection was closed..
+        /// </summary>
+        internal static string LogFailedToReplyException {
+            get {
+                return ResourceManager.GetString("LogFailedToReplyException", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The method &apos;{0}&apos; in type &apos;{1}&apos; is not accessible or overridable by the proxy class..
         /// </summary>
         internal static string MethodNotVisibileToOverridingClasses {

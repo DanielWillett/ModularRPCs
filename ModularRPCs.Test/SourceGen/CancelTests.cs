@@ -16,6 +16,14 @@ namespace ModularRPCs.Test.SourceGen
     [NonParallelizable, TestFixture]
     public partial class CancelTests
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         private const int DelayMs = 400;
         private static bool _didCancel;
 
@@ -23,7 +31,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ServerToClientBytes()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -34,7 +42,7 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task ClientToServerBytes()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -46,7 +54,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ServerToClientStream()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -57,7 +65,7 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task ClientToServerStream()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -69,7 +77,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ServerToClientBytesAsArgument()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -80,7 +88,7 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task ClientToServerBytesAsArgument()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -92,7 +100,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ServerToClientStreamAsArgument()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -103,7 +111,7 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task ClientToServerStreamAsArgument()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -124,7 +132,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _didCancel = false;
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -140,7 +148,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ClientToServerBytesToken()
         {
             _didCancel = false;
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -157,7 +165,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _didCancel = false;
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -173,7 +181,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ClientToServerStreamToken()
         {
             _didCancel = false;
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -190,7 +198,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _didCancel = false;
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -206,7 +214,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ClientToServerBytesAsArgumentToken()
         {
             _didCancel = false;
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -223,7 +231,7 @@ namespace ModularRPCs.Test.SourceGen
         {
             _didCancel = false;
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -240,7 +248,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ClientToServerStreamAsArgumentToken()
         {
             _didCancel = false;
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -252,7 +260,7 @@ namespace ModularRPCs.Test.SourceGen
             Assert.That(_didCancel, Is.True);
         }
 
-        [RpcClass, GenerateRpcSource]
+        [GenerateRpcSource]
         public partial class TestClass
         {
             [RpcSend(nameof(Receive)), RpcTimeout(DelayMs)]

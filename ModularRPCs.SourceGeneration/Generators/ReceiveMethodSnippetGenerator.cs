@@ -1,10 +1,9 @@
-using System;
 using DanielWillett.ModularRpcs.Annotations;
-using DanielWillett.ModularRpcs.SourceGeneration.Util;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using ModularRPCs.Util;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Generators;
+namespace ModularRPCs.Generators;
 
 internal readonly struct ReceiveMethodSnippetGenerator
 {
@@ -892,26 +891,26 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                 case TypeHelper.PrimitiveLikeType.Char:
                                 case TypeHelper.PrimitiveLikeType.Int16:
                                 case TypeHelper.PrimitiveLikeType.UInt16:
-                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8) );")
+                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8) );")
                                         .Build($"{offsetVar} += 2u;");
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.Int32:
                                 case TypeHelper.PrimitiveLikeType.UInt32:
-                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) );")
+                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) );")
                                         .Build($"{offsetVar} += 4u;");
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.Single:
 
-                                    bldr.Build($"int {valueVar}Num = *bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24);")
+                                    bldr.Build($"int {valueVar}Num = bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24);")
                                         .Build($"{valueVar} = *(float*)&{valueVar}Num;")
                                         .Build($"{offsetVar} += 4u;");
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.Double:
 
-                                    bldr.Build($"long {valueVar}Num = unchecked ( (long)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (long)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                    bldr.Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                         .Build($"{valueVar} = *(double*)&{valueVar}Num;")
                                         .Build($"{offsetVar} += 8u;");
                                     break;
@@ -920,12 +919,12 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                 case TypeHelper.PrimitiveLikeType.UInt64:
                                     if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
                                     {
-                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32) );")
+                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );")
                                             .Build($"{offsetVar} += 8u;");
                                     }
                                     else
                                     {
-                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"{offsetVar} += 8u;");
                                     }
                                     break;
@@ -935,10 +934,10 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     if (canUseNativeIntArithmitic)
                                     {
                                         bldr.String("if (global::System.IntPtr.Size == 8)").In()
-                                                .Build($"{valueVar} = unchecked ( (nint)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (nint)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );").Out()
+                                                .Build($"{valueVar} = unchecked ( (nint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (nint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );").Out()
                                             .String("else")
                                             .String("{").In()
-                                                .Build($"long {valueVar}Num = unchecked ( (long)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (long)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                                .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
                                                 .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
@@ -948,7 +947,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     }
                                     else
                                     {
-                                        bldr.Build($"long {valueVar}Num = unchecked ( (long)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (long)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                        bldr.Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
                                             .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
@@ -964,13 +963,13 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     {
                                         bldr.String("if (global::System.IntPtr.Size == 8)").In();
                                         if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
-                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | ({symbolInfo.GloballyQualifiedName})((nuint)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32) );").Out();
+                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})((nuint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );").Out();
                                         else
-                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (nuint)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );").Out();
+                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (nuint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );").Out();
                                         
                                         bldr.String("else")
                                             .String("{").In()
-                                                .Build($"long {valueVar}Num = unchecked ( (ulong)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (ulong)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                                .Build($"long {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {uint.MaxValue})")
                                                 .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
@@ -980,7 +979,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     }
                                     else
                                     {
-                                        bldr.Build($"ulong {valueVar}Num = unchecked ( (ulong)(*bytes | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) | (ulong)(bytes[4] | bytes[5] << 8 | bytes[6] << 16 | bytes[7] << 24) << 32 );")
+                                        bldr.Build($"ulong {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {uint.MaxValue})")
                                             .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()

@@ -1,13 +1,12 @@
-using DanielWillett.ModularRpcs.Reflection;
-using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using DanielWillett.ModularRpcs.Reflection;
+using Microsoft.CodeAnalysis;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 
 public static class TypeHelper
 {

@@ -18,11 +18,19 @@ namespace ModularRPCs.Test.SourceGen
     [NonParallelizable, TestFixture]
     public partial class InjectionTests
     {
+        private IDisposable _disposable;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _disposable?.Dispose();
+        }
+
         [Test]
         public async Task ServerToClientBytes()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, false, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -32,7 +40,7 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task ClientToServerBytes()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, false, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
@@ -43,7 +51,7 @@ namespace ModularRPCs.Test.SourceGen
         public async Task ServerToClientStream()
         {
             LoopbackRpcServersideRemoteConnection connection
-                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true);
+                = await TestSetup.SetupTest<TestClass>(out IServiceProvider server, out _, true, out _disposable);
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
@@ -53,14 +61,14 @@ namespace ModularRPCs.Test.SourceGen
         [Test]
         public async Task ClientToServerStream()
         {
-            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true);
+            await TestSetup.SetupTest<TestClass>(out _, out IServiceProvider client, true, out _disposable);
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
             await proxy.InvokeFromClient();
         }
 
-        [RpcClass, GenerateRpcSource]
+        [GenerateRpcSource]
         public partial class TestClass
         {
             [RpcSend(nameof(Receive))]

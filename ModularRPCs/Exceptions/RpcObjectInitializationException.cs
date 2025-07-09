@@ -11,7 +11,7 @@ namespace DanielWillett.ModularRpcs.Exceptions;
 public class RpcObjectInitializationException : RpcException
 {
     /// <inheritdoc />
-    internal RpcObjectInitializationException(string message) : base(message) { }
+    public RpcObjectInitializationException(string message) : base(message) { }
 
     /// <inheritdoc />
 #if NET8_0_OR_GREATER

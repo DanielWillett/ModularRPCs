@@ -2,11 +2,11 @@
 
   <PropertyGroup>
     <!--<TargetFrameworks>net481;netcoreapp3.1;net5.0;net7.0;net8.0;net9.0</TargetFrameworks>-->
-    <TargetFramework>net481</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
     
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>DanielWillett.ModularRPCs.Test</AssemblyName>
+    <AssemblyName>ModularRPCs.Test</AssemblyName>
 
     <SuppressTfmSupportBuildErrors>true</SuppressTfmSupportBuildErrors>
 
@@ -39,7 +39,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NUnit" Version="3.14.0" />
     <PackageReference Include="NUnit3TestAdapter" version="4.3.2" />
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <!--<PackageReference Include="coverlet.collector" Version="6.0.4" />-->
     <PackageReference Include="NUnit.Analyzers" Version="4.7.0" />
     <Reference Include="UnityEngine" HintPath="../ModularRPCs.Unity/Libraries/UnityEngine.dll" />
   </ItemGroup>

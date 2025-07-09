@@ -47,7 +47,19 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
     {
         ServiceProvider = serviceProvider;
     }
-    
+
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, uint knownId, MethodInfo method, bool needsParameters, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+        : base(knownId, method, needsParameters, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+    {
+        ServiceProvider = serviceProvider;
+    }
+
+    internal DependencyInjectionRpcEndpoint(IServiceProvider serviceProvider, MethodInfo method, bool needsParameters, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+        : base(method, needsParameters, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+    {
+        ServiceProvider = serviceProvider;
+    }
+
     internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, uint knownId, string declaringTypeName, string methodName, string[]? parameterTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
         : base(knownId, declaringTypeName, methodName, parameterTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
     {
@@ -56,6 +68,18 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
 
     internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, string declaringTypeName, string methodName, string[]? argumentTypeNames, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
         : base(declaringTypeName, methodName, argumentTypeNames, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+    {
+        ServiceProviders = serviceProviders;
+    }
+
+    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, uint knownId, MethodInfo method, bool needsParameters, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+        : base(knownId, method, needsParameters, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
+    {
+        ServiceProviders = serviceProviders;
+    }
+
+    internal DependencyInjectionRpcEndpoint(IEnumerable<IServiceProvider> serviceProviders, MethodInfo method, bool needsParameters, bool argsAreBindOnly, bool isBroadcast, int signatureHash, bool ignoreSignatureHash, bool supportsRemoteCancellation)
+        : base(method, needsParameters, argsAreBindOnly, isBroadcast, signatureHash, ignoreSignatureHash, supportsRemoteCancellation)
     {
         ServiceProviders = serviceProviders;
     }

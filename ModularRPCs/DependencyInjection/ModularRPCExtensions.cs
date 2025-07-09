@@ -9,7 +9,6 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace DanielWillett.ModularRpcs.DependencyInjection;
@@ -40,13 +39,12 @@ public static class ModularRpcExtensions
     /// </summary>
     /// <param name="serviceCollection">The collection to add services to.</param>
     /// <param name="isServer">Will this side be acting as the server or client? Affects which type of <see cref="IRpcConnectionLifetime"/> is added.</param>
-    /// <param name="searchedAssemblies">Assemblies to be searched for <see cref="RpcReceiveAttribute"/>'s that are set up as broadcast listeners (have a specific send method specified). If this is left null, it will be defaulted to the calling assembly along with any direct references it has.</param>
     /// <param name="configureSerialization">Configure how <see cref="IRpcSerializer"/> behaves, including adding custom parsers and parser factories.</param>
     /// <param name="scoped">Determines whether or not <see cref="IRpcSerializer"/>, <see cref="IRpcConnectionLifetime"/>, and <see cref="IRpcRouter"/> are Scoped or Singletons.</param>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static IServiceCollection AddModularRpcs(this IServiceCollection serviceCollection, bool isServer,
         Action<IServiceProvider, SerializationConfiguration, IDictionary<Type, IBinaryTypeParser>, IList<IBinaryParserFactory>>? configureSerialization = null,
-        IEnumerable<Assembly>? searchedAssemblies = null, bool scoped = false)
+        bool scoped = false)
     {
         // proxy generator
         AddProxyGenerator(serviceCollection);
@@ -99,16 +97,11 @@ public static class ModularRpcExtensions
             );
         }
 
-        Assembly? asm = searchedAssemblies != null ? null : Assembly.GetCallingAssembly();
-
         if (serviceCollection.All(d => d.ServiceType != typeof(IRpcRouter)))
         {
             serviceCollection.Add(new ServiceDescriptor(typeof(IRpcRouter), serviceProvider =>
             {
-                DependencyInjectionRpcRouter router =
-                    searchedAssemblies != null
-                    ? new DependencyInjectionRpcRouter(serviceProvider, searchedAssemblies)
-                    : new DependencyInjectionRpcRouter(serviceProvider, asm!);
+                DependencyInjectionRpcRouter router = new DependencyInjectionRpcRouter(serviceProvider);
 
                 if (((IRefSafeLoggable)ProxyGenerator.Instance).LoggerType == LoggerType.None)
                     serviceProvider.ApplyLoggerTo(ProxyGenerator.Instance);

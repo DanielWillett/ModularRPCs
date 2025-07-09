@@ -1,12 +1,13 @@
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ReflectionTools;
 using DanielWillett.ReflectionTools.Emit;
+using JetBrains.Annotations;
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Threading;
-using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 public struct RpcEndpointTarget
@@ -43,7 +44,9 @@ public struct RpcEndpointTarget
 
     [UsedImplicitly]
     public int SignatureHash;
-    internal MethodInfo? OwnerMethodInfo;
+
+    [UsedImplicitly, EditorBrowsable(EditorBrowsableState.Never)]
+    public MethodInfo? OwnerMethodInfo;
 
     private static readonly FieldInfo IsDeclaringSendMethodField = typeof(RpcEndpointTarget).GetField(nameof(IsBroadcast), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
     private static readonly FieldInfo MethodNameField = typeof(RpcEndpointTarget).GetField(nameof(MethodName), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!;
@@ -56,6 +59,11 @@ public struct RpcEndpointTarget
 
     public RpcEndpoint GetEndpoint()
     {
+        if (OwnerMethodInfo != null)
+        {
+            return _endpoint ??= new RpcEndpoint(OwnerMethodInfo, ParameterTypes != null, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash, IgnoreSignatureHash, InjectsCancellationToken);
+        }
+
         return _endpoint ??= new RpcEndpoint(DeclaringTypeName, MethodName, ParameterTypes, ParameterTypesAreBindOnly, IsBroadcast, SignatureHash, IgnoreSignatureHash, InjectsCancellationToken);
     }
 
@@ -109,6 +117,7 @@ public struct RpcEndpointTarget
     {
         target.MethodName = method.Name ?? string.Empty;
         target.DeclaringTypeName = method.DeclaringType == null ? string.Empty : TypeUtility.GetAssemblyQualifiedNameNoVersion(method.DeclaringType);
+        target.OwnerMethodInfo = method;
 
         ParameterInfo[] parameters = method.GetParameters();
         target.InjectsCancellationToken = Array.Exists(parameters, x => x.ParameterType == typeof(CancellationToken));
@@ -158,7 +167,7 @@ public struct RpcEndpointTarget
             target.DeclaringTypeName = targetAttribute.TypeName!;
         }
         else if (decoratingMethod.DeclaringType is { } methodDeclaringType
-                 && methodDeclaringType.TryGetAttributeSafe(out RpcClassAttribute classAttribute)
+                 && methodDeclaringType.TryGetAttributeSafe(out RpcDefaultTargetTypeAttribute classAttribute)
                  && (classAttribute.DefaultType != null || !string.IsNullOrEmpty(classAttribute.DefaultTypeName)))
         {
             target.DeclaringTypeName = classAttribute.DefaultType != null

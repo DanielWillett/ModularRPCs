@@ -87,17 +87,11 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                 try
                 {
                     bool hadMuchData;
-#if DEBUG
-                    Accessor.Logger!.LogInfo("source", " cb_1");
-#endif
                     fixed (byte* bytes = &Buffer[offset])
                     {
                         bool isNewMsg = _pendingData == null || !_pendingOverhead.HasValue;
                         if (isNewMsg)
                         {
-#if DEBUG
-                            Accessor.Logger!.LogInfo("source", " cb_2");
-#endif
                             if (amtReceived < PrimitiveRpcOverhead.MinimumLength)
                             {
                                 string msg = string.Format(Properties.Exceptions.ContiguousBufferMessageTooShort, PrimitiveRpcOverhead.MinimumLength);
@@ -107,9 +101,6 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                                 goto reset;
                             }
 
-#if DEBUG
-                            Accessor.Logger!.LogInfo("source", " cb_3");
-#endif
                             _pendingOverhead = PrimitiveRpcOverhead.ReadFromBytes(Connection.Remote, serializer, bytes, amtReceived);
                             if (_pendingOverhead.Value.Size != _pendingOverhead.Value.SizeCheck)
                             {
@@ -122,9 +113,6 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             }
                         }
 
-#if DEBUG
-                        Accessor.Logger!.LogInfo("source", " cb_4");
-#endif
                         PrimitiveRpcOverhead ovh = _pendingOverhead!.Value;
                         uint size = ovh.Size;
                         uint expectedSize = size + ovh.OverheadSize;
@@ -138,23 +126,14 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             goto reset;
                         }
 
-#if DEBUG
-                        Accessor.Logger!.LogInfo("source", " cb_5");
-#endif
                         if (isNewMsg)
                         {
-#if DEBUG
-                            Accessor.Logger!.LogInfo("source", " cb_6");
-#endif
                             if (expectedSize == amtReceived) // new single packet, process all
                             {
                                 BufferProgressUpdated?.Invoke(in _pendingOverhead, amtReceived, amtReceived);
                                 callback(Buffer.AsMemory(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
                                 goto reset;
                             }
-#if DEBUG
-                            Accessor.Logger!.LogInfo("source", $" cb_7 {amtReceived}, {expectedSize}");
-#endif
 
                             if (amtReceived < expectedSize) // starting a new packet that continues past the current data, copy to full buffer and return
                             {
@@ -166,9 +145,6 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                                 return;
                             }
 
-#if DEBUG
-                            Accessor.Logger!.LogInfo("source", " cb_8");
-#endif
                             BufferProgressUpdated?.Invoke(in _pendingOverhead, expectedSize, expectedSize);
                             // multiple messages in one.
                             callback(Buffer.AsMemory(checked( (int)offset ), checked( (int)expectedSize) ), false, in ovh);
@@ -180,9 +156,6 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             continue;
                         }
 
-#if DEBUG
-                        Accessor.Logger!.LogInfo("source", " cb_9");
-#endif
                         // this data will complete the pending packet
                         uint ttlSize = _pendingLength + amtReceived;
                         if (ttlSize == expectedSize)
@@ -193,9 +166,6 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             callback(_pendingData.AsMemory(0, checked( (int)expectedSize )), true, in ovh);
                             goto reset;
                         }
-#if DEBUG
-                        Accessor.Logger!.LogInfo("source", " cb_10");
-#endif
                         // continue the data for another packet
                         if (ttlSize < expectedSize)
                         {
@@ -205,9 +175,6 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
                             BufferProgressUpdated?.Invoke(in _pendingOverhead, ttlSize, expectedSize);
                             break;
                         }
-#if DEBUG
-                        Accessor.Logger!.LogInfo("source", " cb_11");
-#endif
 
                         // end off the current message, start the next one
                         uint remaining = expectedSize - _pendingLength;

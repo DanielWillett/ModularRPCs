@@ -7,16 +7,24 @@ using System.ComponentModel;
 
 namespace DanielWillett.ModularRpcs.Reflection;
 
-[EditorBrowsable(EditorBrowsableState.Advanced), UsedImplicitly]
+[EditorBrowsable(EditorBrowsableState.Never), UsedImplicitly]
 public interface IRpcGeneratedProxyType
 {
     [UsedImplicitly]
     void __ModularRpcsGeneratedSetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
 #if NET7_0_OR_GREATER
+
+/// <summary>
+/// Uses static abstract interface methods instead of a name in the attribute to setup a generated type.
+/// </summary>
+[EditorBrowsable(EditorBrowsableState.Never), UsedImplicitly]
+public interface IRpcGeneratedProxyTypeWithSetupMethod : IRpcGeneratedProxyType
+{
     [UsedImplicitly]
     static abstract void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state);
-#endif
 }
+
+#endif
 
 [EditorBrowsable(EditorBrowsableState.Advanced)]
 public readonly struct GeneratedProxyTypeInfo
@@ -39,14 +47,17 @@ public class GeneratedProxyTypeBuilder
     private readonly IDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions;
     private readonly IDictionary<Type, Func<object, bool>> _releaseObjectFunctions;
     private readonly IDictionary<Type, ProxyGenerator.GetOverheadSize?> _overheadSizeFunctions;
+    private readonly ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods;
     internal IDictionary<RuntimeMethodHandle, int>? MethodSignatures;
 
-    public GeneratedProxyTypeBuilder(IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters,
+    internal GeneratedProxyTypeBuilder(
+        IDictionary<RuntimeMethodHandle, Delegate?> callInfoGetters,
         IDictionary<RuntimeMethodHandle, Delegate> invokeStreamMethods,
         IDictionary<RuntimeMethodHandle, Delegate> invokeBytesMethods,
         IDictionary<Type, Func<object, WeakReference?>> getObjectFunctions,
         IDictionary<Type, Func<object, bool>> releaseObjectFunctions,
-        IDictionary<Type, ProxyGenerator.GetOverheadSize?> overheadSizeFunctions)
+        IDictionary<Type, ProxyGenerator.GetOverheadSize?> overheadSizeFunctions,
+        ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> broadcastMethods)
     {
         _callInfoGetters = callInfoGetters;
         _invokeStreamMethods = invokeStreamMethods;
@@ -54,8 +65,60 @@ public class GeneratedProxyTypeBuilder
         _getObjectFunctions = getObjectFunctions;
         _releaseObjectFunctions = releaseObjectFunctions;
         _overheadSizeFunctions = overheadSizeFunctions;
+        _broadcastMethods = broadcastMethods;
     }
 
+    [UsedImplicitly]
+    public void AddBroadcastReceiveMethods(Type type, Action<RpcClassRegistrationBuilder> action)
+    {
+        if (type == null)
+            throw new ArgumentNullException(nameof(type));
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
+
+        if (type.Assembly == null)
+            return;
+
+        _broadcastMethods.AddOrUpdate(
+            type,
+            _ =>
+            {
+                RpcClassRegistrationBuilder r = new RpcClassRegistrationBuilder();
+                action(r);
+                return r.Methods.ToArray();
+            },
+            (_, value) =>
+            {
+                RpcClassRegistrationBuilder r = new RpcClassRegistrationBuilder();
+                action(r);
+
+                RpcEndpointTarget[] newArray = new RpcEndpointTarget[value.Count + r.Methods.Count];
+                switch (value)
+                {
+                    case RpcEndpointTarget[] t:
+                        Array.Copy(t, newArray, t.Length);
+                        break;
+
+                    case IList<RpcEndpointTarget> l:
+                        l.CopyTo(newArray, 0);
+                        break;
+
+                    default:
+                        int index = 0;
+                        foreach (RpcEndpointTarget target in value)
+                        {
+                            newArray[index] = target;
+                            ++index;
+                        }
+
+                        break;
+                }
+
+                r.Methods.CopyTo(newArray, value.Count);
+                return newArray;
+            }
+        );
+    }
 
     [UsedImplicitly]
     public void AddGetOverheadSizeFunction(Type type, ProxyGenerator.GetOverheadSize? function)

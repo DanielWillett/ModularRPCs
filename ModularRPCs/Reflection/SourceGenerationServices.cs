@@ -303,11 +303,20 @@ public static class SourceGenerationServices
     }
 
     [UsedImplicitly]
+    public static RpcTask InvokeRpcInvokerByStream(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, Stream stream, uint byteCt, byte[] hdr, bool leaveOpen, ref RpcCallMethodInfo callInfo)
+    {
+        return router.InvokeRpc(connections, serializer, method, token, new ArraySegment<byte>(hdr), stream, leaveOpen, byteCt, ref callInfo);
+    }
+
+    [UsedImplicitly]
     public static RpcTask InvokeRpcInvokerByByteWriter(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, object writerBox, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
         ByteWriter writer = (ByteWriter)writerBox;
         if (writer.Stream != null)
             throw new NotSupportedException(Properties.Exceptions.WriterStreamModeNotSupported);
+
+        if (byteCt == uint.MaxValue)
+            byteCt = checked ( (uint)writer.Count );
 
         return InvokeRpcInvokerByArraySegment(router, connections, serializer, method, token, writer.ToArraySegmentAndDontFlush(), byteCt, hdr, ref callInfo);
     }
@@ -458,12 +467,58 @@ public static class SourceGenerationServices
     [UsedImplicitly]
     public static unsafe RpcTask InvokeRpcInvokerByCollection(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ICollection<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
     {
+        if (bytes is List<byte> list)
+        {
+            byte[]? arr;
+            try
+            {
+                arr = list.GetUnderlyingArray();
+            }
+            catch
+            {
+                arr = null;
+            }
+
+            if (arr != null)
+            {
+                return InvokeRpcInvokerByArraySegment(router, connections, serializer, method, token, new ArraySegment<byte>(arr, 0, list.Count), byteCt, hdr, ref callInfo);
+            }
+        }
+
         if (byteCt > bytes.Count)
             throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
 
         byte[] ttlArray = new byte[byteCt];
         Buffer.BlockCopy(hdr, 0, ttlArray, 0, hdr.Length);
         bytes.CopyTo(ttlArray, hdr.Length);
+        fixed (byte* ptr = ttlArray)
+        {
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+        }
+    }
+
+    [UsedImplicitly]
+    public static unsafe RpcTask InvokeRpcInvokerByReadOnlyCollection(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, IReadOnlyCollection<byte> bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    {
+        if (bytes is ICollection<byte> c)
+        {
+            return InvokeRpcInvokerByCollection(router, connections, serializer, method, token, c, byteCt, hdr, ref callInfo);
+        }
+
+        if (byteCt > bytes.Count)
+            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
+
+        byte[] ttlArray = new byte[byteCt];
+        Buffer.BlockCopy(hdr, 0, ttlArray, 0, hdr.Length);
+        int index = hdr.Length;
+        foreach (byte b in bytes)
+        {
+            ttlArray[index] = b;
+            ++index;
+            if (index >= byteCt)
+                break;
+        }
+
         fixed (byte* ptr = ttlArray)
         {
             return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
@@ -489,6 +544,29 @@ public static class SourceGenerationServices
         foreach (byte b in bytes)
         {
             ttlArray[++index] = b;
+        }
+
+        fixed (byte* ptr = ttlArray)
+        {
+            return router.InvokeRpc(connections, serializer, method, token, ptr, (int)byteCt + hdr.Length, byteCt, ref callInfo);
+        }
+    }
+
+    [UsedImplicitly]
+    public static unsafe RpcTask InvokeRpcInvokerByArrayList(IRpcRouter router, object? connections, IRpcSerializer serializer, RuntimeMethodHandle method, CancellationToken token, ArrayList bytes, uint byteCt, byte[] hdr, ref RpcCallMethodInfo callInfo)
+    {
+        if (byteCt > bytes.Count)
+            throw new ArgumentException(Properties.Exceptions.ByteCountTooLargeRaw, nameof(byteCt));
+
+        byte[] ttlArray = new byte[byteCt];
+        Buffer.BlockCopy(hdr, 0, ttlArray, 0, hdr.Length);
+        int index = hdr.Length;
+        foreach (byte obj in bytes!)
+        {
+            ttlArray[index] = obj;
+            ++index;
+            if (index >= byteCt)
+                break;
         }
 
         fixed (byte* ptr = ttlArray)

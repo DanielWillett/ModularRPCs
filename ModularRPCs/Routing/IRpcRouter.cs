@@ -19,11 +19,6 @@ namespace DanielWillett.ModularRpcs.Routing;
 public interface IRpcRouter
 {
     /// <summary>
-    /// Collection of all broadcast receive RPCs in all registered assemblies.
-    /// </summary>
-    IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
-
-    /// <summary>
     /// The connection lifetime used by this router.
     /// </summary>
     [UsedImplicitly]

@@ -9,7 +9,7 @@ namespace ModularRPCs.Test
     internal unsafe class AssemblyQualifiedNameTests
     {
 #if NET7_0_OR_GREATER
-        private const int OptionCt = 15;
+        private const int OptionCt = 19;
 #else
         private const int OptionCt = 17;
 #endif

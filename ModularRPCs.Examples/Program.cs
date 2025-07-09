@@ -83,7 +83,7 @@ public class Program
 }
 
 
-[RpcClass]
+
 public class TestClass
 {
     [RpcSend(nameof(ReceiveSerializableTypeClassFixed))]

@@ -1,11 +1,11 @@
-using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using Microsoft.CodeAnalysis;
 using IEventSymbol = Microsoft.CodeAnalysis.IEventSymbol;
 
-namespace DanielWillett.ModularRpcs.SourceGeneration.Util;
+namespace ModularRPCs.Util;
 
 internal static class SymbolExtensions
 {
@@ -36,17 +36,17 @@ internal static class SymbolExtensions
         if (typeof(TSymbol) == typeof(IPropertySymbol))
         {
             return declaringType.FindImplementationForInterfaceMember(symbol) is IPropertySymbol prop
-                && prop.ExplicitInterfaceImplementations.Any(x => x.Equals(symbol));
+                && prop.ExplicitInterfaceImplementations.Any(x => SymbolEqualityComparer.Default.Equals(x, symbol));
         }
         if (typeof(TSymbol) == typeof(IEventSymbol))
         {
             return declaringType.FindImplementationForInterfaceMember(symbol) is IEventSymbol @event
-                && @event.ExplicitInterfaceImplementations.Any(x => x.Equals(symbol));
+                && @event.ExplicitInterfaceImplementations.Any(x => SymbolEqualityComparer.Default.Equals(x, symbol));
         }
         if (typeof(TSymbol) == typeof(IMethodSymbol))
         {
             return declaringType.FindImplementationForInterfaceMember(symbol) is IMethodSymbol method
-                && method.ExplicitInterfaceImplementations.Any(x => x.Equals(symbol));
+                && method.ExplicitInterfaceImplementations.Any(x => SymbolEqualityComparer.Default.Equals(x, symbol));
         }
 
         return false;

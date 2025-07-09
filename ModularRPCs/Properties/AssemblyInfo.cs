@@ -16,9 +16,9 @@ using System.Runtime.InteropServices;
 // The following GUID is for the ID of the typelib if this project is exposed to COM.
 
 [assembly: Guid("6effab82-1c26-4bbf-a649-5470c8ffc6e8")]
-[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Proxy")]
-[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Examples")]
-[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Test")]
-[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.WebSockets")]
-[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.Unity")]
-[assembly: InternalsVisibleTo("DanielWillett.ModularRPCs.SourceGeneration")]
+[assembly: InternalsVisibleTo("ModularRPCs.Proxy")]
+[assembly: InternalsVisibleTo("ModularRPCs.Examples")]
+[assembly: InternalsVisibleTo("ModularRPCs.Test")]
+[assembly: InternalsVisibleTo("ModularRPCs.WebSockets")]
+[assembly: InternalsVisibleTo("ModularRPCs.Unity")]
+[assembly: InternalsVisibleTo("ModularRPCs.SG")]
