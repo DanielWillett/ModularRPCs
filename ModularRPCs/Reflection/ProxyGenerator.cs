@@ -386,12 +386,12 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     }
 
     /// <summary>
-    /// Calls <see cref="IRpcGeneratedProxyType.SetupGeneratedProxyInfo"/> with the correct arguments.
+    /// Calls <see cref="IRpcGeneratedProxyType.__ModularRpcsGeneratedSetupGeneratedProxyInfo"/> with the correct arguments.
     /// </summary>
     [EditorBrowsable(EditorBrowsableState.Advanced)]
     public void SetupGeneratedProxyInfo(IRpcGeneratedProxyType generatedProxy, GeneratedProxyTypeInfo info)
     {
-        generatedProxy.SetupGeneratedProxyInfo(info);
+        generatedProxy.__ModularRpcsGeneratedSetupGeneratedProxyInfo(info);
     }
 
     /// <summary>
@@ -2542,7 +2542,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     [Ignore, UsedImplicitly]
     private sealed class TestGeneratedType : IRpcGeneratedProxyType
     {
-        void IRpcGeneratedProxyType.SetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info) { }
+        void IRpcGeneratedProxyType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info) { }
         public static void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state) { }
     }
 #endif

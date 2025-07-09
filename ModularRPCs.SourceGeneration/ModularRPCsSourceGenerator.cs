@@ -98,19 +98,31 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
 
                     ITypeSymbol? idType = rpcObjectInterface?.TypeArguments[0];
 
-                    bool explicitId = rpcObjectInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcObject<object>.Identifier));
+                    bool explicitId = rpcObjectInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcObject<>.Identifier));
                     bool explicitSingle = singleConnectionInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcSingleConnectionObject.Connection));
                     bool explicitMulti = multiConnectionInterface.IsExplicitlyImplemented<IPropertySymbol>(symbol, nameof(IRpcMultipleConnectionsObject.Connections));
+
+                    IPropertySymbol? idProperty = rpcObjectInterface?.GetMembers(nameof(IRpcObject<>.Identifier)).OfType<IPropertySymbol>().FirstOrDefault();
+                    bool idIsInBaseType = idProperty != null && !SymbolEqualityComparer.Default.Equals(symbol, symbol.FindImplementationForInterfaceMember(idProperty)?.ContainingType);
 
                     bool isUnityType = false;
                     bool hasReleaseMethod = false;
                     int hasExplicitFinalizer = 0;
+
+                    TypeSymbolInfo? inherited = null;
 
                     for (ITypeSymbol? baseType = symbol; baseType != null; baseType = baseType.BaseType)
                     {
                         if (!ReferenceEquals(baseType, symbol) && baseType.IsEqualTo("global::UnityEngine.MonoBehaviour, UnityEngine.CoreModule"))
                         {
                             isUnityType = true;
+                        }
+
+                        if (!ReferenceEquals(baseType, symbol)
+                            && inherited == null
+                            && baseType.HasAttribute("global::DanielWillett.ModularRpcs.Annotations.GenerateRpcSourceAttribute"))
+                        {
+                            inherited = new TypeSymbolInfo(n.SemanticModel.Compilation, baseType);
                         }
 
                         if (hasExplicitFinalizer == 0 && idType != null)
@@ -154,7 +166,10 @@ public class ModularRPCsSourceGenerator : IIncrementalGenerator
                         NestedParents = symbol.ContainingType == null ? null : GetNestedParents(symbol),
                         HasReleaseMethod = hasReleaseMethod,
                         HasExplicitFinalizer = hasExplicitFinalizer > 0,
-                        IsExplicitFinalizerExplicit = hasExplicitFinalizer == 2
+                        IsExplicitFinalizerExplicit = hasExplicitFinalizer == 2,
+                        IsSealed = symbol.IsSealed,
+                        InheritedGeneratedType = inherited,
+                        IdIsInBaseType = idIsInBaseType && inherited != null
                     };
 
                     cls.Methods = new EquatableList<RpcMethodDeclaration>(EnumerateMethods(n.SemanticModel.Compilation, symbol, cls, token));
@@ -450,6 +465,8 @@ public record RpcClassDeclaration
     public required bool IsMultipleConnectionObject { get; init; }
     public required bool IsMultipleConnectionExplicit { get; set; }
     public required EquatableList<string>? NestedParents { get; set; }
+    public required bool IsSealed { get; init; }
+    public TypeSymbolInfo? InheritedGeneratedType { get; init; }
     public EquatableList<RpcMethodDeclaration> Methods { get; set; }
 
     public bool IsUnityType { get; init; }
@@ -462,6 +479,7 @@ public record RpcClassDeclaration
     /// </summary>
     public TypeSymbolInfo? IdType { get; init; }
     public bool IdIsExplicit { get; init; }
+    public bool IdIsInBaseType { get; init; }
     public TypeCode IdTypeCode { get; init; }
     public bool HasReleaseMethod { get; init; }
 }

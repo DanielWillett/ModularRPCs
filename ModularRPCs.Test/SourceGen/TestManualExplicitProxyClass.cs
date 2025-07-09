@@ -142,7 +142,7 @@ namespace ModularRPCs.Test.SourceGen
 
             [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]
             [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-            void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(
+            void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(
                 in global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)
             {
                 info.Router.GetDefaultProxyContext(typeof(@TestClass), out this._modularRpcsGeneratedProxyContext);

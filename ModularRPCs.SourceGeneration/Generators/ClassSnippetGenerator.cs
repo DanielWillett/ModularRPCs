@@ -193,30 +193,47 @@ internal readonly struct ClassSnippetGenerator
         }
         bldr.String(")]");
 
+        string @protected = Class.IsSealed ? "private" : "protected";
+        string @virtual = Class.InheritedGeneratedType != null ? "override " : (Class.IsSealed ? string.Empty : "virtual ");
+
         // class {
         bldr.Build($"partial {Class.Definition} : global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType")
             .String("{").In()
                 .Empty()
-                .String("#region ModularRPCs class-level infrastructure")
-                .Empty()
+                .String("#region ModularRPCs class-level infrastructure");
+
+        if (Class.InheritedGeneratedType == null)
+        {
+            bldr.Empty()
                 .String("/// <summary>")
                 .String("/// Stores generic information that is needed by all proxy types to send and receive RPCs.")
                 .String("/// </summary>")
                 .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .String("private global::DanielWillett.ModularRpcs.Reflection.ProxyContext __modularRpcsGeneratedProxyContext;")
+                .Build($"{@protected} global::DanielWillett.ModularRpcs.Reflection.ProxyContext __modularRpcsGeneratedProxyContext;");
+        }
+
+        bldr
                 .Empty()
                 .String("/// <summary>")
                 .String("/// Invoked after this type is created by <see cref=\"M:DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CreateProxy\">.")
                 .String("/// </summary>")
                 .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .String("void global::DanielWillett.ModularRpcs.Reflection.IRpcGeneratedProxyType.SetupGeneratedProxyInfo(").In()
+                .String($"public {@virtual}void __ModularRpcsGeneratedSetupGeneratedProxyInfo(").In()
                     .String("in global::DanielWillett.ModularRpcs.Reflection.GeneratedProxyTypeInfo info)").Out()
-                .String("{").In()
-                    .Build($"info.Router.GetDefaultProxyContext(typeof(@{Class.Type.Name}), out this.__modularRpcsGeneratedProxyContext);");
+                .String("{").In();
 
-        if (Class.IdType != null)
+        if (Class.InheritedGeneratedType == null)
+        {
+            bldr.Build($"info.Router.GetDefaultProxyContext(typeof(@{Class.Type.Name}), out this.__modularRpcsGeneratedProxyContext);");
+        }
+        else
+        {
+            bldr.String("base.__ModularRpcsGeneratedSetupGeneratedProxyInfo(in info);");
+        }
+
+        if (Class is { IdType: not null, IdIsInBaseType: false })
         {
             if (Class.IdType.IsNullable)
             {
@@ -329,16 +346,20 @@ internal readonly struct ClassSnippetGenerator
                 _ => Class.IdType.GloballyQualifiedName
             };
 
+            if (!Class.IdIsInBaseType)
+            {
+                bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                    .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .Build($"{@protected} static unsafe readonly global::System.Collections.Concurrent.ConcurrentDictionary<{idType}, global::System.WeakReference> __modularRpcsGeneratedInstances")
+                    .In().Build($"= new global::System.Collections.Concurrent.ConcurrentDictionary<{idType}, global::System.WeakReference>();").Out()
+                    .Empty()
+                    .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
+                    .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
+                    .Build($"{@protected} int __modularRpcsSuppressFinalize;")
+                    .Empty();
+            }
+
             bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
-                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .Build($"private static unsafe readonly global::System.Collections.Concurrent.ConcurrentDictionary<{idType}, global::System.WeakReference> __modularRpcsGeneratedInstances")
-                .In().Build($"= new global::System.Collections.Concurrent.ConcurrentDictionary<{idType}, global::System.WeakReference>();").Out()
-                .Empty()
-                .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
-                .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                .Build($"private unsafe int __modularRpcsSuppressFinalize;")
-                .Empty()
-                .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
                 .String("private static unsafe global::System.WeakReference __ModularRpcsGeneratedGetObject(object id)")
                 .String("{").In()
@@ -388,7 +409,7 @@ internal readonly struct ClassSnippetGenerator
                 if (i == 1)
                 {
                     bldr.String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-                        .Build($"protected virtual void OnDestroy()");
+                        .Build($"protected {@virtual}void OnDestroy()");
                 }
                 else
                 {
@@ -397,7 +418,7 @@ internal readonly struct ClassSnippetGenerator
                 }
 
                 bldr.String("{").In();
-                        
+
                 if (Class.HasExplicitFinalizer)
                 {
                     bldr.String("try")
@@ -431,7 +452,6 @@ internal readonly struct ClassSnippetGenerator
                 bldr.Out()
                     .String("}");
             }
-
         }
 
         bldr.String("private static int __ModularRpcsGeneratedGetOverheadSize(object obj, global::System.RuntimeMethodHandle handle, ref global::DanielWillett.ModularRpcs.Reflection.RpcCallMethodInfo callInfo, out int sizeWithoutId)")

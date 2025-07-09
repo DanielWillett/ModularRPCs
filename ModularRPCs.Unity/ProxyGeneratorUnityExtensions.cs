@@ -42,7 +42,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)comp;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
+            genType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -143,7 +143,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
+            genType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -197,7 +197,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
+            genType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -240,7 +240,7 @@ public static class ProxyGeneratorUnityExtensions
         if (typeInfo.IsGenerated)
         {
             IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)newObj;
-            genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
+            genType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
         }
         else
         {
@@ -266,7 +266,7 @@ public static class ProxyGeneratorUnityExtensions
             if (typeInfo.IsGenerated)
             {
                 IRpcGeneratedProxyType genType = (IRpcGeneratedProxyType)component;
-                genType.SetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
+                genType.__ModularRpcsGeneratedSetupGeneratedProxyInfo(new GeneratedProxyTypeInfo(router, proxyGenerator));
             }
             else
             {

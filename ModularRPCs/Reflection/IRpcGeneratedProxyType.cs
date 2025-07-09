@@ -2,7 +2,6 @@ using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using JetBrains.Annotations;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 
@@ -12,7 +11,7 @@ namespace DanielWillett.ModularRpcs.Reflection;
 public interface IRpcGeneratedProxyType
 {
     [UsedImplicitly]
-    void SetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
+    void __ModularRpcsGeneratedSetupGeneratedProxyInfo(in GeneratedProxyTypeInfo info);
 #if NET7_0_OR_GREATER
     [UsedImplicitly]
     static abstract void __ModularRpcsGeneratedSetupStaticGeneratedProxy(GeneratedProxyTypeBuilder state);
