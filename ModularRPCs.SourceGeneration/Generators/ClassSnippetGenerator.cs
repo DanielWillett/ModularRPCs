@@ -624,7 +624,7 @@ internal readonly struct ClassSnippetGenerator
                 bldr.Build($"ParameterTypes = new string[] {{ \"{types}\" }},");
             }
 
-            bldr    .String("IsBroadcast = false,")
+            bldr    .Build($"IsBroadcast = {(method.Method.IsBroadcast ? "true" : "false")},")
                     .Build($"InjectsCancellationToken = {(receiveInjectsCancellationToken ? "true" : "false")},");
 
             ReceiveMethodInfo? recvMethodInfo = recvMethod != null ? recvMethods.Find(x => ReferenceEquals(x.Method, recvMethod)) : null;

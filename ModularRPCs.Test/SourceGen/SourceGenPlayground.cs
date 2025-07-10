@@ -53,6 +53,34 @@ namespace ModularRPCs.Test.SourceGen
         }
 
         [Test]
+        public async Task ServerToClientBroadcastVoid([Values(true, false)] bool useStreams)
+        {
+            DidInvokeMethod = -1;
+
+            LoopbackRpcServersideRemoteConnection connection = await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out IServiceProvider server, out _, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClass proxy = server.GetRequiredService<SourceGenPlaygroundTestClass>();
+
+            await proxy.BroadcastFromServer(connection);
+
+            Assert.That(DidInvokeMethod, Is.EqualTo(5));
+        }
+
+        [Test]
+        public async Task ClientToServerBroadcastVoid([Values(true, false)] bool useStreams)
+        {
+            DidInvokeMethod = -1;
+
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out _, out IServiceProvider client, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClass proxy = client.GetRequiredService<SourceGenPlaygroundTestClass>();
+
+            await proxy.BroadcastFromClient();
+
+            Assert.That(DidInvokeMethod, Is.EqualTo(6));
+        }
+
+        [Test]
         public async Task ServerToClientInheritedBaseVoid([Values(true, false)] bool useStreams)
         {
             DidInvokeMethod = -1;
@@ -236,6 +264,24 @@ namespace ModularRPCs.Test.SourceGen
     [GenerateRpcSource]
     public partial class SourceGenPlaygroundTestClass
     {
+        [RpcSend]
+        public partial RpcTask BroadcastFromClient();
+
+        [RpcSend]
+        public partial RpcTask BroadcastFromServer(IModularRpcRemoteConnection connection);
+
+        [RpcReceive(nameof(BroadcastFromClient))]
+        private void ReceiveClientBroadcast()
+        {
+            SourceGenPlayground.DidInvokeMethod = 6;
+        }
+
+        [RpcReceive(nameof(BroadcastFromServer))]
+        private void ReceiveServerBroadcast()
+        {
+            SourceGenPlayground.DidInvokeMethod = 5;
+        }
+
         [RpcSend(nameof(Receive))]
         public partial RpcTask InvokeFromClient();
 
