@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -344,59 +345,68 @@ internal readonly struct ClassSnippetGenerator
                 bldr.Build($"state.AddMethodSignatureHash(workingMethod.MethodHandle, {method.Method.SignatureHash});");
             }
         }
-        bool hasStartedRegisteringBroadcastReceiveMethods = false;
 
-        foreach (ReceiveMethodInfo method in recvMethods)
+        string thisName = Class.Type.AssemblyQualifiedName;
+        foreach (IGrouping<string, ReceiveMethodInfo> grp in recvMethods
+                     .Where(x => !string.IsNullOrEmpty(x.Method.Target.MethodName))
+                     .GroupBy(x => string.IsNullOrEmpty(x.Method.Target.TypeName) ? thisName : x.Method.Target.TypeName!)
+                 )
         {
-            if (string.IsNullOrEmpty(method.Method.Target.MethodName))
-                continue;
+            bool hasStartedRegisteringBroadcastReceiveMethods = false;
+            string key = TypeHelper.Escape(grp.Key);
+            foreach (ReceiveMethodInfo method in grp)
+            {
+                if (string.IsNullOrEmpty(method.Method.Target.MethodName))
+                    continue;
 
-            if (!hasStartedRegisteringBroadcastReceiveMethods)
-            {
-                bldr.Empty()
-                    .Build($"state.AddBroadcastReceiveMethods(typeof(@{Class.Type.Name}),").In()
-                    .String("r =>")
-                    .String("{").In();
-                hasStartedRegisteringBroadcastReceiveMethods = true;
+                if (!hasStartedRegisteringBroadcastReceiveMethods)
+                {
+                    bldr.Empty()
+                        .Build($"state.AddBroadcastReceiveMethods(\"{key}\",").In()
+                        .String("r =>")
+                        .String("{").In();
+                    hasStartedRegisteringBroadcastReceiveMethods = true;
+                }
+
+                bldr.String("r.AddMethod(").In()
+                    .String("new global::DanielWillett.ModularRpcs.Reflection.RpcEndpointTarget()")
+                    .String("{").In()
+                    .Build($"MethodName = \"{TypeHelper.Escape(string.IsNullOrEmpty(method.Method.Target.MethodName) ? method.Method.Name : method.Method.Target.MethodName!)}\",")
+                    .Build($"DeclaringTypeName = \"{TypeHelper.Escape(string.IsNullOrEmpty(method.Method.Target.TypeName) ? Class.Type.AssemblyQualifiedName : method.Method.Target.TypeName!)}\",")
+                    .Build($"SignatureHash = {method.Method.SignatureHash},")
+                    .String("IgnoreSignatureHash = false,")
+                    .Build($"ParameterTypesAreBindOnly = {(method.Method.Target.ParametersAreBindedParametersOnly ? "true" : "false")},");
+                if (method.Method.Target.ParameterTypeNames == null)
+                {
+                    bldr.String("ParameterTypes = null,");
+                }
+                else if (method.Method.Target.ParameterTypeNames.Length == 0)
+                {
+                    bldr.String("ParameterTypes = global::System.Array.Empty<string>(),");
+                }
+                else
+                {
+                    string types = string.Join("\", \"", method.Method.Target.ParameterTypeNames.Select(TypeHelper.Escape));
+                    bldr.Build($"ParameterTypes = new string[] {{ \"{types}\" }},");
+                }
+
+                bldr.Build($"IsBroadcast = {(method.Method.IsBroadcast ? "true" : "false")},")
+                    .Build($"InjectsCancellationToken = {(method.Method.InjectsCancellationToken ? "true" : "false")},")
+                    .Build($"OwnerMethodInfo = {(method.DelegateType ?? method.Method.DelegateType).GetMethodByExpressionString(method.Method, Class.Type.Name, method.DelegateName)}").Out()
+                    .String("}")
+                    .Out()
+                    .String(");");
             }
 
-            bldr.String("r.AddMethod(").In()
-                .String("new global::DanielWillett.ModularRpcs.Reflection.RpcEndpointTarget()")
-                .String("{").In()
-                .Build($"MethodName = \"{TypeHelper.Escape(string.IsNullOrEmpty(method.Method.Target.MethodName) ? method.Method.Name : method.Method.Target.MethodName!)}\",")
-                .Build($"DeclaringTypeName = \"{TypeHelper.Escape(string.IsNullOrEmpty(method.Method.Target.TypeName) ? Class.Type.AssemblyQualifiedName : method.Method.Target.TypeName!)}\",")
-                .Build($"SignatureHash = {method.Method.SignatureHash},")
-                .String("IgnoreSignatureHash = false,")
-                .Build($"ParameterTypesAreBindOnly = {(method.Method.Target.ParametersAreBindedParametersOnly ? "true" : "false")},");
-            if (method.Method.Target.ParameterTypeNames == null)
+            if (hasStartedRegisteringBroadcastReceiveMethods)
             {
-                bldr.String("ParameterTypes = null,");
+                bldr.Out()
+                    .String("}")
+                    .Out()
+                    .String(");");
             }
-            else if (method.Method.Target.ParameterTypeNames.Length == 0)
-            {
-                bldr.String("ParameterTypes = global::System.Array.Empty<string>(),");
-            }
-            else
-            {
-                string types = string.Join("\", \"", method.Method.Target.ParameterTypeNames.Select(TypeHelper.Escape));
-                bldr.Build($"ParameterTypes = new string[] {{ \"{types}\" }},");
-            }
-
-            bldr.Build($"IsBroadcast = {(method.Method.IsBroadcast ? "true" : "false")},")
-                .Build($"InjectsCancellationToken = {(method.Method.InjectsCancellationToken ? "true" : "false")},")
-                .Build($"OwnerMethodInfo = {(method.DelegateType ?? method.Method.DelegateType).GetMethodByExpressionString(method.Method, Class.Type.Name, method.DelegateName)}").Out()
-                .String("}")
-                .Out()
-                .String(");");
         }
 
-        if (hasStartedRegisteringBroadcastReceiveMethods)
-        {
-            bldr.Out()
-                .String("}")
-                .Out()
-                .String(");");
-        }
 
         bldr.Out()
             .String("}");

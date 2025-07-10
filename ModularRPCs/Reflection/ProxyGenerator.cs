@@ -65,8 +65,8 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     private readonly ConcurrentDictionary<RuntimeMethodHandle, Delegate> _invokeMethodsBytes =
         new ConcurrentDictionary<RuntimeMethodHandle, Delegate>();
 
-    private readonly ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods =
-        new ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>>();
+    private readonly ConcurrentDictionary<string, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods =
+        new ConcurrentDictionary<string, IReadOnlyList<RpcEndpointTarget>>();
 
 
     private readonly List<Assembly> _accessIgnoredAssemblies = new List<Assembly>(2);
@@ -173,7 +173,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
     /// <summary>
     /// Dictionary of types to lists of broadcast targets (receive methods that specify a send method).
     /// </summary>
-    public IReadOnlyDictionary<Type, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
+    public IReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>> BroadcastTargets { get; }
 
     internal SerializerGenerator SerializerGenerator { get; }
     internal AssemblyBuilder AssemblyBuilder { get; }
@@ -212,7 +212,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             [ thisAssembly.GetName().Name ]
         );
 
-        BroadcastTargets = new ReadOnlyDictionary<Type, IReadOnlyList<RpcEndpointTarget>>(_broadcastMethods);
+        BroadcastTargets = new ReadOnlyDictionary<string, IReadOnlyList<RpcEndpointTarget>>(_broadcastMethods);
 
         AssemblyBuilder.SetCustomAttribute(attr);
 
@@ -2590,14 +2590,16 @@ public sealed class ProxyGenerator : IRefSafeLoggable
 
         if (broadcastReceivers != null)
         {
-            List<MethodInfo> r2 = broadcastReceivers;
-            _generatedTypeBuilder.AddBroadcastReceiveMethods(type, r =>
+            foreach (IGrouping<string, RpcEndpointTarget> group in broadcastReceivers.Select(RpcEndpointTarget.FromReceiveMethod).GroupBy(x => x.DeclaringTypeName))
             {
-                foreach (MethodInfo m in r2)
+                _generatedTypeBuilder.AddBroadcastReceiveMethods(group.Key, r =>
                 {
-                    r.AddMethod(RpcEndpointTarget.FromReceiveMethod(m));
-                }
-            });
+                    foreach (RpcEndpointTarget m in group)
+                    {
+                        r.AddMethod(m);
+                    }
+                });
+            }
         }
 
         if (typeInitializer != null)

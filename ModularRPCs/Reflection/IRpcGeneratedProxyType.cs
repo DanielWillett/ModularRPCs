@@ -48,7 +48,7 @@ public class GeneratedProxyTypeBuilder
     private readonly IDictionary<Type, Func<object, WeakReference?>> _getObjectFunctions;
     private readonly IDictionary<Type, Func<object, bool>> _releaseObjectFunctions;
     private readonly IDictionary<Type, ProxyGenerator.GetOverheadSize?> _overheadSizeFunctions;
-    private readonly ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods;
+    private readonly ConcurrentDictionary<string, IReadOnlyList<RpcEndpointTarget>> _broadcastMethods;
     internal IDictionary<RuntimeMethodHandle, int>? MethodSignatures;
 
     internal GeneratedProxyTypeBuilder(
@@ -58,7 +58,7 @@ public class GeneratedProxyTypeBuilder
         IDictionary<Type, Func<object, WeakReference?>> getObjectFunctions,
         IDictionary<Type, Func<object, bool>> releaseObjectFunctions,
         IDictionary<Type, ProxyGenerator.GetOverheadSize?> overheadSizeFunctions,
-        ConcurrentDictionary<Type, IReadOnlyList<RpcEndpointTarget>> broadcastMethods)
+        ConcurrentDictionary<string, IReadOnlyList<RpcEndpointTarget>> broadcastMethods)
     {
         _callInfoGetters = callInfoGetters;
         _invokeStreamMethods = invokeStreamMethods;
@@ -70,18 +70,15 @@ public class GeneratedProxyTypeBuilder
     }
 
     [UsedImplicitly]
-    public void AddBroadcastReceiveMethods(Type type, Action<RpcClassRegistrationBuilder> action)
+    public void AddBroadcastReceiveMethods(string declaringType, Action<RpcClassRegistrationBuilder> action)
     {
-        if (type == null)
-            throw new ArgumentNullException(nameof(type));
+        if (declaringType == null)
+            throw new ArgumentNullException(nameof(declaringType));
         if (action == null)
             throw new ArgumentNullException(nameof(action));
 
-        if (type.Assembly == null)
-            return;
-
         _broadcastMethods.AddOrUpdate(
-            type,
+            declaringType,
             _ =>
             {
                 RpcClassRegistrationBuilder r = new RpcClassRegistrationBuilder();

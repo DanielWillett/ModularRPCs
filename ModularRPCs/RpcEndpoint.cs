@@ -1245,9 +1245,10 @@ public class RpcEndpoint : IRpcInvocationPoint
         if (!IsBroadcast)
             throw new InvalidOperationException();
 
+        string? declaringTypeName = DeclaringTypeName ?? (DeclaringType == null ? null : TypeUtility.GetAssemblyQualifiedNameNoVersion(DeclaringType));
 
-        if (DeclaringType == null
-            || !ProxyGenerator.Instance.BroadcastTargets.TryGetValue(DeclaringType, out IReadOnlyList<RpcEndpointTarget>? targets))
+        if (declaringTypeName == null
+            || !ProxyGenerator.Instance.BroadcastTargets.TryGetValue(declaringTypeName, out IReadOnlyList<RpcEndpointTarget>? targets))
             return Array.Empty<MethodInfo>();
 
         MethodInfo? match = null;
