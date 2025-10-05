@@ -46,6 +46,12 @@ public interface IRpcConnectionLifetime : IDisposable
     /// Attempts to remove an existing connection.
     /// </summary>
     ValueTask<bool> TryRemoveConnection(IModularRpcRemoteConnection connection, CancellationToken token = default);
+
+    /// <summary>
+    /// Attempts to remove all existing connections.
+    /// </summary>
+    /// <returns>The number of connections that were present and have now been removed.</returns>
+    ValueTask<int> TryRemoveAllConnections(CancellationToken token = default);
 }
 
 /// <summary>

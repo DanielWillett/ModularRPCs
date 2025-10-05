@@ -13,7 +13,11 @@ public static class CustomFormats
         parameterOptions: SymbolDisplayParameterOptions.IncludeName,
         extensionMethodStyle: SymbolDisplayExtensionMethodStyle.StaticMethod,
         propertyStyle: SymbolDisplayPropertyStyle.ShowReadWriteDescriptor,
-        localOptions: SymbolDisplayLocalOptions.IncludeModifiers | SymbolDisplayLocalOptions.IncludeType,
+        localOptions: SymbolDisplayLocalOptions.IncludeType
+#if ROSLYN_4_5_OR_GREATER
+                        | SymbolDisplayLocalOptions.IncludeModifiers
+#endif
+        ,
         kindOptions: SymbolDisplayKindOptions.IncludeMemberKeyword | SymbolDisplayKindOptions.IncludeNamespaceKeyword | SymbolDisplayKindOptions.IncludeTypeKeyword,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
     );
@@ -24,12 +28,23 @@ public static class CustomFormats
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters | SymbolDisplayGenericsOptions.IncludeTypeConstraints,
         memberOptions: SymbolDisplayMemberOptions.IncludeRef | SymbolDisplayMemberOptions.IncludeAccessibility | SymbolDisplayMemberOptions.IncludeConstantValue | SymbolDisplayMemberOptions.IncludeModifiers | SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType,
         delegateStyle: SymbolDisplayDelegateStyle.NameOnly,
-        parameterOptions: SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeExtensionThis | SymbolDisplayParameterOptions.IncludeModifiers | SymbolDisplayParameterOptions.IncludeType,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeName | SymbolDisplayParameterOptions.IncludeExtensionThis
+#if ROSLYN_4_5_OR_GREATER
+                                                                    | SymbolDisplayParameterOptions.IncludeModifiers
+#endif
+                                                                    | SymbolDisplayParameterOptions.IncludeType,
         extensionMethodStyle: SymbolDisplayExtensionMethodStyle.StaticMethod,
         propertyStyle: SymbolDisplayPropertyStyle.ShowReadWriteDescriptor,
-        localOptions: SymbolDisplayLocalOptions.IncludeModifiers | SymbolDisplayLocalOptions.IncludeType,
+        localOptions: SymbolDisplayLocalOptions.IncludeType
+#if ROSLYN_4_5_OR_GREATER
+                        | SymbolDisplayLocalOptions.IncludeModifiers
+#endif
+        ,
         kindOptions: SymbolDisplayKindOptions.IncludeMemberKeyword | SymbolDisplayKindOptions.IncludeNamespaceKeyword | SymbolDisplayKindOptions.IncludeTypeKeyword,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes | SymbolDisplayMiscellaneousOptions.ExpandNullable | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes | SymbolDisplayMiscellaneousOptions.ExpandNullable
+#if ROSLYN_4_6_OR_GREATER
+                                | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+#endif
     );
 
     public static readonly SymbolDisplayFormat MethodDisplayFormat = new SymbolDisplayFormat(
@@ -38,10 +53,18 @@ public static class CustomFormats
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         memberOptions: SymbolDisplayMemberOptions.IncludeRef | SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeType,
         delegateStyle: SymbolDisplayDelegateStyle.NameOnly,
-        parameterOptions: SymbolDisplayParameterOptions.IncludeExtensionThis | SymbolDisplayParameterOptions.IncludeModifiers | SymbolDisplayParameterOptions.IncludeType,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeExtensionThis
+#if ROSLYN_4_5_OR_GREATER
+                          | SymbolDisplayParameterOptions.IncludeModifiers
+#endif
+                          | SymbolDisplayParameterOptions.IncludeType,
         extensionMethodStyle: SymbolDisplayExtensionMethodStyle.StaticMethod,
         propertyStyle: SymbolDisplayPropertyStyle.ShowReadWriteDescriptor,
-        localOptions: SymbolDisplayLocalOptions.IncludeModifiers | SymbolDisplayLocalOptions.IncludeType,
+        localOptions: SymbolDisplayLocalOptions.IncludeType
+#if ROSLYN_4_5_OR_GREATER
+                        | SymbolDisplayLocalOptions.IncludeModifiers
+#endif
+        ,
         kindOptions: SymbolDisplayKindOptions.None,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.UseSpecialTypes
     );
@@ -52,7 +75,11 @@ public static class CustomFormats
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         memberOptions: SymbolDisplayMemberOptions.IncludeRef | SymbolDisplayMemberOptions.IncludeParameters,
         delegateStyle: SymbolDisplayDelegateStyle.NameAndParameters,
-        parameterOptions: SymbolDisplayParameterOptions.IncludeModifiers | SymbolDisplayParameterOptions.IncludeType,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType
+#if ROSLYN_4_5_OR_GREATER
+                        | SymbolDisplayParameterOptions.IncludeModifiers
+#endif
+        ,
         extensionMethodStyle: SymbolDisplayExtensionMethodStyle.StaticMethod,
         propertyStyle: SymbolDisplayPropertyStyle.NameOnly,
         localOptions: SymbolDisplayLocalOptions.None,
@@ -85,7 +112,10 @@ public static class CustomFormats
         propertyStyle: SymbolDisplayPropertyStyle.NameOnly,
         localOptions: SymbolDisplayLocalOptions.None,
         kindOptions: SymbolDisplayKindOptions.None,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.ExpandNullable | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.ExpandNullable
+#if ROSLYN_4_6_OR_GREATER
+                                | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+#endif
     );
 
     public static readonly SymbolDisplayFormat FullTypeNameWithGlobalFormat = new SymbolDisplayFormat(
@@ -99,7 +129,10 @@ public static class CustomFormats
         propertyStyle: SymbolDisplayPropertyStyle.NameOnly,
         localOptions: SymbolDisplayLocalOptions.None,
         kindOptions: SymbolDisplayKindOptions.None,
-        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.ExpandNullable | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers | SymbolDisplayMiscellaneousOptions.ExpandNullable
+#if ROSLYN_4_6_OR_GREATER
+                                | SymbolDisplayMiscellaneousOptions.ExpandValueTuple
+#endif
     );
 
     public static readonly SymbolDisplayFormat NamespaceWithoutGlobalFormat = new SymbolDisplayFormat(

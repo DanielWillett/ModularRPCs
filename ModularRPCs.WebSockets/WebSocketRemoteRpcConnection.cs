@@ -5,6 +5,7 @@ using DanielWillett.ModularRpcs.Serialization;
 using System;
 using System.IO;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -39,7 +40,7 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
     }
 
     /// <inheritdoc />
-    public ValueTask SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token)
+    public ValueTask SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
@@ -54,6 +55,23 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
     }
 
     /// <inheritdoc />
+    public ValueTask SendDataAsync(IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
+    {
+        if (IsClosed)
+            throw new RpcConnectionClosedException();
+
+        if (rawData.Length <= 0)
+            throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
+
+        if (!canTakeOwnership || !MemoryMarshal.TryGetArray(rawData, out ArraySegment<byte> arraySegment))
+        {
+            arraySegment = new ArraySegment<byte>(rawData.ToArray());
+        }
+
+        return new ValueTask(SendDataArrayIntl(arraySegment, token));
+    }
+
+    /// <inheritdoc />
     public ValueTask SendDataAsync(IRpcSerializer serializer, Stream streamData, CancellationToken token)
     {
         if (IsClosed)
@@ -62,6 +80,7 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
         Task task = SendDataStreamIntl(streamData, token);
         return new ValueTask(task);
     }
+
     private async Task SendDataArrayIntl(ArraySegment<byte> arr, CancellationToken token)
     {
         await Semaphore.WaitAsync(token).ConfigureAwait(false);
@@ -74,6 +93,7 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
             Semaphore.Release();
         }
     }
+
     private async Task SendDataStreamIntl(Stream stream, CancellationToken token)
     {
         await Semaphore.WaitAsync(token).ConfigureAwait(false);

@@ -166,6 +166,49 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         return true;
     }
 
+    public async ValueTask<int> TryRemoveAllConnections(CancellationToken token = default)
+    {
+        IModularRpcRemoteConnection? existing;
+        lock (_sync)
+        {
+            existing = Interlocked.Exchange(ref _remoteConnection, null);
+        }
+
+        if (existing == null)
+            return 0;
+
+        try
+        {
+            await existing.CloseAsync(token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            this.LogWarning(ex, "Failed to close removed connection.");
+        }
+        finally
+        {
+            try
+            {
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+                if (existing is IAsyncDisposable aDisp)
+                    await aDisp.DisposeAsync().ConfigureAwait(false);
+                else
+#endif
+                if (existing is IDisposable disp)
+                    disp.Dispose();
+            }
+            catch (Exception ex)
+            {
+                this.LogWarning(ex, "Failed to dispose removed connection.");
+            }
+
+            InvokeRemove(existing);
+        }
+
+        return 1;
+    }
+
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public async ValueTask DisposeAsync()
     {

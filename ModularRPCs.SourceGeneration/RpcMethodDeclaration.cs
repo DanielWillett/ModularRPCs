@@ -46,7 +46,9 @@ public sealed class DelegateType : IEquatable<DelegateType>
             (methodSymbol.Parameters.Length == 0
              || !methodSymbol.Parameters.Any(x => x.RefKind != RefKind.None
                                                   || x.IsParams
+#if ROSLYN_4_4_OR_GREATER
                                                   || x.ScopedKind != ScopedKind.None
+#endif
                                                   || x.HasAttribute("global::System.Diagnostics.CodeAnalysis.UnscopedRefAttribute")
                                                   || !x.Type.CanBeGenericArgument()
                                                 )

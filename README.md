@@ -30,3 +30,11 @@ All the following types can be serialized/parsed individually or in an enumerabl
 * Ray, Ray2D
 * Rect
 * Resolution
+
+
+
+### MSBuild Properties
+
+| Property                          | Description                          | Default |
+| --------------------------------- | ------------------------------------ | ------- |
+| DisableModularRPCsSourceGenerator | Disables source generation features. | False   |

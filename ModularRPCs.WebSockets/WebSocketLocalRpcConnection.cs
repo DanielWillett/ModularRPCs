@@ -239,12 +239,13 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         
         if (vt.IsCompleted)
             return;
-        
+
+        ValueTask vt2 = vt;
         Task.Run(async () =>
         {
             try
             {
-                await vt.ConfigureAwait(false);
+                await vt2.ConfigureAwait(false);
             }
             catch (Exception ex)
             {

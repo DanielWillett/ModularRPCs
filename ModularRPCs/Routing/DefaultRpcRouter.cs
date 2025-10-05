@@ -1,5 +1,4 @@
 using DanielWillett.ModularRpcs.Abstractions;
-using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Data;
 using DanielWillett.ModularRpcs.Exceptions;
@@ -7,12 +6,11 @@ using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
 using DanielWillett.ReflectionTools;
+using JetBrains.Annotations;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -20,7 +18,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using ObjectDisposedException = System.ObjectDisposedException;
 #if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
 using System.Runtime.InteropServices;
@@ -786,7 +783,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 
                 try
                 {
-                    ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
+                    ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), token);
                     
                     if (!vt.IsCompleted)
                         Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
@@ -839,7 +836,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             rpcTask.CombinedTokensToDisposeOnComplete = tokens;
             try
             {
-                ValueTask vt = remote1.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
+                ValueTask vt = remote1.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), token);
 
                 if (!vt.IsCompleted)
                     Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, remote1, vt, rpcTask), token);
@@ -888,7 +885,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             Interlocked.Increment(ref rpcTask.CompleteCount);
             try
             {
-                ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), false, token);
+                ValueTask vt = connection.SendDataAsync(_defaultSerializer, new ReadOnlySpan<byte>(bytes, byteCt), token);
 
                 if (!vt.IsCompleted)
                     Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
@@ -994,7 +991,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                     {
                         if (nonSingle.Array != null)
                         {
-                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, token);
+                            ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsMemory(), true, token);
 
                             if (!vt.IsCompleted)
                                 Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
@@ -1130,7 +1127,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 {
                     if (nonSingle.Array != null)
                     {
-                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsSpan(), true, token);
+                        ValueTask vt = connection.SendDataAsync(_defaultSerializer, nonSingle.AsMemory(), true, token);
 
                         if (!vt.IsCompleted)
                             Task.Run(WrapInvokeTaskInTryBlock(sourceMethodHandle, connection, vt, rpcTask), token);
@@ -1299,10 +1296,10 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint pfxSize = GetPrefixSize(serializer);
         size += pfxSize;
 
-        bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
         uint index;
         Span<byte> span;
-        if (didStackAlloc)
+        byte[]? buffer = null;
+        if (size <= serializer.Configuration.MaximumStackAllocationSize)
         {
             byte* ptr = stackalloc byte[(int)size];
             index = WritePrefix(ptr, size - pfxSize, OvhCodeIdException, messageId, subMessageId, serializer);
@@ -1312,7 +1309,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
         else
         {
-            byte[] buffer = new byte[size];
+            buffer = new byte[size];
             fixed (byte* ptr = buffer)
             {
                 index = WritePrefix(ptr, size - pfxSize, OvhCodeIdException, messageId, subMessageId, serializer);
@@ -1330,7 +1327,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         try
         {
-            return connection.SendDataAsync(serializer, span, !didStackAlloc, CancellationToken.None);
+            return buffer != null
+                ? connection.SendDataAsync(serializer, buffer.AsMemory(), true, CancellationToken.None)
+                : connection.SendDataAsync(serializer, span, CancellationToken.None);
         }
         catch (RpcConnectionClosedException)
         {
@@ -1354,7 +1353,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         uint pfxSize = GetPrefixSize(serializer);
 
         bool didStackAlloc = pfxSize <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)pfxSize] : new byte[pfxSize];
+        byte[]? buffer = null;
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)pfxSize] : (buffer = new byte[pfxSize]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1362,7 +1362,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index = WritePrefix(ptr, 0, OvhCodeIdCancel, messageId, subMessageId, serializer);
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
     
     private static unsafe ValueTask ReplyRpcVoidSuccessRtn(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IRpcSerializer serializer)
@@ -1373,7 +1375,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         {
             byte* ptr = stackalloc byte[(int)pfxSize];
             uint index = WritePrefix(ptr, 0, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
-            return connection.SendDataAsync(serializer, new Span<byte>(ptr, (int)index), false, CancellationToken.None);
+            return connection.SendDataAsync(serializer, new Span<byte>(ptr, (int)index), CancellationToken.None);
         }
         else
         {
@@ -1385,7 +1387,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 index = WritePrefix(ptr, 0, OvhCodeIdVoidRtnSuccess, messageId, subMessageId, serializer);
             }
 
-            return connection.SendDataAsync(serializer, memory.AsSpan(0, (int)index), true, CancellationToken.None);
+            return connection.SendDataAsync(serializer, memory.AsMemory(0, (int)index), true, CancellationToken.None);
         }
     }
 
@@ -1425,8 +1427,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             size += 1u + (uint)TypeUtility.GetTypeCodeSize(tc);
         }
 
+        byte[]? buffer = null;
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : (buffer = new byte[size]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1474,7 +1477,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
 
     private static unsafe ValueTask ReplyRpcNullableValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer) where TValue : struct
@@ -1513,8 +1518,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             size += 3u + (uint)TypeUtility.GetTypeCodeSize(tc);
         }
 
+        byte[]? buffer = null;
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : (buffer = new byte[size]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1569,7 +1575,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             }
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
 
     private static unsafe ValueTask ReplyRpcSerializableValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer) where TValue : IRpcSerializable
@@ -1587,8 +1595,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         else
             size += 1u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
 
+        byte[]? buffer = null;
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : (buffer = new byte[size]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1631,7 +1640,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index += (uint)serializer.WriteSerializableObject(value!, ptr + index, size - index);
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
 
     private static unsafe ValueTask ReplyRpcNullableSerializableValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, TValue? value, IRpcSerializer serializer) where TValue : struct, IRpcSerializable
@@ -1650,8 +1661,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         else
             size += 1u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
 
+        byte[]? buffer = null;
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : (buffer = new byte[size]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1694,7 +1706,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index += (uint)serializer.WriteNullableSerializableObject(value!, ptr + index, size - index);
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
 
     private static unsafe ValueTask ReplyRpcSerializableCollectionValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IEnumerable<TValue>? collection, IRpcSerializer serializer) where TValue : IRpcSerializable
@@ -1712,8 +1726,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         else
             size += 1u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
 
+        byte[]? buffer = null;
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : (buffer = new byte[size]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1760,7 +1775,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index += (uint)serializer.WriteSerializableObjects(collection, ptr + index, size - index);
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
 
     private static unsafe ValueTask ReplyRpcNullableSerializableCollectionValueSuccessRtn<TValue>(ulong messageId, byte subMessageId, IModularRpcRemoteConnection connection, IEnumerable<TValue?>? collection, IRpcSerializer serializer) where TValue : struct, IRpcSerializable
@@ -1778,8 +1795,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         else
             size += 1u + (uint)serializer.GetSize(typeName = TypeUtility.GetAssemblyQualifiedNameNoVersion(type));
 
+        byte[]? buffer = null;
         bool didStackAlloc = size <= serializer.Configuration.MaximumStackAllocationSize;
-        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : new byte[size];
+        Span<byte> alloc = didStackAlloc ? stackalloc byte[(int)size] : (buffer = new byte[size]);
 
         uint index;
         fixed (byte* ptr = alloc)
@@ -1826,7 +1844,9 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
             index += (uint)serializer.WriteNullableSerializableObjects(collection, ptr + index, size - index);
         }
 
-        return connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), !didStackAlloc, CancellationToken.None);
+        return buffer != null
+            ? connection.SendDataAsync(serializer, buffer.AsMemory(0, (int)index), true, CancellationToken.None)
+            : connection.SendDataAsync(serializer, alloc.Slice(0, (int)index), CancellationToken.None);
     }
 
     private static unsafe object? ReadReturnValue(IRpcSerializer serializer, RpcTask? task, byte* data, int maxSize, ref uint index)

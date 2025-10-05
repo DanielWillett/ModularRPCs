@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using IEventSymbol = Microsoft.CodeAnalysis.IEventSymbol;
 
 namespace ModularRPCs.Util;
@@ -132,6 +134,28 @@ internal static class SymbolExtensions
         }
 
         return true;
+    }
+
+    public static bool DefinesAttribute(this TypeDeclarationSyntax typeDef, SemanticModel semanticModel, string fullName, CancellationToken token = default)
+    {
+        if (!typeDef.AttributeLists.Any())
+            return false;
+
+        foreach (AttributeListSyntax attrList in typeDef.AttributeLists)
+        {
+            foreach (AttributeSyntax attribute in attrList.Attributes)
+            {
+                token.ThrowIfCancellationRequested();
+
+                if (semanticModel.GetSymbolInfo(attribute, token).Symbol is not IMethodSymbol attrCtor)
+                    continue;
+
+                if (attrCtor.ContainingType.IsEqualTo(fullName))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     public static bool HasAttribute(this ISymbol? symbol, string typeName)

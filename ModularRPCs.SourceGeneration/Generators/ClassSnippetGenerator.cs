@@ -1,21 +1,24 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Text;
 using DanielWillett.ModularRpcs.Annotations;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using ModularRPCs.Util;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text;
+#if !ROSLYN_4_0_OR_GREATER
+using SourceProductionContext = Microsoft.CodeAnalysis.GeneratorExecutionContext;
+#endif
 
 namespace ModularRPCs.Generators;
 
 internal readonly struct ClassSnippetGenerator
 {
+    // will be GeneratorExecutionContext if !ROSLYN_4_0_OR_GREATER (see usings)
     public readonly SourceProductionContext Context;
     public readonly RpcClassDeclaration Class;
     public readonly EquatableList<RpcMethodDeclaration> MethodDeclarations;

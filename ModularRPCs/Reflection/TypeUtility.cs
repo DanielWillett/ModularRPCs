@@ -2007,7 +2007,7 @@ internal static class TypeUtility
             {
                 RpcServiceTypeAttribute[] attributes = declaringType.GetAttributesSafe<RpcServiceTypeAttribute>();
                 if (attributes.Length == 0)
-                    return declaringType.GetInterfaces();
+                    return Type.EmptyTypes;
 
                 int ct = attributes.Count(attribute =>
                     attribute.ServiceType != null

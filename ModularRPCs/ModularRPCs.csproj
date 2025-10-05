@@ -74,7 +74,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DanielWillett.ReflectionTools" Version="[3.2.1,)" />
+
+		<PackageReference Include="DanielWillett.ReflectionTools" Version="[3.2.1,)" />
     <PackageReference Include="DanielWillett.SpeedBytes" Version="[1.1.2,)" NoWarn="NU1701">
       <PrivateAssets>all</PrivateAssets>
       <!-- Optional dependency -->
@@ -135,5 +136,17 @@
     <Optimize>true</Optimize>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
+
+	<!-- Source Generator -->
+	<ItemGroup>
+
+		<Content Include="..\ModularRPCs.SourceGeneration\bin\$(Configuration)_Roslyn_3.11\ModularRPCs.SG.dll" Pack="true" PackagePath="analyzers/dotnet/roslyn3.11/cs" Visible="false" />
+		<Content Include="..\ModularRPCs.SourceGeneration\bin\$(Configuration)_Roslyn_4.0\ModularRPCs.SG.dll" Pack="true" PackagePath="analyzers/dotnet/roslyn4.0/cs" Visible="false" />
+		<Content Include="..\ModularRPCs.SourceGeneration\bin\$(Configuration)_Roslyn_4.4\ModularRPCs.SG.dll" Pack="true" PackagePath="analyzers/dotnet/roslyn4.4/cs" Visible="false" />
+		<Content Include="..\ModularRPCs.SourceGeneration\bin\$(Configuration)_Roslyn_4.8\ModularRPCs.SG.dll" Pack="true" PackagePath="analyzers/dotnet/roslyn4.8/cs" Visible="false" />
+		<Content Include="..\ModularRPCs.SourceGeneration\build\DanielWillett.ModularRpcs.SourceGeneration.props" Pack="true" PackagePath="buildTransitive" />
+		<Content Include="bin\$(Configuration)\netstandard2.0\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" />
+
+	</ItemGroup>
 
 </Project>

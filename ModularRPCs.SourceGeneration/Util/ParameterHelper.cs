@@ -250,7 +250,11 @@ public static class ParameterHelper
             return RawByteInjectType.None;
 
         RawByteInjectType type = (RawByteInjectType)(index + 1);
-        if (type == RawByteInjectType.ByRefByte && parameter.RefKind is not RefKind.In and not RefKind.Ref and not RefKind.RefReadOnlyParameter)
+        if (type == RawByteInjectType.ByRefByte && parameter.RefKind is not RefKind.In and not RefKind.Ref
+#if ROSLYN_4_8_OR_GREATER
+                and not RefKind.RefReadOnlyParameter
+#endif
+           )
             return RawByteInjectType.None;
 
         return type;

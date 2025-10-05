@@ -2,11 +2,15 @@ using DanielWillett.ModularRpcs.Annotations;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using ModularRPCs.Util;
+#if !ROSLYN_4_0_OR_GREATER
+using SourceProductionContext = Microsoft.CodeAnalysis.GeneratorExecutionContext;
+#endif
 
 namespace ModularRPCs.Generators;
 
 internal readonly struct ReceiveMethodSnippetGenerator
 {
+    // will be GeneratorExecutionContext if !ROSLYN_4_0_OR_GREATER (see usings)
     public readonly SourceProductionContext Context;
     public readonly CSharpCompilation Compilation;
     public readonly RpcMethodDeclaration Method;
@@ -72,7 +76,11 @@ internal readonly struct ReceiveMethodSnippetGenerator
             bldr.Build($"{Method.ReturnType.GloballyQualifiedName} rtnValue;");
         }
 
+#if ROSLYN_4_3_OR_GREATER
         bool canUseNativeIntArithmitic = Compilation.LanguageVersion >= LanguageVersion.CSharp11;
+#else
+        const bool canUseNativeIntArithmitic = false;
+#endif
 
         bool hasSpVars = false;
         foreach (RpcParameterDeclaration param in toInject)

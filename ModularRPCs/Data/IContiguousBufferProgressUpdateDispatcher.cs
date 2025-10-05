@@ -1,6 +1,10 @@
 ﻿using DanielWillett.ModularRpcs.Abstractions;
 
 namespace DanielWillett.ModularRpcs.Data;
+
+/// <summary>
+/// This interface will usually be added to local connections and can be used to see if a connection provider supports progress updates on single messages.
+/// </summary>
 public interface IContiguousBufferProgressUpdateDispatcher
 {
     /// <summary>

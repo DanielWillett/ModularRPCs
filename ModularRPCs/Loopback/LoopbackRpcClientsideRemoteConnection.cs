@@ -47,7 +47,7 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
 
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
     IModularRpcLocalConnection IModularRpcRemoteConnection.Local => Local;
-    ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, bool canTakeOwnership, CancellationToken token)
+    ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token)
     {
         if (IsClosed)
             throw new RpcConnectionClosedException();
@@ -55,11 +55,30 @@ public class LoopbackRpcClientsideRemoteConnection : IModularRpcRemoteConnection
         if (rawData.Length <= 0)
             throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
 
+        if (!UseContiguousBuffer && !UseStreams && canTakeOwnership)
+        {
+            return Server.Local.Router.ReceiveData(Server, Server.Local.Serializer, rawData, true, token);
+        }
+
+        return SendDataIntl(serializer, rawData.Span, token);
+    }
+    ValueTask IModularRpcRemoteConnection.SendDataAsync(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token)
+    {
+        if (IsClosed)
+            throw new RpcConnectionClosedException();
+
+        if (rawData.Length <= 0)
+            throw new InvalidOperationException(Properties.Exceptions.DidNotPassAnyDataToRpcSendDataAsync);
+
+        return SendDataIntl(serializer, rawData, token);
+    }
+
+    private ValueTask SendDataIntl(IRpcSerializer serializer, ReadOnlySpan<byte> rawData, CancellationToken token)
+    {
         if (UseContiguousBuffer && _buffer == null)
         {
             Interlocked.CompareExchange(ref _buffer, new ContiguousBuffer(Server.Local, 4096), null);
         }
-
 
         byte[] rtnBuffer = new byte[rawData.Length];
         rawData.CopyTo(rtnBuffer);

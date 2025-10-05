@@ -58,8 +58,7 @@ public struct PlateauingDelay
 
     public PlateauingDelay(ref PlateauingDelay other, bool reset)
     {
-        ref PlateauingDelay r = ref this;
-        r = other;
+        this = other;
         if (reset)
         {
             Reset();

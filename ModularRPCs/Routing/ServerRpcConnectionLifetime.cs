@@ -155,6 +155,8 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         }
         finally
         {
+            InvokeRemove(removed);
+
             try
             {
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
@@ -169,11 +171,56 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
             {
                 this.LogWarning(ex, "Failed to dispose removed connection.");
             }
-
-            InvokeRemove(removed);
         }
 
         return true;
+    }
+
+    public async ValueTask<int> TryRemoveAllConnections(CancellationToken token = default)
+    {
+        IModularRpcRemoteConnection[]? removed;
+        lock (_connections)
+        {
+            removed = _connections.ToArray();
+            _connections.Clear();
+        }
+
+        if (removed.Length == 0)
+            return 0;
+
+        Task[] tasks = new Task[removed.Length];
+        for (int i = removed.Length - 1; i >= 0; --i)
+        {
+            IModularRpcRemoteConnection conn = removed[i];
+            tasks[i] = conn.CloseAsync().AsTask();
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            this.LogWarning(ex, "Failed to close removed connection(s).");
+        }
+
+        for (int i = removed.Length - 1; i >= 0; --i)
+        {
+            InvokeRemove(removed[i]);
+        }
+
+        for (int i = removed.Length - 1; i >= 0; --i)
+        {
+#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+            if (removed[i] is IAsyncDisposable aDisp)
+                await aDisp.DisposeAsync().ConfigureAwait(false);
+            else
+#endif
+            if (removed[i] is IDisposable disposable)
+                disposable.Dispose();
+        }
+
+        return removed.Length;
     }
 
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
@@ -193,11 +240,26 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
             tasks[i] = conn.CloseAsync().AsTask();
         }
 
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            this.LogWarning(ex, "Failed to close removed connection(s).");
+        }
 
         for (int i = connections.Length - 1; i >= 0; --i)
         {
             InvokeRemove(connections[i]);
+        }
+
+        for (int i = connections.Length - 1; i >= 0; --i)
+        {
+            if (connections[i] is IAsyncDisposable asyncDisp)
+                await asyncDisp.DisposeAsync();
+            else if (connections[i] is IDisposable disposable)
+                disposable.Dispose();
         }
     }
 #endif
@@ -220,6 +282,11 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
             for (int i = _connections.Count - 1; i >= 0; --i)
             {
                 InvokeRemove(_connections[i]);
+            }
+            for (int i = _connections.Count - 1; i >= 0; --i)
+            {
+                if (_connections[i] is IDisposable disposable)
+                    disposable.Dispose();
             }
         }
     }

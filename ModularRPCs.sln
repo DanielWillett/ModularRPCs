@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.10.34607.79
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11018.127
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs", "ModularRPCs\ModularRPCs.csproj", "{C075BBB6-B324-470C-BECA-BD5636BE3336}"
 EndProject
@@ -15,12 +15,21 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ModularRPCs.Test.Standalone
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.Unity", "ModularRPCs.Unity\ModularRPCs.Unity.csproj", "{6B0ED543-8100-4A2E-9067-549502284B87}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.SourceGeneration", "ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration.csproj", "{D0EB6874-F3DB-4CAA-9A79-DA33672471F8}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
+		ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration.Common.targets = ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration.Common.targets
 		test.runsettings_ = test.runsettings_
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.NamedPipes", "ModularRPCs.NamedPipes\ModularRPCs.NamedPipes.csproj", "{E50130D9-6C0F-4140-A8FF-1AEE958CBF07}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.SourceGeneration_Roslyn3.11", "ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration_Roslyn3.11.csproj", "{571497F3-3CAB-1DF9-F00F-7E44DDD517A4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.SourceGeneration_Roslyn4.0", "ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration_Roslyn4.0.csproj", "{95249722-9243-68A2-1785-3B9A99D82495}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.SourceGeneration_Roslyn4.8", "ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration_Roslyn4.8.csproj", "{76B58E91-2E07-9A1D-8C5B-ED1FA3C0C0E2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ModularRPCs.SourceGeneration_Roslyn4.4", "ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration_Roslyn4.4.csproj", "{5B13A892-4928-683F-E3F3-56E97FB27436}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -52,10 +61,26 @@ Global
 		{6B0ED543-8100-4A2E-9067-549502284B87}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6B0ED543-8100-4A2E-9067-549502284B87}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6B0ED543-8100-4A2E-9067-549502284B87}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D0EB6874-F3DB-4CAA-9A79-DA33672471F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D0EB6874-F3DB-4CAA-9A79-DA33672471F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D0EB6874-F3DB-4CAA-9A79-DA33672471F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D0EB6874-F3DB-4CAA-9A79-DA33672471F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E50130D9-6C0F-4140-A8FF-1AEE958CBF07}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E50130D9-6C0F-4140-A8FF-1AEE958CBF07}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E50130D9-6C0F-4140-A8FF-1AEE958CBF07}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E50130D9-6C0F-4140-A8FF-1AEE958CBF07}.Release|Any CPU.Build.0 = Release|Any CPU
+		{571497F3-3CAB-1DF9-F00F-7E44DDD517A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{571497F3-3CAB-1DF9-F00F-7E44DDD517A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{571497F3-3CAB-1DF9-F00F-7E44DDD517A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{571497F3-3CAB-1DF9-F00F-7E44DDD517A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{95249722-9243-68A2-1785-3B9A99D82495}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{95249722-9243-68A2-1785-3B9A99D82495}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{95249722-9243-68A2-1785-3B9A99D82495}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{95249722-9243-68A2-1785-3B9A99D82495}.Release|Any CPU.Build.0 = Release|Any CPU
+		{76B58E91-2E07-9A1D-8C5B-ED1FA3C0C0E2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{76B58E91-2E07-9A1D-8C5B-ED1FA3C0C0E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{76B58E91-2E07-9A1D-8C5B-ED1FA3C0C0E2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{76B58E91-2E07-9A1D-8C5B-ED1FA3C0C0E2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5B13A892-4928-683F-E3F3-56E97FB27436}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5B13A892-4928-683F-E3F3-56E97FB27436}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5B13A892-4928-683F-E3F3-56E97FB27436}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5B13A892-4928-683F-E3F3-56E97FB27436}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

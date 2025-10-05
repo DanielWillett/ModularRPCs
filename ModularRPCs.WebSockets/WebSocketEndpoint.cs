@@ -236,7 +236,7 @@ public class WebSocketEndpoint : IModularRpcRemoteEndpoint
     }
 
     async Task<IModularRpcRemoteConnection> IModularRpcRemoteEndpoint.RequestConnectionAsync(IRpcRouter router, IRpcConnectionLifetime connectionLifetime, IRpcSerializer serializer, CancellationToken token)
-        => await RequestConnectionAsync(router, connectionLifetime, serializer, token);
+        => await RequestConnectionAsync(router, connectionLifetime, serializer, token).ConfigureAwait(false);
 
     /// <inheritdoc />
     public override string ToString() => (IsClient ? "Client: \"" : "Server: \"") + Uri.GetLeftPart(UriPartial.Path) + "\"";

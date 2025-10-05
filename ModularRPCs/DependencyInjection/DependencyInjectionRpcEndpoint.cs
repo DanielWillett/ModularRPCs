@@ -118,8 +118,10 @@ public class DependencyInjectionRpcEndpoint : RpcEndpoint
         if (declType == null)
             throw new RpcOverheadParseException(Properties.Exceptions.RpcOverheadParseExceptionIdentifierDeclaringTypeNotFound) { ErrorCode = 4 };
 
-        if (ServiceProviders == null)
+        if (ServiceProviders == null && ServiceProvider != null)
+        {
             return TypeUtility.GetService(ServiceProvider!, declType);
+        }
 
         object? provider = (object?)ServiceProviders ?? ServiceProvider;
 

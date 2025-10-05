@@ -46,9 +46,10 @@
 
 
   <ItemGroup>
+    <ProjectReference Include="..\ModularRPCs.NamedPipes\ModularRPCs.NamedPipes.csproj" />
     <ProjectReference Include="..\ModularRPCs.Unity\ModularRPCs.Unity.csproj" />
     <ProjectReference Include="..\ModularRPCs\ModularRPCs.csproj" />
-    <ProjectReference Include="..\ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
+    <ProjectReference Include="..\ModularRPCs.SourceGeneration\ModularRPCs.SourceGeneration_Roslyn3.11.csproj" ReferenceOutputAssembly="false" OutputItemType="Analyzer" />
   </ItemGroup>
 
 

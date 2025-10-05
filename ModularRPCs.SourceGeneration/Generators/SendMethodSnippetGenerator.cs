@@ -6,11 +6,15 @@ using ModularRPCs.Util;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if !ROSLYN_4_0_OR_GREATER
+using SourceProductionContext = Microsoft.CodeAnalysis.GeneratorExecutionContext;
+#endif
 
 namespace ModularRPCs.Generators;
 
 internal readonly struct SendMethodSnippetGenerator
 {
+    // will be GeneratorExecutionContext if !ROSLYN_4_0_OR_GREATER (see usings)
     public readonly SourceProductionContext Context;
     public readonly RpcMethodDeclaration Method;
     public readonly RpcSendAttribute Send;
@@ -45,7 +49,11 @@ internal readonly struct SendMethodSnippetGenerator
 
         string returnStr = isReturningTask ? $"return ({Method.ReturnType.GloballyQualifiedName})" : string.Empty;
 
+#if ROSLYN_4_3_OR_GREATER
         bool canUnsignedRightShift = Compilation.LanguageVersion >= LanguageVersion.CSharp11;
+#else
+        const bool canUnsignedRightShift = false;
+#endif
 
         int injectedConnectionArg = -1;
         int cancellationTokenArg = -1;

@@ -20,5 +20,6 @@ using System.Runtime.InteropServices;
 [assembly: InternalsVisibleTo("ModularRPCs.Examples")]
 [assembly: InternalsVisibleTo("ModularRPCs.Test")]
 [assembly: InternalsVisibleTo("ModularRPCs.WebSockets")]
+[assembly: InternalsVisibleTo("ModularRPCs.NamedPipes")]
 [assembly: InternalsVisibleTo("ModularRPCs.Unity")]
 [assembly: InternalsVisibleTo("ModularRPCs.SG")]

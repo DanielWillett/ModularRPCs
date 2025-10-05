@@ -2,7 +2,42 @@
 
 <Project>
   <PropertyGroup>
-    <!-- Generated code requires unsafe blocks. -->
+
+	  <!-- Generated code requires unsafe blocks. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
   </PropertyGroup>
+
+	<!-- From System.Text.Json - Removes multiple analyzers from newer roslyn versions. -->
+	<!-- https://github.com/dotnet/dotnet/blob/main/src/runtime/eng/MultiTargetRoslynComponent.targets.template -->
+	<Target Name="_ModularRPCsSG_GatherAnalyzers">
+
+		<ItemGroup>
+			<_ModularRPCsSG_Analyzer Include="@(Analyzer)" Condition="'%(Analyzer.NuGetPackageId)' == 'DanielWillett.ModularRpcs'" />
+		</ItemGroup>
+	</Target>
+
+	<Target Name="_ModularRPCsSG_AnalyzerMultiTargeting"
+	        Condition="'$(SupportsRoslynComponentVersioning)' != 'true'"
+	        AfterTargets="ResolvePackageDependenciesForBuild;ResolveNuGetPackageAssets"
+	        DependsOnTargets="_ModularRPCsSG_GatherAnalyzers">
+
+		<ItemGroup>
+			<!-- Remove our analyzers targeting roslyn4.x -->
+			<Analyzer Remove="@(_ModularRPCsSG_Analyzer)"
+			          Condition="$([System.String]::Copy('%(_ModularRPCsSG_Analyzer.Identity)').IndexOf('roslyn4')) &gt;= 0"/>
+		</ItemGroup>
+	</Target>
+
+	<Target Name="_ModularRPCsSG_RemoveAnalyzers"
+	        Condition="'$(DisableModularRPCsSourceGenerator)' == 'true'"
+	        AfterTargets="ResolvePackageDependenciesForBuild;ResolveNuGetPackageAssets"
+	        DependsOnTargets="_ModularRPCsSG_GatherAnalyzers">
+
+		<!-- Remove all our analyzers -->
+		<ItemGroup>
+			<Analyzer Remove="@(_ModularRPCsSG_Analyzer)" />
+		</ItemGroup>
+	</Target>
+
 </Project>

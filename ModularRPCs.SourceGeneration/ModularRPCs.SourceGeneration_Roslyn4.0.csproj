@@ -1,0 +1,40 @@
+﻿<Project>
+
+	<PropertyGroup>
+
+		<RoslynVersion>4.0.0</RoslynVersion>
+		<RoslynVersionNumber>400</RoslynVersionNumber>
+		<RoslynVersionName>4.0</RoslynVersionName>
+
+		<BaseIntermediateOutputPath>obj_$(RoslynVersionNumber)</BaseIntermediateOutputPath>
+
+	</PropertyGroup>
+
+	<Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk"/>
+
+	<PropertyGroup>
+
+		<TargetFramework>netstandard2.0</TargetFramework>
+
+		<DefineConstants>$(DefineConstants);ROSLYN_1_0_OR_GREATER;ROSLYN_1_1_OR_GREATER;ROSLYN_1_2_OR_GREATER;ROSLYN_1_3_OR_GREATER</DefineConstants>
+		<DefineConstants>$(DefineConstants);ROSLYN_2_0_OR_GREATER;ROSLYN_2_1_OR_GREATER;ROSLYN_2_2_OR_GREATER;ROSLYN_2_3_OR_GREATER;ROSLYN_2_4_OR_GREATER;ROSLYN_2_5_OR_GREATER;ROSLYN_2_6_OR_GREATER;ROSLYN_2_7_OR_GREATER;ROSLYN_2_8_OR_GREATER;ROSLYN_2_9_OR_GREATER;ROSLYN_2_10_OR_GREATER</DefineConstants>
+		<DefineConstants>$(DefineConstants);ROSLYN_3_0_OR_GREATER;ROSLYN_3_1_OR_GREATER;ROSLYN_3_2_OR_GREATER;ROSLYN_3_3_OR_GREATER;ROSLYN_3_4_OR_GREATER;ROSLYN_3_5_OR_GREATER;ROSLYN_3_6_OR_GREATER;ROSLYN_3_7_OR_GREATER;ROSLYN_3_8_OR_GREATER;ROSLYN_3_9_OR_GREATER;ROSLYN_3_10_OR_GREATER;ROSLYN_3_11_OR_GREATER</DefineConstants>
+		<DefineConstants>$(DefineConstants);ROSLYN_4_0_OR_GREATER;ROSLYN_4_0</DefineConstants>
+
+		<OutDir>./bin/$(Configuration)_Roslyn_$(RoslynVersionName)/</OutDir>
+
+	</PropertyGroup>
+
+	<Import Project="ModularRPCs.SourceGeneration.Common.targets"/>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(RoslynVersion)" PrivateAssets="all" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="ModularRPCs.SourceGeneration.Common.targets" />
+	</ItemGroup>
+
+	<Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk"/>
+
+</Project>

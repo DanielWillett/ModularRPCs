@@ -1,0 +1,63 @@
+<Project>
+
+	<PropertyGroup>
+
+		<LangVersion>preview</LangVersion>
+
+    <!-- NOTE: I had to shorten the assembly name and namespaces because the generated file paths were too long for Windows to handle -->
+
+		<RootNamespace>ModularRPCs</RootNamespace>
+    <AssemblyTitle>ModularRPCs.SG</AssemblyTitle>
+    <AssemblyName>$(AssemblyTitle)</AssemblyName>
+
+		<Nullable>enable</Nullable>
+
+    <Authors>Daniel Willett</Authors>
+    <Company>$(Authors)</Company>
+
+    <Version>1.1.0.$(RoslynVersionNumber)</Version>
+
+		<FileVersion>$(Version)</FileVersion>
+		<AssemblyVersion>$(Version)</AssemblyVersion>
+
+    <DevelopmentDependency>True</DevelopmentDependency>
+
+		<IncludeBuildOutput>false</IncludeBuildOutput>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <NoWarn>NU5128</NoWarn>
+
+		<AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
+		<AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+
+	</PropertyGroup>
+
+  <ItemGroup>
+    <!-- Generator dependencies -->
+    <ProjectReference Include="../ModularRPCs/ModularRPCs.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
+  </PropertyGroup>
+
+  <Target Name="GetDependencyTargetPaths">
+    <ItemGroup>
+      <TargetPathWithTargetPlatformMoniker Include="../ModularRPCs/bin/$(Configuration)/netstandard2.0/ModularRPCs.dll" IncludeRuntimeDependency="false" />
+    </ItemGroup>
+  </Target>
+
+	<ItemGroup>
+
+    <Compile Remove="build/**" />
+    <EmbeddedResource Remove="build/**" />
+    <None Remove="build/**" />
+    <Compile Remove="obj*/**" />
+    <EmbeddedResource Remove="obj*/**" />
+    <None Remove="obj*/**" />
+
+  </ItemGroup>
+
+</Project>
