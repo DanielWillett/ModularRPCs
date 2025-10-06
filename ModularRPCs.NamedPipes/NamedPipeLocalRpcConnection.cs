@@ -27,6 +27,7 @@ public abstract class NamedPipeLocalRpcConnection<TSelf, TPipeStream> : IRefSafe
     private readonly ContiguousBuffer _buffer;
     private readonly AsyncCallback _readCompletedCallback;
     private readonly ContiguousBufferCallback _processBufferCallback;
+    private bool _isListening;
 
     /// <inheritdoc />
     public event ContiguousBufferProgressUpdate? BufferProgressUpdated
@@ -77,19 +78,26 @@ public abstract class NamedPipeLocalRpcConnection<TSelf, TPipeStream> : IRefSafe
 
     internal void StartListening()
     {
-        TPipeStream? pipeStream = Remote.PipeStream;
-        if (pipeStream == null)
+        lock (_buffer)
         {
-            return;
-        }
+            if (_isListening)
+                return;
+            _isListening = true;
 
-        try
-        {
-            pipeStream.BeginRead(_buffer.Buffer, 0, _buffer.Buffer.Length, _readCompletedCallback, pipeStream);
-        }
-        catch (ObjectDisposedException)
-        {
-            TryStartAutoReconnecting();
+            TPipeStream? pipeStream = Remote.PipeStream;
+            if (pipeStream == null)
+            {
+                return;
+            }
+
+            try
+            {
+                pipeStream.BeginRead(_buffer.Buffer, 0, _buffer.Buffer.Length, _readCompletedCallback, pipeStream);
+            }
+            catch (ObjectDisposedException)
+            {
+                TryStartAutoReconnecting();
+            }
         }
     }
 
@@ -97,34 +105,48 @@ public abstract class NamedPipeLocalRpcConnection<TSelf, TPipeStream> : IRefSafe
 
     private void ReadCompleted(IAsyncResult result)
     {
-        TPipeStream pipeStream = (TPipeStream)result.AsyncState;
-
-        int bytesRead = 0;
-        try
+        lock (_buffer)
         {
-            bytesRead = pipeStream.EndRead(result);
-        }
-        catch (ObjectDisposedException)
-        {
-            bytesRead = 0;
-        }
-        catch (Exception ex)
-        {
-            this.LogError(ex, Properties.Resources.LogErrorReadingFromPipeStream);
-        }
+            _isListening = false;
 
-        if (!ReferenceEquals(Remote.PipeStream, pipeStream))
-            return;
+            TPipeStream pipeStream = (TPipeStream)result.AsyncState;
 
-        if (bytesRead <= 0)
-        {
-            TryStartAutoReconnecting();
-            return;
+            int bytesRead = 0;
+            try
+            {
+                bytesRead = pipeStream.EndRead(result);
+            }
+            catch (ObjectDisposedException)
+            {
+                bytesRead = 0;
+            }
+            catch (Exception ex)
+            {
+                this.LogError(ex, Properties.Resources.LogErrorReadingFromPipeStream);
+            }
+
+            if (!ReferenceEquals(Remote.PipeStream, pipeStream))
+                return;
+
+            if (bytesRead <= 0)
+            {
+                TryStartAutoReconnecting();
+                return;
+            }
+
+            try
+            {
+                _buffer.ProcessBuffer((uint)bytesRead, Serializer, _processBufferCallback);
+            }
+            catch (Exception ex)
+            {
+                this.LogError(ex, Properties.Resources.LogErrorReadingFromPipeStream);
+            }
+            finally
+            {
+                StartListening();
+            }
         }
-
-        _buffer.ProcessBuffer((uint)bytesRead, Serializer, _processBufferCallback);
-
-        StartListening();
     }
 
     private void ProcessBufferMessageHandler(ReadOnlyMemory<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead)

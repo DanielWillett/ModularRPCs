@@ -51,7 +51,7 @@ public sealed class NamedPipeServer : NamedPipeEndpoint, IDisposable, IRefSafeLo
         return new NamedPipeServerStream(
             PipeName,
             PipeDirection.InOut,
-            MaxNumberOfServerInstances,
+            MaximumConnections,
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous,
             InBufferSize,

@@ -56,7 +56,7 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         Uri uri = Endpoint.Uri;
         if (rec != null)
         {
-            uri = await rec ?? uri;
+            uri = await rec.ConfigureAwait(false) ?? uri;
         }
 
         await WebSocket.ConnectAsync(uri, token).ConfigureAwait(false);

@@ -162,7 +162,10 @@ public class RpcTask
 
         if (token.IsCancellationRequested)
         {
-            router.InvokeCancellation(this);
+            if (this is not RpcPingTask)
+            {
+                router.InvokeCancellation(this);
+            }
             TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
             Interlocked.CompareExchange(ref _token, null, reg);
             return;
@@ -172,7 +175,10 @@ public class RpcTask
 
         if (token.IsCancellationRequested)
         {
-            router.InvokeCancellation(this);
+            if (this is not RpcPingTask)
+            {
+                router.InvokeCancellation(this);
+            }
             TriggerComplete(new OperationCanceledException(Properties.Exceptions.RpcTaskCancelled));
             Interlocked.CompareExchange(ref _token, null, reg);
             reg.Registration.Dispose();

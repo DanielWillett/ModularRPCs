@@ -1,17 +1,85 @@
 using DanielWillett.ModularRpcs.Abstractions;
+using DanielWillett.ModularRpcs.Async;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
+using JetBrains.Annotations;
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
-using DanielWillett.ModularRpcs.Async;
-using JetBrains.Annotations;
 
 namespace DanielWillett.ModularRpcs.Protocol;
+
 public class RpcOverhead
 {
+    /*
+     * Format (all numbers are little endian):
+     *  [PrimitiveRpcOverhead = 18B] (not included in Read methods)
+     *  [RpcFlags = 2B]
+     *  --- if RpcFlags has 'HasFullEndpoint':
+     *    [EndpointFlags = 1B]
+     *    [EndpointId = 4B]
+     *    [SignatureHash = 4B]
+     *    [RpcDeclaringTypeName (UTF-8 Length) = 2B]
+     *    [RpcMethodName (UTF-8 Length) = 2B]
+     *    [RpcDeclaringTypeName (UTF-8)]
+     *    [RpcMethodName (UTF-8)]
+     *    --- if EndpointFlags has 'DefinesParameters':
+     *      [ParameterTypeCount = 2B]
+     *      // ParameterTypeNames = new string[[ParameterTypeCount]] //
+     *      --- for i in 0 to ArgumentCount-1:
+     *        [ParameterTypeNames[i] (UTF-8 Length) = 2B]
+     *      --- endfor
+     *      --- for i in 0 to ArgumentCount-1:
+     *        [ParameterTypeNames[i] (UTF-8)]
+     *      --- endfor
+     *    --- endif
+     *    [Identifier (see below)]
+     *  --- else
+     *    [EndpointId = 4B]
+     *    --- if EndpointFlags has 'EndpointCodeIncludesIdentifier':
+     *      [Identifier (see below)]
+     *    --- endif
+     *  --- endif
+     *
+     * Identifier Format:
+     *  [TypeCode - 1B]
+     *   - Empty (0) = no identifier
+     *   - Object (1) = Type by name
+     *   - 17 = TimeSpan
+     *   - 19 = Guid
+     *   - 20 - DateTimeOffset
+     *   - 21 = IntPtr
+     *   - 22 = UIntPtr
+     *   - Other Enum Values
+     *  --- if TypeCode == 'Object':
+     *    [IdentifierFlags = 1B]
+     *    --- if IdentifierFlags doesnt have 'IsTypeNameOnly':
+     *      [KnownTypeId = 4B]
+     *    --- elif IdentifierFlags doesnt have 'IsKnownTypeOnly':
+     *      [TypeName] (serializer.ReadObject<string>)
+     *    --- endif
+     *    --- if IdentifierFlags has 'IsSerializableType'
+     *      --- if IdentifierFlags has 'IsNullableSerializableCollectionElementType' and type is ValueType:
+     *        [IdentifierValue] (serializer.ReadSerializableObjects(Nullable<type>))
+     *      --- elif IdentifierFlags has 'IsSerializableCollectionType':
+     *        [IdentifierValue] (serializer.ReadSerializableObjects(type))
+     *      --- else
+     *        [IdentifierValue] (serializer.ReadSerializableObject(type))
+     *      --- endif
+     *    --- else
+     *      [IdentifierValue] (serializer.ReadObject(type))
+     *    --- endif
+     *  --- elif TypeCode != 'Empty' && TypeCode != 'DBNull':
+     *    --- if TypeCode == 'String':
+     *      [IdentifierValue] (serializer.ReadObject<string>)
+     *    --- else:
+     *      [IdentifierValue] (serializer.ReadObject(TypeCode corresponding type))
+     *        - Implementation may take shortcuts to directly read binary data if serializer.CanFastReadPrimitives is true
+     *    --- endif
+     *  --- endif
+     */
     internal const byte OvhCodeId = 1;
     private readonly uint _size2Check;
     internal const int MinimumSize = 23;

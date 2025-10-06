@@ -59,6 +59,8 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
     protected internal const byte OvhCodeIdVoidRtnSuccess = 4;
     protected internal const byte OvhCodeIdValueRtnSuccess = 3;
     protected internal const byte OvhCodeIdException = 2;
+    protected internal const byte OvhCodeIdPing = 6;
+    protected internal const byte OvhCodeIdGracefulDisconnect = 7;
     private object? _logger;
     ref object? IRefSafeLoggable.Logger => ref _logger;
     LoggerType IRefSafeLoggable.LoggerType { get; set; }
@@ -235,7 +237,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         state.CancelToken.Dispose();
         state.HasCancelToken = false;
     }
-
+    
     /// <inheritdoc />
     public void HandleInvokeVoidReturn(RpcOverhead overhead, IRpcSerializer serializer)
     {
@@ -509,6 +511,193 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
         }
     }
 
+    public virtual RpcPingTask PingAsync(IModularRpcRemoteConnection connection, TimeSpan timeout = default, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+
+        if (timeout == TimeSpan.Zero)
+        {
+            timeout = TimeSpan.FromSeconds(5);
+        }
+
+        ulong messageId = GetNewMessageId();
+
+        RpcPingTask task = new RpcPingTask(DateTime.UtcNow)
+        {
+            MessageId = messageId,
+            SubMessageId = 0
+        };
+
+        task.SetToken(token, this);
+
+        ReadOnlyMemory<byte> pingMessage = GetPingMessage(0, messageId, out byte[] packetArray);
+
+        ValueTask sendTask;
+
+        StartListening(task, messageId, timeout);
+
+        try
+        {
+            sendTask = connection.SendDataAsync(Serializer, pingMessage, canTakeOwnership: true, token);
+        }
+        catch (Exception ex)
+        {
+            PrimitiveRpcOverhead ovh = new PrimitiveRpcOverhead(0, messageId);
+            HandleInvokeException(in ovh, connection.Local, ex);
+            task.TriggerComplete(ex);
+            FinishListening(task);
+            DefaultSerializer.ArrayPool.Return(packetArray);
+            throw;
+        }
+
+        if (sendTask.IsCompleted)
+        {
+            return task;
+        }
+
+        ValueTask vt2 = sendTask;
+        IModularRpcRemoteConnection c2 = connection;
+        ulong msgId = messageId;
+        RpcTask t = task;
+        byte[] packetArray2 = packetArray;
+        Task.Run(async () =>
+        {
+            try
+            {
+                await vt2.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                PrimitiveRpcOverhead ovh = new PrimitiveRpcOverhead(0, msgId);
+                HandleInvokeException(in ovh, c2.Local, ex);
+                t.TriggerComplete(ex);
+                FinishListening(t);
+            }
+            finally
+            {
+                DefaultSerializer.ArrayPool.Return(packetArray2);
+            }
+        }, CancellationToken.None);
+
+        return task;
+    }
+
+    public virtual ValueTask GracefullyDisconnectAsync(IModularRpcRemoteConnection connection, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+
+        byte[] packetArray = DefaultSerializer.ArrayPool.Rent(PrimitiveRpcOverhead.MinimumLength);
+
+        packetArray[0] = OvhCodeIdGracefulDisconnect;
+
+        ValueTask sendTask;
+
+        try
+        {
+            sendTask = connection.SendDataAsync(Serializer, packetArray, canTakeOwnership: true, token);
+        }
+        catch (Exception ex)
+        {
+            PrimitiveRpcOverhead ovh = new PrimitiveRpcOverhead(OvhCodeIdGracefulDisconnect);
+            HandleInvokeException(in ovh, connection.Local, ex);
+            DefaultSerializer.ArrayPool.Return(packetArray);
+            throw;
+        }
+
+        return sendTask.IsCompleted ? default : new ValueTask(WrapValueTaskInTry(sendTask, packetArray, connection));
+
+        async Task WrapValueTaskInTry(ValueTask vt, byte[] packetArray, IModularRpcRemoteConnection connection)
+        {
+            try
+            {
+                await vt.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                PrimitiveRpcOverhead ovh = new PrimitiveRpcOverhead(OvhCodeIdGracefulDisconnect);
+                HandleInvokeException(in ovh, connection.Local, ex);
+            }
+            finally
+            {
+                DefaultSerializer.ArrayPool.Return(packetArray);
+            }
+        }
+
+    }
+
+    private static ReadOnlyMemory<byte> GetPingMessage(byte subMessageId, ulong messageId, out byte[] packetArray)
+    {
+        byte[] p = DefaultSerializer.ArrayPool.Rent(PrimitiveRpcOverhead.MinimumLength);
+
+        p[0] = OvhCodeIdPing;
+        p[1] = subMessageId;
+        const int index = 2;
+
+        if (BitConverter.IsLittleEndian)
+        {
+            Unsafe.WriteUnaligned(ref p[index], messageId);
+        }
+        else
+        {
+            p[index + 7] = unchecked( (byte) messageId         );
+            p[index + 6] = unchecked( (byte)(messageId >>> 8 ) );
+            p[index + 5] = unchecked( (byte)(messageId >>> 16) );
+            p[index + 4] = unchecked( (byte)(messageId >>> 24) );
+            p[index + 3] = unchecked( (byte)(messageId >>> 32) );
+            p[index + 2] = unchecked( (byte)(messageId >>> 40) );
+            p[index + 1] = unchecked( (byte)(messageId >>> 48) );
+            p[index    ] = unchecked( (byte)(messageId >>> 56) );
+        }
+
+        Unsafe.InitBlock(ref p[10], 0, PrimitiveRpcOverhead.MinimumLength - 10);
+        packetArray = p;
+        return p.AsMemory(0, PrimitiveRpcOverhead.MinimumLength);
+    }
+
+    protected virtual void RespondToPing(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, in PrimitiveRpcOverhead overhead)
+    {
+        ReadOnlyMemory<byte> pingMessage = GetPingMessage(1, overhead.MessageId, out byte[] packetArray);
+
+        ValueTask sendTask;
+
+        try
+        {
+            sendTask = sendingConnection.SendDataAsync(serializer, pingMessage, canTakeOwnership: true, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            HandleInvokeException(in overhead, sendingConnection.Local, ex);
+            DefaultSerializer.ArrayPool.Return(packetArray);
+            throw;
+        }
+
+        if (sendTask.IsCompleted)
+        {
+            return;
+        }
+
+        ValueTask vt2 = sendTask;
+        IModularRpcRemoteConnection c2 = sendingConnection;
+        ulong msgId = overhead.MessageId;
+        byte[] packetArray2 = packetArray;
+        Task.Run(async () =>
+        {
+            try
+            {
+                await vt2.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                PrimitiveRpcOverhead ovh = new PrimitiveRpcOverhead(1, msgId);
+                HandleInvokeException(in ovh, c2.Local, ex);
+            }
+            finally
+            {
+                DefaultSerializer.ArrayPool.Return(packetArray2);
+            }
+        }, CancellationToken.None);
+    }
+
     /// <inheritdoc />
     public virtual unsafe ValueTask ReceiveData(IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, ReadOnlyMemory<byte> rawData, bool canTakeOwnership, CancellationToken token = default)
     {
@@ -618,6 +807,14 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 }
 
                 break;
+            
+            case OvhCodeIdPing:
+                ReceivePing(in primitiveOverhead, sendingConnection, serializer);
+                break;
+
+            case OvhCodeIdGracefulDisconnect:
+                ReceiveGracefulDisconnect(in primitiveOverhead, sendingConnection, serializer);
+                break;
         }
 
         return default;
@@ -711,9 +908,50 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
                 }
 
                 break;
+
+            case OvhCodeIdPing:
+                ReceivePing(in primitiveOverhead, sendingConnection, serializer);
+                break;
+
+            case OvhCodeIdGracefulDisconnect:
+                ReceiveGracefulDisconnect(in primitiveOverhead, sendingConnection, serializer);
+                break;
         }
 
         return default;
+    }
+
+    private void ReceiveGracefulDisconnect(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer)
+    {
+        PrimitiveRpcOverhead po = primitiveOverhead;
+        Task.Run(async () =>
+        {
+            try
+            {
+                await sendingConnection.CloseAsync();
+            }
+            catch (Exception ex)
+            {
+                HandleInvokeException(in po, sendingConnection.Local, ex);
+            }
+        });
+    }
+
+    private void ReceivePing(in PrimitiveRpcOverhead primitiveOverhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer)
+    {
+        if (primitiveOverhead.SubMessageId == 0)
+        {
+            RespondToPing(sendingConnection, serializer, in primitiveOverhead);
+        }
+        else
+        {
+            _listeningTasks.TryRemove(primitiveOverhead.MessageId, out RpcTask? task);
+            if (task is RpcPingTask ping)
+                ping.ReceiveResponse();
+            else
+                task?.TriggerComplete(null);
+            FinishListening(task);
+        }
     }
 
     private void HandleInvokeException(RpcOverhead overhead, Exception ex)
@@ -2192,6 +2430,7 @@ public class DefaultRpcRouter : IRpcRouter, IDisposable, IRefSafeLoggable
 
         return (uint)(1 + serializer.GetSize(typeof(ulong)) + serializer.GetSize(typeof(byte)) + serializer.GetSize(typeof(uint)) + serializer.GetSize(typeof(uint)));
     }
+
     private static unsafe uint WritePrefix(byte* ptr, uint size, byte ovhCodeId, ulong messageId, byte subMessageId, IRpcSerializer serializer)
     {
         ptr[0] = ovhCodeId;

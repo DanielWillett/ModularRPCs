@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 namespace DanielWillett.ModularRpcs.NamedPipes;
 
 /// <summary>
-/// Endpoint used to create a RPC connection using <see href="https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.namedpipeserverstream">Named Pipes</see>.
+/// Endpoint used to create a RPC connection using <see href="https://learn.microsoft.com/en-us/dotnet/api/system.io.pipes.namedpipeserverstream">Named Pipes</see> for up to 255 concurrent connections.
 /// </summary>
 public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
 {
@@ -116,7 +116,7 @@ public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
     /// </summary>
     /// <remarks>Defaults to <see cref="NamedPipeServerStream.MaxAllowedServerInstances"/>. This is not supported for endpoints created for clients.</remarks>
     /// <exception cref="NotSupportedException">Accessed on an endpoint made for a client.</exception>
-    public int MaxNumberOfServerInstances
+    public int MaximumConnections
     {
         get => IsClient ? throw new NotSupportedException() : _maxNumServerInstances;
         set

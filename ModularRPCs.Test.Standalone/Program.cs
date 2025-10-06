@@ -2,6 +2,8 @@
 using NUnitLite;
 using System;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using DanielWillett.ModularRpcs.Reflection;
 
 namespace ModularRPCs.Test.Standalone;
 
@@ -18,7 +20,7 @@ internal class Program
          * 554/554 passed
          *
          */
-
+        
         new AutoRun(Assembly.GetAssembly(typeof(ParserTests))).Execute(args, new ColorConsoleWriter(true), Console.In);
     }
 }

@@ -1,6 +1,7 @@
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Annotations;
 using DanielWillett.ModularRpcs.Async;
+using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Reflection;
 using DanielWillett.ModularRpcs.Serialization;
@@ -116,12 +117,27 @@ public interface IRpcRouter
     /// </summary>
     ValueTask ReceiveData(in PrimitiveRpcOverhead overhead, IModularRpcRemoteConnection sendingConnection, IRpcSerializer serializer, Stream stream, CancellationToken token = default);
 
+    /// <summary>
+    /// Pings a remote <paramref name="connection"/> and waits for a response.
+    /// </summary>
+    /// <param name="connection">The connection to ping.</param>
+    /// <param name="token">A token that cancels the ping request.</param>
+    /// <param name="timeout">The maximum time to wait before throwing a <see cref="RpcTimeoutException"/>.</param>
+    /// <exception cref="RpcTimeoutException">Thrown when the ping doesn't succeed.</exception>
+    RpcPingTask PingAsync(IModularRpcRemoteConnection connection, TimeSpan timeout = default, CancellationToken token = default);
+
+    /// <summary>
+    /// Send a message to the remote connection to gracefully disconnect.
+    /// </summary>
+    /// <returns>A task that completes when the message has been sent, not when the connection fully disconnects.</returns>
+    ValueTask GracefullyDisconnectAsync(IModularRpcRemoteConnection connection, CancellationToken token = default);
+
     /*
      *  The following methods are invoked by SerializerGenerator after an RPC finishes running.
      *
      *  This can't be done internally because a continuation has to be used for methods returning awaitable objects
      */
-    
+
     /// <summary>
     /// Invoked after a <see cref="RpcReceiveAttribute"/> method returns that has a <see langword="void"/> return type.
     /// </summary>

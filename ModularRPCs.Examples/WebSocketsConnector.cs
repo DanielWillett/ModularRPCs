@@ -41,6 +41,9 @@ public class WebSocketsConnector
         try
         {
             connection = await endpoint.RequestConnectionAsync(_router, _lifetime, _serializer, token).ConfigureAwait(false);
+
+            // this event allows you to customize the Uri used to reconnect with.
+            // this supports being able to use a temporary token that expires quickly in the query parameters
             connection.OnRequestingReconnect += ReconnectHandler;
             connection.Local.SetLogger(Accessor.Active);
         }
@@ -53,15 +56,25 @@ public class WebSocketsConnector
         return connection;
     }
 
+    private async Task<Uri?> ReconnectHandler(WebSocketClientsideRemoteRpcConnection connection)
+    {
+        Uri? connectUri = await GetConnectUri();
+
+        _logger.LogDebug($"Reconnecting to web socket at: {connectUri}.");
+
+        return connectUri;
+    }
+
     private async Task<Uri?> GetConnectUri(CancellationToken token = default)
     {
-        const string path = @"C:\Users\danny\OneDrive\Desktop\webSocketText.txt";
+        const string path = @"%USERPROFILE%\OneDrive\Desktop\webSocketText.txt";
 
         string[] lines = File.ReadAllLines(path);
 
-        string authEndpoint = lines[0];
-        string authKey = lines[1];
-        string connectEndpoint = lines[2];
+        // example reads endpoints from a file but most would read from IConfiguration or similar
+        string authEndpoint = lines[0];    // https://example.com/my-rpc-api/auth
+        string authKey = lines[1];         // Some bearer token (ex. e5ed3cae1e5e4e75af41ec39b4d9298c)
+        string connectEndpoint = lines[2]; // wss://example.com/my-rpc-api/connect
         string? authJwt = null;
         if (!string.IsNullOrEmpty(authEndpoint))
         {
@@ -73,6 +86,7 @@ public class WebSocketsConnector
 
             Uri authUri = new Uri(authEndpoint);
 
+            // make a requrest for a temporary auth token (JWT in this case) using a bearer key
             HttpRequestMessage reqAuth = new HttpRequestMessage(HttpMethod.Get, authUri);
             reqAuth.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authKey);
 
@@ -93,21 +107,13 @@ public class WebSocketsConnector
             authJwt = await response.Content.ReadAsStringAsync();
         }
 
+        // connect using ws or wss, optionally passing a pre-fetched temporary auth token
         Uri connectUri = new Uri(connectEndpoint);
 
         if (authJwt != null)
         {
             connectUri = new Uri(connectUri, "?token=" + Uri.EscapeDataString(authJwt));
         }
-
-        return connectUri;
-    }
-
-    private async Task<Uri?> ReconnectHandler(WebSocketClientsideRemoteRpcConnection connection)
-    {
-        Uri? connectUri = await GetConnectUri();
-
-        _logger.LogDebug($"Connecting to web socket at: {connectUri}.");
 
         return connectUri;
     }

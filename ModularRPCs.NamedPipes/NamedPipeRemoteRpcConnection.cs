@@ -158,12 +158,24 @@ public abstract class NamedPipeRemoteRpcConnection<TLocalConnection, TPipeStream
     bool IModularRpcRemoteConnection.IsLoopback => false;
 
     /// <inheritdoc />
-    public
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-        async
-#endif
-        ValueTask CloseAsync(CancellationToken token = default)
+    public async ValueTask CloseAsync(CancellationToken token = default)
     {
+        try
+        {
+            await Local.Router.GracefullyDisconnectAsync(this, token).ConfigureAwait(false);
+        }
+#if DEBUG
+        catch (Exception ex)
+        {
+            Local.LogError(ex, "Error gracefully disconnecting.");
+        }
+#else
+        catch
+        {
+            // ignored
+        }
+#endif
+
         TPipeStream? stream = Interlocked.Exchange(ref PipeStream, null);
         if (stream is NamedPipeServerStream server)
         {
@@ -174,7 +186,7 @@ public abstract class NamedPipeRemoteRpcConnection<TLocalConnection, TPipeStream
             catch (ObjectDisposedException)
             {
                 // already disposed
-                goto rtn;
+                return;
             }
             catch (InvalidOperationException) { }
             catch (Exception ex)
@@ -184,14 +196,12 @@ public abstract class NamedPipeRemoteRpcConnection<TLocalConnection, TPipeStream
         }
 
         if (stream == null)
-            goto rtn;
+            return;
 
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         await stream.DisposeAsync().ConfigureAwait(false);
-        rtn: return;
 #else
         stream.Dispose();
-        rtn: return default;
 #endif
     }
 
