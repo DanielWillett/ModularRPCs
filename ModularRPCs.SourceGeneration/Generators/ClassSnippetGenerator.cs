@@ -226,7 +226,7 @@ internal readonly struct ClassSnippetGenerator
         bldr
                 .Empty()
                 .String("/// <summary>")
-                .String("/// Invoked after this type is created by <see cref=\"M:DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CreateProxy\">.")
+                .String("/// Invoked after this type is created by <see cref=\"M:DanielWillett.ModularRpcs.Reflection.ProxyGenerator.CreateProxy\"/>.")
                 .String("/// </summary>")
                 .String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
                 .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
@@ -657,7 +657,7 @@ internal readonly struct ClassSnippetGenerator
 
             bldr.Empty()
                 .String("/// <summary>")
-                .Build($"/// Generated receive invoker for <see cref=\"{method.Method.XmlDocs}\"> (Overload {method.Overload + 1}).")
+                .Build($"/// Generated receive invoker for <see cref=\"{method.Method.XmlDocs}\"/> (Overload {method.Overload + 1}).")
                 .String("/// </summary>")
                 .String("/// <remarks>This method is responsible for triggering the initial RPC invocation.</remarks>")
                 .Empty();
@@ -683,7 +683,7 @@ internal readonly struct ClassSnippetGenerator
         {
             bldr.Empty()
                 .String("/// <summary>")
-                .Build($"/// Generated raw binary receive invoker for <see cref=\"{method.Method.XmlDocs}\"> (Overload {method.Overload + 1}).")
+                .Build($"/// Generated raw binary receive invoker for <see cref=\"{method.Method.XmlDocs}\"/> (Overload {method.Overload + 1}).")
                 .String("/// </summary>")
                 .String("/// <remarks>This method is responsible for parsing the data received by another party and invoking the receive method.</remarks>")
                 .Empty();
@@ -719,7 +719,7 @@ internal readonly struct ClassSnippetGenerator
 
             bldr.Empty()
                 .String("/// <summary>")
-                .Build($"/// Generated stream receive invoker for <see cref=\"{method.Method.XmlDocs}\"> (Overload {method.Overload + 1}).")
+                .Build($"/// Generated stream receive invoker for <see cref=\"{method.Method.XmlDocs}\"/> (Overload {method.Overload + 1}).")
                 .String("/// </summary>")
                 .String("/// <remarks>This method is responsible for parsing the data received by another party and invoking the receive method.</remarks>")
                 .Empty();
