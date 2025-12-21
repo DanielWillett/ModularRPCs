@@ -1957,6 +1957,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             ushort? cancellationToken = null;
 
             bool injectedConnection = false;
+            Type? injectedConnectionType = null;
             ushort injectedConnectionArgNum = 0;
             for (int i = 0; i < toInject.Count; ++i)
             {
@@ -1982,6 +1983,7 @@ public sealed class ProxyGenerator : IRefSafeLoggable
                     throw new RpcInvalidParameterException(param.Position, param, method, Properties.Exceptions.RpcInvalidParameterMultipleConnectionsInvokeMethod);
                 }
                 injectedConnection = true;
+                injectedConnectionType = param.ParameterType;
                 injectedConnectionArgNum = checked ( (ushort)(param.Position + 1) );
             }
 
@@ -2327,6 +2329,10 @@ public sealed class ProxyGenerator : IRefSafeLoggable
             else if (injectedConnection)
             {
                 il.Emit(OpCodes.Ldarg, injectedConnectionArgNum);
+                if (injectedConnectionType!.IsValueType)
+                {
+                    il.Emit(OpCodes.Box, injectedConnectionType);
+                }
             }
             else
             {

@@ -277,7 +277,7 @@
     <value>There can not be more than one connection arguments. If you need more than one, pass an IEnumerable&lt;IModularRpcRemoteConnection&gt;</value>
   </data>
   <data name="RpcFireAndForgetExceptionMultipleConnections" xml:space="preserve">
-    <value>Unable to invoke this RPC ({0}) because returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void.</value>
+    <value>Unable to invoke this RPC ({0}) because, for broadcast RPCs, returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void. This can also sometimes be caused by not supplying a destination connection on a server-side send RPC.</value>
   </data>
   <data name="InvokeRpcConnectionsInvalidType" xml:space="preserve">
     <value>Must be of type 'IModularRpcRemoteConnection', 'IEnumerable&lt;IModularRpcRemoteConnection&gt;', or null.</value>

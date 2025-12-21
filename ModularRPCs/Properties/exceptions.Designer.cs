@@ -19,7 +19,7 @@ namespace DanielWillett.ModularRpcs.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "18.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class Exceptions {
@@ -502,7 +502,7 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Unable to invoke this RPC ({0}) because returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void..
+        ///   Looks up a localized string similar to Unable to invoke this RPC ({0}) because, for broadcast RPCs, returned RpcTasks must be marked as fire-and-forget with the RpcFireAndForgetAttribute, or just by returning void. This can also sometimes be caused by not supplying a destination connection on a server-side send RPC..
         /// </summary>
         internal static string RpcFireAndForgetExceptionMultipleConnections {
             get {

@@ -58,7 +58,7 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
                 Type = TypeSerializationInfoType.NullableValue;
                 SerializableType = new TypeSymbolInfo(compilation, type);
                 UnderlyingType = new TypeSymbolInfo(compilation, nullableType);
-                IsMultipleConnections = GetIsMultipleConnections(nullableType);
+                IsMultipleConnections = nullableType is INamedTypeSymbol n && GetIsMultipleConnections(n);
                 IsSingleConnection = GetIsSingleConnection(nullableType);
             }
         }
@@ -98,16 +98,52 @@ public class TypeSerializationInfo : IEquatable<TypeSerializationInfo>
                 {
                     Type = TypeSerializationInfoType.Value;
                     SerializableType = new TypeSymbolInfo(compilation, type);
-                    IsMultipleConnections = GetIsMultipleConnections(type);
+                    IsMultipleConnections = type is INamedTypeSymbol n && GetIsMultipleConnections(n);
                     IsSingleConnection = GetIsSingleConnection(type);
                 }
             }
         }
     }
 
-    private static bool GetIsMultipleConnections(ITypeSymbol type)
+    private static bool GetIsMultipleConnections(INamedTypeSymbol type)
     {
-        return type.Implements("global::System.Collections.Generic.IEnumerable<global::DanielWillett.ModularRpcs.Abstractions.IModularRpcConnection>");
+        if (type.TypeKind == TypeKind.Interface
+            && GetIsIEnumerableMultipleConnections(type))
+        {
+            return true;
+        }
+
+        foreach (INamedTypeSymbol intx in type.AllInterfaces)
+        {
+            if (GetIsIEnumerableMultipleConnections(intx))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool GetIsIEnumerableMultipleConnections(INamedTypeSymbol @interface)
+    {
+        if (@interface is not
+            {
+                IsGenericType: true,
+                ConstructedFrom.SpecialType: SpecialType.System_Collections_Generic_IEnumerable_T
+                    or SpecialType.System_Collections_Generic_IList_T
+                    or SpecialType.System_Collections_Generic_ICollection_T
+                    or SpecialType.System_Collections_Generic_IReadOnlyList_T
+                    or SpecialType.System_Collections_Generic_IReadOnlyCollection_T
+            })
+        {
+            return false;
+        }
+
+        ITypeSymbol typeArg = @interface.TypeArguments[0];
+        string toString = typeArg.ToDisplayString(CustomFormats.FullTypeNameWithGlobalFormat);
+        return toString is "global::DanielWillett.ModularRpcs.Abstractions.IModularRpcConnection"
+            or "global::DanielWillett.ModularRpcs.Abstractions.IModularRpcLocalConnection"
+            or "global::DanielWillett.ModularRpcs.Abstractions.IModularRpcRemoteConnection"
+            or "global::DanielWillett.ModularRpcs.Abstractions.IModularRpcClientsideConnection"
+            or "global::DanielWillett.ModularRpcs.Abstractions.IModularRpcServersideConnection";
     }
 
     private static bool GetIsSingleConnection(ITypeSymbol type)
