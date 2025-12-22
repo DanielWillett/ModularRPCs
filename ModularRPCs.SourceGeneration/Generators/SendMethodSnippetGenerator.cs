@@ -506,7 +506,7 @@ internal readonly struct SendMethodSnippetGenerator
 
         string parameterDefList = parameters.Count == 0 ? string.Empty : (", " + string.Join(", ", parameters.Select(x => x.Definition)));
 
-        bldr.Build($"static unsafe {Method.ReturnType.GloballyQualifiedName} __ModularRpcsGeneratedInvoke(ref global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState{(hasId ? (passIdByRef ? $", ref {Class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId" : $", {Class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId") : string.Empty)}{parameterDefList})")
+        bldr.Build($"{(Class.IsSingleConnectionObject || Class.IsMultipleConnectionObject ? string.Empty : "static")} unsafe {Method.ReturnType.GloballyQualifiedName} __ModularRpcsGeneratedInvoke(ref global::DanielWillett.ModularRpcs.Reflection.GeneratedSendMethodState __modularRpcsGeneratedState{(hasId ? (passIdByRef ? $", ref {Class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId" : $", {Class.IdType!.GloballyQualifiedName} __modularRpcsGeneratedId") : string.Empty)}{parameterDefList})")
             .String("{")
             .In();
 
