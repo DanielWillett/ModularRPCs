@@ -45,11 +45,11 @@ public class SerializationConfiguration
     }
 
     /// <summary>
-    /// Override maximum collection size in characters for strings that can be read before a <see cref="RpcParseException"/> is thrown. 
-    /// </summary>
+    /// Override maximum collection size in characters for strings that can be read before a <see cref="RpcParseException"/> is thrown.
     /// <para>
     /// To set the value for all types, see <see cref="MaximumGlobalArraySize"/>.
     /// </para>
+    /// </summary>
     /// <remarks>This property is set to fall back to <see cref="MaximumGlobalArraySize"/> (-1) by default.</remarks>
     public int MaximumStringLength
     {
@@ -68,10 +68,10 @@ public class SerializationConfiguration
 
     /// <summary>
     /// Override the maximum collection size in elements for specific types before a <see cref="RpcParseException"/> is thrown. Any value less than zero implies an infinite limit.
-    /// </summary>
     /// <para>
     /// To set the value for all types, see <see cref="MaximumGlobalArraySize"/>.
     /// </para>
+    /// </summary>
     /// <remarks>
     /// By default there are no overrides, meaning all types will fall back to <see cref="MaximumGlobalArraySize"/>. The key of this dictionary should be the collection's element type, not the collection type itself.
     /// Example: for an integer collection the key would be <c>typeof(int)</c>.
@@ -160,7 +160,11 @@ public class SerializationConfiguration
     {
         int maxSize;
         if (type == null)
+        {
             maxSize = MaximumStringLength;
+            if (maxSize < 0)
+                maxSize = MaximumGlobalArraySize;
+        }
         else if (!MaximumArraySizes.TryGetValue(type, out maxSize))
         {
             if (Nullable.GetUnderlyingType(type) is not { } nullableUnderlyingType

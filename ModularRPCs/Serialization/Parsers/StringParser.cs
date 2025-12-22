@@ -414,7 +414,7 @@ public class StringParser : BinaryTypeParser<string?>
         maxSize -= (uint)charHdrSize;
         bytes += charHdrSize;
 
-        _config.AssertCanCreateArrayOfType(typeof(string), charLen, this);
+        _config.AssertCanCreateArrayOfType(null, charLen, this);
 
         if (maxSize < size)
             throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutIBinaryTypeParser, GetType().Name)) { ErrorCode = 1 };
@@ -528,7 +528,7 @@ public class StringParser : BinaryTypeParser<string?>
                 break;
         }
 
-        _config.AssertCanCreateArrayOfType(typeof(string), charLen, this);
+        _config.AssertCanCreateArrayOfType(null, charLen, this);
 
 #if NETSTANDARD && !NETSTANDARD2_1_OR_GREATER || NETFRAMEWORK
         }
@@ -1562,7 +1562,7 @@ public class StringParser : BinaryTypeParser<string?>
                 return Array.Empty<string>();
             }
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             string?[] arr = new string[length];
             for (int i = 0; i < length; ++i)
@@ -1585,7 +1585,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length == 0)
                 return Array.Empty<string>();
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             string?[] arr = new string[length];
             for (int i = 0; i < length; ++i)
@@ -1623,7 +1623,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length == 0)
                 return 0;
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             index = (uint)bytesRead;
             for (int i = 0; i < length; ++i)
@@ -1663,7 +1663,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length == 0)
                 return 0;
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             index = (uint)bytesRead;
             string?[] arr = output.Array!;
@@ -1724,7 +1724,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length <= 0)
                 return 0;
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             bytes += bytesRead;
 
@@ -1808,7 +1808,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length == 0)
                 return 0;
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             index = (uint)bytesRead;
             for (int i = 0; i < length; ++i)
@@ -1848,7 +1848,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length == 0)
                 return 0;
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             index = (uint)bytesRead;
             string?[] arr = output.Array!;
@@ -1909,7 +1909,7 @@ public class StringParser : BinaryTypeParser<string?>
             if (length <= 0)
                 return 0;
 
-            _config.AssertCanCreateArrayOfType(null, length, this);
+            _config.AssertCanCreateArrayOfType(typeof(string), length, this);
 
             string?[]? arr = null;
             int arrOffset = 0;
