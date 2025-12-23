@@ -947,7 +947,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                             .String("{").In()
                                                 .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
-                                                .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
+                                                .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
                                                 .Build($"{valueVar} = (nint){valueVar}Num;")
                                                 .Out()
@@ -957,7 +957,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     {
                                         bldr.Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
-                                            .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
+                                            .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
                                             .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nint")}){valueVar}Num;");
                                     }
@@ -979,7 +979,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                             .String("{").In()
                                                 .Build($"long {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {uint.MaxValue})")
-                                                .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
+                                                .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
                                                 .Build($"{valueVar} = ({symbolInfo.GloballyQualifiedName}){valueVar}Num;")
                                                 .Out()
@@ -989,7 +989,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     {
                                         bldr.Build($"ulong {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {uint.MaxValue})")
-                                            .In().String("throw new RpcParseException(string.Format(Properties.Exceptions.RpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
+                                            .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
                                             .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nuint")}){valueVar}Num;");
                                     }
