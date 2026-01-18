@@ -135,6 +135,9 @@
   <data name="GenerateInvokeMethodImplementationNotFound" xml:space="preserve">
     <value>Generated invoke method not found in {0}: \"{1}\".</value>
   </data>
+  <data name="LogDetectedUnityLibrary" xml:space="preserve">
+    <value>Detected that 'ModularRPCs.Unity' is installed and registered all primitive Unity types for serialization.</value>
+  </data>
   <data name="LogFailedToInvoke" xml:space="preserve">
     <value>Failed to invoke event: "{0}".</value>
   </data>

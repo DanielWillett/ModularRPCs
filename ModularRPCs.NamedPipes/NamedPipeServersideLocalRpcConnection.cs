@@ -12,4 +12,7 @@ public sealed class NamedPipeServersideLocalRpcConnection : NamedPipeLocalRpcCon
 {
     internal NamedPipeServersideLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, NamedPipeServersideRemoteRpcConnection remote, CancellationTokenSource cts)
         : base(router, serializer, remote, cts) { }
+
+    /// <inheritdoc />
+    public override string ToString() => "Named Pipes (Local, Server)";
 }

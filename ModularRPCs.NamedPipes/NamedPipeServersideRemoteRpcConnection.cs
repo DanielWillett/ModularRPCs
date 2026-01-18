@@ -14,4 +14,7 @@ public sealed class NamedPipeServersideRemoteRpcConnection
     {
         PipeStream = server;
     }
+
+    /// <inheritdoc />
+    public override string ToString() => "Named Pipes (Remote, Server)";
 }

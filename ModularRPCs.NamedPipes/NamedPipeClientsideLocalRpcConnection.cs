@@ -1,5 +1,4 @@
-﻿using DanielWillett.ModularRpcs.Abstractions;
-using DanielWillett.ModularRpcs.Routing;
+﻿using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
 using System.IO.Pipes;
 using System.Threading;
@@ -19,4 +18,7 @@ public sealed class NamedPipeClientsideLocalRpcConnection : NamedPipeLocalRpcCon
     {
         ((NamedPipeClientsideRemoteRpcConnection)Remote).TryStartAutoReconnecting();
     }
+
+    /// <inheritdoc />
+    public override string ToString() => "Named Pipes (Local, Client)";
 }

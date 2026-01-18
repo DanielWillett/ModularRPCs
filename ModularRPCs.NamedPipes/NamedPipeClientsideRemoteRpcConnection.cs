@@ -122,4 +122,7 @@ public sealed class NamedPipeClientsideRemoteRpcConnection
         catch { /* ignored */ }
         _cts.Dispose();
     }
+
+    /// <inheritdoc />
+    public override string ToString() => "Named Pipes (Remote, Client)";
 }

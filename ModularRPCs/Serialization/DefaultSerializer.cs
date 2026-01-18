@@ -18,9 +18,6 @@ using JetBrains.Annotations;
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP3_0_OR_GREATER
 using System.Diagnostics.CodeAnalysis;
 #endif
-#if !NETSTANDARD2_1_OR_GREATER && !NETCOREAPP2_0_OR_GREATER
-using System.Collections;
-#endif
 #if !NET8_0_OR_GREATER
 using DanielWillett.ModularRpcs.Data;
 #endif
@@ -128,6 +125,10 @@ public class DefaultSerializer : IRpcSerializer
 #if NET5_0_OR_GREATER
         { typeof(Half), 2 },
 #endif
+#if NET7_0_OR_GREATER
+        { typeof(Int128), 16 },
+        { typeof(UInt128), 16 },
+#endif
         { typeof(float), sizeof(float) },
         { typeof(double), sizeof(double) },
         { typeof(decimal), 16 },
@@ -187,9 +188,16 @@ public class DefaultSerializer : IRpcSerializer
         _primitiveParsers.AddManySerializer(new DateTimeParser.Many(_config));
         _primitiveParsers.AddManySerializer(new DateTimeOffsetParser.Many(_config));
 
-        Type? unityRegistrationType = Type.GetType("DanielWillett.ModularRpcs.Serialization.UnitySerializationRegistrationHelper, DanielWillett.ModularRPCs.Unity");
+        Type? unityRegistrationType = Type.GetType("DanielWillett.ModularRpcs.Serialization.UnitySerializationRegistrationHelper, ModularRPCs.Unity", throwOnError: false);
         if (unityRegistrationType != null)
+        {
+            if (Accessor.LogDebugMessages)
+            {
+                Accessor.Logger?.LogDebug(nameof(DefaultSerializer), Properties.Logging.LogDetectedUnityLibrary);
+            }
+
             AddUnityParserTypes(unityRegistrationType);
+        }
     }
     private void SetupPrimitiveParsers()
     {
