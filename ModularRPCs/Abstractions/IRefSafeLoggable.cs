@@ -5,7 +5,7 @@ using System;
 namespace DanielWillett.ModularRpcs.Abstractions;
 
 /// <summary>
-/// Allows various common logging tools to be used safely without needing all of their assembly's referenced. Use extension methods in <see cref="LoggingExtensions"/> and <see cref="LoggingExtensionsILogger"/> to 
+/// Allows various common logging tools to be used safely without needing all of their assemblies referenced. Use extension methods in <see cref="LoggingExtensions"/> and <see cref="LoggingExtensionsILogger"/> to 
 /// </summary>
 public interface IRefSafeLoggable
 {
