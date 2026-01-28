@@ -112,7 +112,7 @@ The following example registers the necessary services on a server-like process 
 ```cs
 
 IServiceCollection collection = new ServiceCollection()
-    .AddLogging(l => l.AddConsole());
+    .AddLogging(l => l.AddConsole())
 
     // register logging for ReflectionTools package
     .AddReflectionTools(isStaticDefault: true)
@@ -199,7 +199,7 @@ The following example registers the necessary services on a client-like process 
 ```cs
 
 IServiceCollection collection = new ServiceCollection()
-    .AddLogging(l => l.AddConsole());
+    .AddLogging(l => l.AddConsole())
 
     // register logging for ReflectionTools package
     .AddReflectionTools(isStaticDefault: true)
