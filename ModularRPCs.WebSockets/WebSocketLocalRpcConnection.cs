@@ -57,7 +57,10 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         Endpoint = endpoint;
         Serializer = serializer;
         Buffer = new ContiguousBuffer((IModularRpcLocalConnection)this, bufferSize);
-        Buffer.SetLogger(this);
+
+        // ReSharper disable once InvokeAsExtensionMethod
+        LoggingExtensions.SetLogger(Buffer, this);
+
         CancellationTokenSource = new CancellationTokenSource();
         // ReSharper disable once VirtualMemberCallInConstructor
         if (autoReconnect && CanReconnect)

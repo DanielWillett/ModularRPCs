@@ -22,6 +22,14 @@ public static class LoggingExtensionsILogger
         loggable.LoggerType = LoggerType.MicrosoftLogger;
         LoggingExtensions.SwapLoggerAndDispose(loggable, logger ?? throw new ArgumentNullException(nameof(logger)));
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void AddLoggingFromMsExt(object service, IRefSafeLoggable loggable)
+    {
+        ILoggerFactory loggerFactory = (ILoggerFactory)service;
+        ILogger logger = loggerFactory.CreateLogger(loggable.GetType());
+        loggable.SetLogger(logger);
+    }
 }
 
 /// <summary>
@@ -70,9 +78,7 @@ public static class LoggingExtensions
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void AddLoggingFromMsExt(object service, IRefSafeLoggable loggable)
     {
-        ILoggerFactory loggerFactory = (ILoggerFactory)service;
-        ILogger logger = loggerFactory.CreateLogger(loggable.GetType());
-        loggable.SetLogger(logger);
+        LoggingExtensionsILogger.AddLoggingFromMsExt(service, loggable);
     }
 
     /// <summary>
