@@ -8,6 +8,8 @@ It is currently in a semi-stable preview state, but has the majority of the feat
 However, the code-base is very complex so there may still be bugs that haven't come to light yet.
 I use the library in a few of my projects so it has some use 'in the field'.
 
+[Available on NuGet](https://www.nuget.org/packages/DanielWillett.ModularRpcs)
+
 ## Features
 * Dynamic IL code generation (TypeBuilders, DynamicMethods) for scenerios where a source generator can't be used.
   * Use `virtual` instead of `partial` for send methods.
