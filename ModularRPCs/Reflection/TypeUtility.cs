@@ -2000,7 +2000,7 @@ internal static class TypeUtility
         if (!checkInterfaces)
             return null;
 
-        if (!ServiceInterfaces.TryGetValue(declaringType, out Type[] intx))
+        if (!ServiceInterfaces.TryGetValue(declaringType, out Type[]? intx))
         {
             // try to get service by it's interfaces (cached in ServiceInterfaces).
             intx = ServiceInterfaces.GetOrAdd(declaringType, static declaringType =>
@@ -2038,7 +2038,7 @@ internal static class TypeUtility
         for (int i = 0; i < intx.Length; ++i)
         {
             object? service = serviceProvider.GetService(intx[i]);
-            if (service != null)
+            if (service != null && declaringType.IsInstanceOfType(service))
                 return service;
         }
 

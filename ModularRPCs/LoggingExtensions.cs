@@ -2,6 +2,7 @@ using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ReflectionTools;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace DanielWillett.ModularRpcs;
@@ -44,6 +45,34 @@ public static class LoggingExtensions
         {
             // ignored
         }
+    }
+
+    /// <summary>
+    /// Attempts to add <c>Microsoft.Extensions.Logging</c> logging from an <see cref="IServiceProvider"/>, if available.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="serviceProvider"/> is <see langword="null"/>.</exception>
+    public static void TryAddLogging(this IRefSafeLoggable loggable, IServiceProvider serviceProvider)
+    {
+        if (serviceProvider == null)
+            throw new ArgumentNullException(nameof(serviceProvider));
+
+        Type? type = Type.GetType("Microsoft.Extensions.Logging.ILoggerFactory, Microsoft.Extensions.Logging.Abstractions");
+        if (type == null)
+            return;
+
+        object? service = serviceProvider.GetService(type);
+        if (service != null)
+        {
+            AddLoggingFromMsExt(service, loggable);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void AddLoggingFromMsExt(object service, IRefSafeLoggable loggable)
+    {
+        ILoggerFactory loggerFactory = (ILoggerFactory)service;
+        ILogger logger = loggerFactory.CreateLogger(loggable.GetType());
+        loggable.SetLogger(logger);
     }
 
     /// <summary>

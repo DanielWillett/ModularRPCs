@@ -3,8 +3,6 @@ using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Net.WebSockets;
 using System.Threading;
@@ -139,17 +137,11 @@ public class WebSocketEndpoint : IModularRpcRemoteEndpoint
     {
         IServiceProvider serviceProvider = depInj.ServiceProvider;
         return RequestConnectionAsync(
-            serviceProvider.GetRequiredService<IRpcRouter>(),
-            serviceProvider.GetRequiredService<IRpcConnectionLifetime>(),
-            serviceProvider.GetRequiredService<IRpcSerializer>(),
+            (IRpcRouter?)serviceProvider.GetService(typeof(IRpcRouter)) ?? throw new InvalidOperationException("Missing service: IRpcRouter"),
+            (IRpcConnectionLifetime?)serviceProvider.GetService(typeof(IRpcConnectionLifetime)) ?? throw new InvalidOperationException("Missing service: IRpcConnectionLifetime"),
+            (IRpcSerializer?)serviceProvider.GetService(typeof(IRpcSerializer)) ?? throw new InvalidOperationException("Missing service: IRpcSerializer"),
             token
         );
-    }
-    private void TryAddLogging(DependencyInjectionWebSocketEndpoint depInj, IRefSafeLoggable loggable)
-    {
-        ILoggerFactory loggerFactory = (ILoggerFactory)depInj.ServiceProvider.GetService(typeof(ILoggerFactory));
-        ILogger logger = loggerFactory.CreateLogger(loggable.GetType());
-        loggable.SetLogger(logger);
     }
 
     /// <summary>
@@ -167,7 +159,7 @@ public class WebSocketEndpoint : IModularRpcRemoteEndpoint
 
         if (this is DependencyInjectionWebSocketEndpoint depInj)
         {
-            TryAddLogging(depInj, local);
+            local.TryAddLogging(depInj.ServiceProvider);
         }
 
         local.TryStartListening();
@@ -194,9 +186,9 @@ public class WebSocketEndpoint : IModularRpcRemoteEndpoint
     {
         IServiceProvider serviceProvider = depInj.ServiceProvider;
         return AcceptClientConnection(
-            serviceProvider.GetRequiredService<IRpcRouter>(),
-            serviceProvider.GetRequiredService<IRpcConnectionLifetime>(),
-            serviceProvider.GetRequiredService<IRpcSerializer>(),
+            (IRpcRouter?)serviceProvider.GetService(typeof(IRpcRouter)) ?? throw new InvalidOperationException("Missing service: IRpcRouter"),
+            (IRpcConnectionLifetime?)serviceProvider.GetService(typeof(IRpcConnectionLifetime)) ?? throw new InvalidOperationException("Missing service: IRpcConnectionLifetime"),
+            (IRpcSerializer?)serviceProvider.GetService(typeof(IRpcSerializer)) ?? throw new InvalidOperationException("Missing service: IRpcSerializer"),
             token
         );
     }
@@ -214,7 +206,7 @@ public class WebSocketEndpoint : IModularRpcRemoteEndpoint
 
         if (this is DependencyInjectionWebSocketEndpoint depInj)
         {
-            TryAddLogging(depInj, local);
+            local.TryAddLogging(depInj.ServiceProvider);
         }
 
         await local.InitializeConnectionAsync(token);

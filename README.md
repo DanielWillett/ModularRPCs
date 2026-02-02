@@ -35,6 +35,9 @@ I use the library in a few of my projects so it has some use 'in the field'.
 * Automatic type serialization/deserialization.
 * Support for other formats like JSON.
 * Dictionary serialization.
+* Awaitable types via extension members.
+* TcpClient/TcpListener transport mode.
+* Loopback optimization in source generator (skip serialization/deserialization step).
 
 ## Supported Transport Modes
 Third party packages can be made fairly easily to add support for other transport modes. Take a look at some of the existing packages in this repository for an example.
@@ -45,14 +48,14 @@ Third party packages can be made fairly easily to add support for other transpor
 * Named Pipes
     * Communicate with objects usually on the same computer. Uses the [Named Pipes](https://learn.microsoft.com/en-us/dotnet/standard/io/how-to-use-named-pipes-for-network-interprocess-communication) API for interprocess communication.
 
-
 ## Supported Primitive Types
 All the following types can be serialized/parsed individually or in an enumerable.
 
-*Enum and nullable arrays are not supported by default.*
+*Enum arrays and nullable arrays are not supported by default.*
 
 ### Base
-* bool, char, double, float, int, long, uint, ulong, short, ushort, sbyte, byte, nint, nuint
+* bool, char, double, float, int, long, uint, ulong, short, ushort, sbyte, byte
+* nint, nuint (interpreted as 64-bit)
 * Half (.NET 5+)
 * Int128, UInt128 (.NET 7+)
 * decimal
@@ -64,6 +67,7 @@ All the following types can be serialized/parsed individually or in an enumerabl
 * All enums
 * Nullable value types of any supported value type
 * Collections of any supported value type.
+* `IRpcSerializable` implementations
 
 ### ModularRPCs.Unity
 * Vector2, Vector3, Vector4
@@ -89,20 +93,65 @@ Install via [NuGet](https://www.nuget.org/packages/DanielWillett.ModularRpcs).
 
     <PackageReference Include="DanielWillett.ModularRpcs" Version="*" />
 
-    <!-- One of (or a third-party transport mode) -->
+    <!-- One of the following (or a third-party transport mode) -->
     <PackageReference Include="DanielWillett.ModularRpcs.NamedPipes" Version="*" />
     <PackageReference Include="DanielWillett.ModularRpcs.WebSockets" Version="*" />
     
     <!-- If using UnityEngine -->
     <PackageReference Include="DanielWillett.ModularRpcs.Unity" Version="*" />
     
-    <!-- ReflectionTools v3 is used by ModularRPCs, recommended to update to v4 -->
-    <PackageReference Include="DanielWillett.ReflectionTools" Version="4.0.0" />
-
 </ItemGroup>
 ```
 
 ---
+
+## Creating RPC Objects
+An RPC object or a 'proxy object' is an object that's configured to use RPCs.
+
+They're called proxy objects because the older dynamic code generator creates a subtype that overrides any virtual send methods.
+With source generation this is no longer necessary but both types of code generation methods require that objects are created from the `ProxyGenerator`.
+
+With dependency injection, you register types with `AddRpcTransient`, `AddRpcScoped`, and `AddRpcSingleton`, which takes care of everything for you.
+
+Without dependency injection, you have to create RPC types using `ProxyGenerator.Instance.CreateProxy<T>()`. This is necessary to configure the object to use the right services and register all it's receive methods.
+
+### Unity
+Unity components are created with the extension methods `GameObject.AddRpcComponent` or `ProxyGenerator.Instance.CreateProxyComponent`.
+
+Instantiating game objects with RPC components can be done using `ProxyGenerator.Instance.CreateInstantiatedProxy`.
+
+## Injections
+Special parameter types are automatically 'injected', meaning they're not considered values and are excluded from serialization/deserialization.
+
+The following types are auto-injected for **receive methods**:
+
+| Type                                | Behavior                                                                                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IRpcInvocationPoint                 | Injects the invocation point, usually of type [`RpcEndpoint`](https://github.com/DanielWillett/ModularRPCs/blob/master/ModularRPCs/RpcEndpoint.cs). |
+| CancellationToken                   | A token which will be cancelled if the sending connection sends a cancellation notification.                                                        |
+| RpcOverhead                         | The overhead information for the incoming message.                                                                                                  |
+| RpcFlags                            | The options for the incoming message.                                                                                                               |
+| IRpcSerializer                      | The serializer used to deserialize the message's values.                                                                                            |
+| IRpcRouter                          | The router used to coordinate incoming and outgoing messages.                                                                                       |
+| IModularRpcRemoteConnection         | The connection from which the message was sent from.                                                                                                |
+| IServiceProvider                    | The service provider linked to the current IRpcRouter. If the router wasn't set up with dependency injection an error will be thrown.               |
+| IEnumerable&lt;IServiceProvider&gt; | The service providers linked to the current IRpcRouter. If the router wasn't set up with dependency injection an error will be thrown.              |
+
+Receive methods can decorate parameters of other types with `[RpcInject]` to have them injected from the service provider linked to the `IRpcRouter` that dispatched the message.
+
+If any service can't be injected a `RpcInjectionException` will be thrown and returned to the sender.
+
+The following types are auto-injected for **send methods**:
+
+| Type                                           | Behavior                                                                                                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CancellationToken                              | A token which will be cancelled if the sending connection sends a cancellation notification.                                                        |
+| IModularRpcLocalConnection*                    | The connection from which the message was sent from.                                                                                                |
+| IEnumerable&lt;IModularRpcLocalConnection&gt;* | The service providers linked to the current IRpcRouter. If the router wasn't set up with dependency injection an error will be thrown.              |
+
+\* Connections can also be injected by having the containing type implement `IRpcSingleConnectionObject` or `IRpcMultipleConnectionsObject` to define the default connections for RPCs in the given object.
+
+For example, a game's primary player object may implement this interface to send messages to only that player by default.
 
 ## Examples
 
@@ -312,13 +361,13 @@ public partial class PostDispatchService : IPostDispatchService
 
     public async Task HandlePostReceived(Post post)
     {
-        BroadcastNewPost(post.Id).IgnoreNoConnections();
+        BroadcastNewPost(post.Id);
     }
     
     [RpcSend]
     private void BroadcastNewPost(uint postPk);
 
-    // or (not really any reason to do it this way)
+    // or (allows you to know how many clients your broadcast was sent to)
 
     [RpcSend, RpcFireAndForget]
     private RpcBroadcastTask BroadcastNewPost(uint postPk);
@@ -476,3 +525,6 @@ int instanceId = _nextInstanceId++;
 GameObject gameObject = new GameObject("Animal");
 Animal animal = gameObject.AddRpcComponent<Animal>(router);
 ```
+
+# Legal
+ModularRPCs is licensed under the **GNU Lesser General Public License v3.0 or later** (`LGPL-3.0-or-later`).

@@ -1,5 +1,4 @@
 using DanielWillett.ReflectionTools;
-using Microsoft.Extensions.Logging;
 using System;
 
 namespace DanielWillett.ModularRpcs.Abstractions;
@@ -10,7 +9,7 @@ namespace DanielWillett.ModularRpcs.Abstractions;
 public interface IRefSafeLoggable
 {
     /// <summary>
-    /// Can be of type <see cref="ILogger"/>, <see cref="DBNull"/> (for console), <see cref="IReflectionToolsLogger"/>, <see cref="IAccessor"/>, <see cref="Action{T1,T2,T3,T4}"/> of (<see cref="Type"/> sourceType, <see cref="LogSeverity"/> severity, <see cref="Exception"/>? exception, <see cref="string"/> message), or <see langword="null"/> to disable logging.
+    /// Can be of type <see cref="Microsoft.Extensions.Logging.ILogger"/>, <see cref="DBNull"/> (for console), <see cref="IReflectionToolsLogger"/>, <see cref="IAccessor"/>, <see cref="Action{T1,T2,T3,T4}"/> of (<see cref="Type"/> sourceType, <see cref="LogSeverity"/> severity, <see cref="Exception"/>? exception, <see cref="string"/> message), or <see langword="null"/> to disable logging.
     /// </summary>
     /// <remarks>You shouldn't interact directly with this interface's properties, instead use the extension methods contained in <see cref="LoggingExtensions"/> and <see cref="LoggingExtensionsILogger"/>.</remarks>
     ref object? Logger { get; }
@@ -40,7 +39,7 @@ public enum LoggerType
     Callback,
 
     /// <summary>
-    /// <see cref="ILogger"/>
+    /// <see cref="Microsoft.Extensions.Logging.ILogger"/>
     /// </summary>
     MicrosoftLogger,
 

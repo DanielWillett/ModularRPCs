@@ -64,7 +64,8 @@ public sealed class NamedPipeServer : NamedPipeEndpoint, IDisposable, IRefSafeLo
         if (Interlocked.Exchange(ref _hasStarted, 1) != 0)
             throw new InvalidOperationException(Properties.Resources.NamedPipeServerAlreadyStarted);
 
-        TryAddLogging(this);
+        if (ServiceProvider != null)
+            this.TryAddLogging(ServiceProvider);
 
         _router = router;
         _serializer = serializer;
@@ -234,7 +235,8 @@ public sealed class NamedPipeServer : NamedPipeEndpoint, IDisposable, IRefSafeLo
         NamedPipeServersideRemoteRpcConnection remote = new NamedPipeServersideRemoteRpcConnection(this, connectingStream);
         NamedPipeServersideLocalRpcConnection local = new NamedPipeServersideLocalRpcConnection(_router!, _serializer!, remote, _unhostCancellationTokenSource!);
 
-        TryAddLogging(local);
+        if (ServiceProvider != null)
+            local.TryAddLogging(ServiceProvider);
 
         ValueTask<bool> task;
         try

@@ -1,9 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease28</VersionSuffix>
+    <VersionSuffix>prerelease29</VersionSuffix>
 
     <PackageReleaseNotes>Initial pre-release.</PackageReleaseNotes>
 
@@ -26,7 +26,7 @@
     <Authors>Daniel Willett</Authors>
     <Company>$(Authors)</Company>
 
-    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageLicenseExpression>LGPL-3.0-or-later</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/DanielWillett/ModularRPCs</PackageProjectUrl>
     <RepositoryUrl>$(PackageProjectUrl).git</RepositoryUrl>
 
@@ -73,7 +73,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="[2018.2.1,)" Aliases="JetBrains" />
+    <PackageReference Include="JetBrains.Annotations" Version="[2018.2.1,)" Aliases="JetBrains" PrivateAssets="all" />
     <Reference Include="UnityEngine" HintPath="./Libraries/UnityEngine.dll" Aliases="Unity" />
   </ItemGroup>
 

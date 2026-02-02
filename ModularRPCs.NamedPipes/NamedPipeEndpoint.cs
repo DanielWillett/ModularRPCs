@@ -2,8 +2,6 @@
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Routing;
 using DanielWillett.ModularRpcs.Serialization;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.IO.Pipes;
@@ -18,7 +16,7 @@ namespace DanielWillett.ModularRpcs.NamedPipes;
 /// </summary>
 public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
 {
-    private readonly IServiceProvider? _serviceProvider;
+    private protected readonly IServiceProvider? ServiceProvider;
 
     private PlateauingDelay _delaySettings = new PlateauingDelay(amplifier: 6, climb: 2.5, maximum: 300, start: 10);
     private string _serverName = ".";
@@ -205,7 +203,7 @@ public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
         if (this is NamedPipeServer != !isClient)
             throw new InvalidOperationException("Unexpected server type not matching up with isClient. This shouldn't happen.");
 
-        _serviceProvider = serviceProvider;
+        ServiceProvider = serviceProvider;
         PipeName = pipeName;
         IsClient = isClient;
     }
@@ -295,34 +293,21 @@ public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
     /// <exception cref="IOException"/>
     public Task<NamedPipeClientsideRemoteRpcConnection> RequestConnectionAsync(TimeSpan timeout, CancellationToken token = default)
     {
-        if (_serviceProvider == null)
+        if (ServiceProvider == null)
             throw new InvalidOperationException(DanielWillett.ModularRpcs.Properties.Exceptions.NoServiceProvider);
 
-        return RequestConnectionAsyncIntl(_serviceProvider, timeout, token);
+        return RequestConnectionAsyncIntl(ServiceProvider, timeout, token);
     }
 
     private Task<NamedPipeClientsideRemoteRpcConnection> RequestConnectionAsyncIntl(IServiceProvider serviceProvider, TimeSpan timeout, CancellationToken token)
     {
         return RequestConnectionAsync(
-            serviceProvider.GetRequiredService<IRpcRouter>(),
-            serviceProvider.GetRequiredService<IRpcConnectionLifetime>(),
-            serviceProvider.GetRequiredService<IRpcSerializer>(),
+            (IRpcRouter?)serviceProvider.GetService(typeof(IRpcRouter)) ?? throw new InvalidOperationException("Missing service: IRpcRouter"),
+            (IRpcConnectionLifetime?)serviceProvider.GetService(typeof(IRpcConnectionLifetime)) ?? throw new InvalidOperationException("Missing service: IRpcConnectionLifetime"),
+            (IRpcSerializer?)serviceProvider.GetService(typeof(IRpcSerializer)) ?? throw new InvalidOperationException("Missing service: IRpcSerializer"),
             timeout,
             token
         );
-    }
-
-    private protected void TryAddLogging(IRefSafeLoggable loggable)
-    {
-        if (_serviceProvider == null)
-            return;
-
-        ILoggerFactory loggerFactory = (ILoggerFactory)_serviceProvider.GetService(typeof(ILoggerFactory));
-        if (loggerFactory == null)
-            return;
-
-        ILogger logger = loggerFactory.CreateLogger(loggable.GetType());
-        loggable.SetLogger(logger);
     }
 
     /// <summary>
@@ -374,7 +359,8 @@ public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
             NamedPipeClientsideRemoteRpcConnection remote = new NamedPipeClientsideRemoteRpcConnection(this, client, cts, ownsCts: true);
             NamedPipeClientsideLocalRpcConnection local = new NamedPipeClientsideLocalRpcConnection(router, serializer, remote, cts);
 
-            TryAddLogging(local);
+            if (ServiceProvider != null)
+                local.TryAddLogging(ServiceProvider);
 
             local.StartListening();
 
@@ -395,9 +381,9 @@ public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
             throw new ArgumentNullException(nameof(serviceProvider));
 
         return CreateServerAsync(
-            serviceProvider.GetRequiredService<IRpcRouter>(),
-            serviceProvider.GetRequiredService<IRpcConnectionLifetime>(),
-            serviceProvider.GetRequiredService<IRpcSerializer>(),
+            (IRpcRouter?)serviceProvider.GetService(typeof(IRpcRouter)) ?? throw new InvalidOperationException("Missing service: IRpcRouter"),
+            (IRpcConnectionLifetime?)serviceProvider.GetService(typeof(IRpcConnectionLifetime)) ?? throw new InvalidOperationException("Missing service: IRpcConnectionLifetime"),
+            (IRpcSerializer?)serviceProvider.GetService(typeof(IRpcSerializer)) ?? throw new InvalidOperationException("Missing service: IRpcSerializer"),
             token
         );
     }
@@ -414,11 +400,11 @@ public class NamedPipeEndpoint : IModularRpcRemoteEndpoint
     /// <exception cref="InvalidOperationException"></exception>
     public ValueTask CreateServerAsync(CancellationToken token = default)
     {
-        if (_serviceProvider == null)
+        if (ServiceProvider == null)
             throw new InvalidOperationException(DanielWillett.ModularRpcs.Properties.Exceptions.NoServiceProvider);
 
         token.ThrowIfCancellationRequested();
-        return CreateServerAsyncIntl(_serviceProvider, token);
+        return CreateServerAsyncIntl(ServiceProvider, token);
     }
 
     /// <summary>
