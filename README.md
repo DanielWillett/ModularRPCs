@@ -91,6 +91,11 @@ All the following types can be serialized/parsed individually or in an enumerabl
 ## Installation
 Install via [NuGet](https://www.nuget.org/packages/DanielWillett.ModularRpcs).
 ```xml
+<PropertyGroup>
+    <!-- Required for source generator only. -->
+    <!-- If you can't use unsafe blocks you will have to use the dynamic code generator instead. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+</PropertyGroup>
 <ItemGroup>
 
     <PackageReference Include="DanielWillett.ModularRpcs" Version="*" />
