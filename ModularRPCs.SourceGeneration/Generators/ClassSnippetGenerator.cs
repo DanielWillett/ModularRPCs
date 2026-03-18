@@ -270,8 +270,12 @@ internal readonly struct ClassSnippetGenerator
         // static init method
 
         bldr.String("[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Never)]")
-            .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]")
-            .Preprocessor("#if NET7_0_OR_GREATER")
+            .String("[global::System.Runtime.CompilerServices.CompilerGeneratedAttribute]");
+        if (Class.InheritedGeneratedType != null)
+        {
+            bldr.String("new");
+        }
+        bldr.Preprocessor("#if NET7_0_OR_GREATER")
             .String("public")
             .Preprocessor("#else")
             .String(@protected)
@@ -537,7 +541,6 @@ internal readonly struct ClassSnippetGenerator
             .String("sizeWithoutId = checked ( (int)overheadSize );")
             .Empty()
             .String("uint idTypeSize;")
-            .String("uint idSize;")
             .Empty();
 
         SendMethodSnippetGenerator.GenerateGetIdSize(

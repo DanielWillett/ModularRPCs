@@ -711,6 +711,9 @@ internal readonly struct SendMethodSnippetGenerator
 
         if (hasId && @class.IdType!.Info.Type != TypeSerializationInfoType.Void)
         {
+            bool createVariableForIdSize = idSize.IndexOf('.') < 0;
+            string idSizePrefix = createVariableForIdSize ? "uint " : string.Empty;
+
             TypeSerializationInfo idInfo = @class.IdType.Info;
 
             string idVar = @class.IdIsExplicit
@@ -724,8 +727,12 @@ internal readonly struct SendMethodSnippetGenerator
                 case TypeSerializationInfoType.PrimitiveLike:
                 case TypeSerializationInfoType.Value:
 
+                    bool defineNewVar;
                     if (idInfo.PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
                     {
+                        defineNewVar = false;
+                        if (createVariableForIdSize)
+                            bldr.String($"uint {idSize};");
                         switch (idInfo.PrimitiveSerializationMode)
                         {
                             case TypeHelper.QuickSerializeMode.If64Bit:
@@ -756,9 +763,10 @@ internal readonly struct SendMethodSnippetGenerator
                     else
                     {
                         passIdByRef = @class.IdType.IsValueType;
+                        defineNewVar = true;
                     }
 
-                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSize<{@class.IdType.GloballyQualifiedName}>(__modularRpcsGeneratedId) );");
+                    bldr.Build($"{(defineNewVar ? idSizePrefix : string.Empty)}{idSize} = checked ( (uint){serializer}.GetSize<{@class.IdType.GloballyQualifiedName}>(__modularRpcsGeneratedId) );");
 
                     if (idInfo.PrimitiveSerializationMode != TypeHelper.QuickSerializeMode.Never)
                     {
@@ -770,27 +778,27 @@ internal readonly struct SendMethodSnippetGenerator
 
                 case TypeSerializationInfoType.NullableValue:
                     passIdByRef = true;
-                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSize<{idInfo.UnderlyingType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
+                    bldr.Build($"{idSizePrefix}{idSize} = checked ( (uint){serializer}.GetSize<{idInfo.UnderlyingType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
                     break;
 
                 case TypeSerializationInfoType.SerializableValue:
                     passIdByRef = @class.IdType!.IsValueType;
-                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
+                    bldr.Build($"{idSizePrefix}{idSize} = checked ( (uint){serializer}.GetSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
                     break;
 
                 case TypeSerializationInfoType.NullableSerializableValue:
                     passIdByRef = true;
-                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetNullableSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
+                    bldr.Build($"{idSizePrefix}{idSize} = checked ( (uint){serializer}.GetNullableSerializableSize<{idInfo.SerializableType.GloballyQualifiedName}>(in __modularRpcsGeneratedId) );");
                     break;
 
                 case TypeSerializationInfoType.SerializableCollection:
                 case TypeSerializationInfoType.NullableCollectionSerializableCollection:
-                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}>) );");
+                    bldr.Build($"{idSizePrefix}{idSize} = checked ( (uint){serializer}.GetSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}>) );");
                     break;
 
                 case TypeSerializationInfoType.NullableSerializableCollection:
                 case TypeSerializationInfoType.NullableCollectionNullableSerializableCollection:
-                    bldr.Build($"{idSize} = checked ( (uint){serializer}.GetNullableSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}?>) );");
+                    bldr.Build($"{idSizePrefix}{idSize} = checked ( (uint){serializer}.GetNullableSerializablesSize<{idInfo.SerializableType.GloballyQualifiedName}>(__modularRpcsGeneratedId as global::System.Collections.Generic.IEnumerable<{idInfo.SerializableType.GloballyQualifiedName}?>) );");
                     break;
             }
 
