@@ -917,8 +917,10 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.Double:
-
-                                    bldr.Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                    
+                                    bldr.Preprocessor("#pragma warning disable CS0675")
+                                        .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                        .Preprocessor("#pragma warning restore CS0675")
                                         .Build($"{valueVar} = *(double*)&{valueVar}Num;")
                                         .Build($"{offsetVar} += 8u;");
                                     break;
@@ -927,12 +929,16 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                 case TypeHelper.PrimitiveLikeType.UInt64:
                                     if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
                                     {
-                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );")
+                                        bldr.Preprocessor("#pragma warning disable CS0675")
+                                            .Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );")
+                                            .Preprocessor("#pragma warning restore CS0675")
                                             .Build($"{offsetVar} += 8u;");
                                     }
                                     else
                                     {
-                                        bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                        bldr.Preprocessor("#pragma warning disable CS0675")
+                                            .Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                            .Preprocessor("#pragma warning restore CS0675")
                                             .Build($"{offsetVar} += 8u;");
                                     }
                                     break;
@@ -941,7 +947,8 @@ internal readonly struct ReceiveMethodSnippetGenerator
 
                                     if (canUseNativeIntArithmitic)
                                     {
-                                        bldr.String("if (global::System.IntPtr.Size == 8)").In()
+                                        bldr.Preprocessor("#pragma warning disable CS0675")
+                                            .String("if (global::System.IntPtr.Size == 8)").In()
                                                 .Build($"{valueVar} = unchecked ( (nint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (nint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );").Out()
                                             .String("else")
                                             .String("{").In()
@@ -951,15 +958,18 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                                 .Empty()
                                                 .Build($"{valueVar} = (nint){valueVar}Num;")
                                                 .Out()
-                                            .String("}");
+                                            .String("}")
+                                            .Preprocessor("#pragma warning restore CS0675");
                                     }
                                     else
                                     {
-                                        bldr.Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                        bldr.Preprocessor("#pragma warning disable CS0675")
+                                            .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
                                             .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
-                                            .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nint")}){valueVar}Num;");
+                                            .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nint")}){valueVar}Num;")
+                                            .Preprocessor("#pragma warning restore CS0675");
                                     }
 
                                     bldr.Build($"{offsetVar} += 8u;");
@@ -969,7 +979,8 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     
                                     if (canUseNativeIntArithmitic)
                                     {
-                                        bldr.String("if (global::System.IntPtr.Size == 8)").In();
+                                        bldr.Preprocessor("#pragma warning disable CS0675")
+                                            .String("if (global::System.IntPtr.Size == 8)").In();
                                         if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
                                             bldr.Build($"{valueVar} = unchecked ( (nuint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})((nuint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );").Out();
                                         else
@@ -983,15 +994,18 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                                 .Empty()
                                                 .Build($"{valueVar} = ({symbolInfo.GloballyQualifiedName}){valueVar}Num;")
                                                 .Out()
-                                            .String("}");
+                                            .String("}")
+                                            .Preprocessor("#pragma warning restore CS0675");
                                     }
                                     else
                                     {
-                                        bldr.Build($"ulong {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                        bldr.Preprocessor("#pragma warning disable CS0675")
+                                            .Build($"ulong {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {uint.MaxValue})")
                                             .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
-                                            .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nuint")}){valueVar}Num;");
+                                            .Build($"{valueVar} = ({((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0 ? symbolInfo.GloballyQualifiedName : "nuint")}){valueVar}Num;")
+                                            .Preprocessor("#pragma warning restore CS0675");
                                     }
 
                                     bldr.Build($"{offsetVar} += 8u;");

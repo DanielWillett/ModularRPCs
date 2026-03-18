@@ -118,7 +118,7 @@ namespace ModularRPCs.Test.SourceGen
 
             SourceGenPlaygroundTestClassInherited proxy = server.GetRequiredService<SourceGenPlaygroundTestClassInherited>();
 
-            await proxy.InvokeFromServer2(connection);
+            await proxy.InvokeFromServer2(0, connection);
 
             Assert.That(DidInvokeMethod, Is.EqualTo(0));
         }
@@ -132,7 +132,7 @@ namespace ModularRPCs.Test.SourceGen
 
             SourceGenPlaygroundTestClassInherited proxy = client.GetRequiredService<SourceGenPlaygroundTestClassInherited>();
 
-            await proxy.InvokeFromClient2();
+            await proxy.InvokeFromClient2(0);
 
             Assert.That(DidInvokeMethod, Is.EqualTo(0));
         }
@@ -247,13 +247,13 @@ namespace ModularRPCs.Test.SourceGen
     public partial class SourceGenPlaygroundTestClassInherited : SourceGenPlaygroundTestClass
     {
         [RpcSend(nameof(Receive2))]
-        public partial RpcTask InvokeFromClient2();
+        public partial RpcTask InvokeFromClient2(ulong v);
 
         [RpcSend(nameof(Receive2))]
-        public partial RpcTask InvokeFromServer2(IModularRpcRemoteConnection connection);
+        public partial RpcTask InvokeFromServer2(ulong v, IModularRpcRemoteConnection connection);
 
         [RpcReceive]
-        private void Receive2()
+        private void Receive2(ulong v)
         {
             SourceGenPlayground.DidInvokeMethod = 0;
         }
