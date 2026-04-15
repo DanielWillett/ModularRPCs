@@ -3,9 +3,9 @@
   <PropertyGroup>
 
     <VersionPrefix>1.0.0</VersionPrefix>
-    <VersionSuffix>prerelease29</VersionSuffix>
+    <VersionSuffix>prerelease30</VersionSuffix>
 
-    <PackageReleaseNotes>Initial pre-release.</PackageReleaseNotes>
+    <PackageReleaseNotes></PackageReleaseNotes>
 
     <TargetFrameworks>net461;netstandard2.1;netcoreapp3.0;net5.0;net8.0</TargetFrameworks>
 

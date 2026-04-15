@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 namespace DanielWillett.ModularRpcs.WebSockets;
 public class WebSocketEndpoint : IModularRpcRemoteEndpoint
 {
-    internal Action<ClientWebSocketOptions>? ConfigureOptions;
+    internal readonly Action<ClientWebSocketOptions>? ConfigureOptions;
     private WebSocket? _webSocket;
     private PlateauingDelay _delaySettings = new PlateauingDelay(amplifier: 6, climb: 2.5, maximum: 300, start: 10);
     private bool _leaveOpen;

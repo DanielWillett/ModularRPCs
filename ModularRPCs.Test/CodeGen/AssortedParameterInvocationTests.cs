@@ -31,6 +31,7 @@ namespace ModularRPCs.Test.CodeGen
             new DateTime(2026, 12, 31, 23, 59, 59, DateTimeKind.Unspecified)
         };
         private static readonly string[] Arg8 = new[] { "test string1", "test string2", null, "test string4" };
+        private static readonly byte[] Arg9 = new byte[] { 3, 4, 5, 6 };
 
         [Test]
         public async Task ServerToClientBytes()
@@ -42,7 +43,7 @@ namespace ModularRPCs.Test.CodeGen
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
-            await proxy.InvokeFromServer(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8, connection);
+            await proxy.InvokeFromServer(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8, Arg9, connection);
 
             Assert.That(_wasInvoked, Is.True);
         }
@@ -56,7 +57,7 @@ namespace ModularRPCs.Test.CodeGen
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
-            await proxy.InvokeFromClient(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8);
+            await proxy.InvokeFromClient(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8, Arg9);
 
             Assert.That(_wasInvoked, Is.True);
         }
@@ -71,7 +72,7 @@ namespace ModularRPCs.Test.CodeGen
 
             TestClass proxy = server.GetRequiredService<TestClass>();
 
-            await proxy.InvokeFromServer(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8, connection);
+            await proxy.InvokeFromServer(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8, Arg9, connection);
 
             Assert.That(_wasInvoked, Is.True);
         }
@@ -85,7 +86,7 @@ namespace ModularRPCs.Test.CodeGen
 
             TestClass proxy = client.GetRequiredService<TestClass>();
 
-            await proxy.InvokeFromClient(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8);
+            await proxy.InvokeFromClient(Arg1, Arg2, null, null, Arg5, Arg6, Arg7, Arg8, Arg9);
 
             Assert.That(_wasInvoked, Is.True);
         }
@@ -102,7 +103,8 @@ namespace ModularRPCs.Test.CodeGen
                 string nonNullRefType,
                 int[] valueArray,
                 DateTime[] dtArray,
-                string[] refArray)
+                string[] refArray,
+                byte[] byteArray)
             {
                 return RpcTask.NotImplemented;
             }
@@ -117,6 +119,7 @@ namespace ModularRPCs.Test.CodeGen
                 int[] valueArray,
                 DateTime[] dtArray,
                 string[] refArray,
+                byte[] byteArray,
                 IModularRpcRemoteConnection connection)
             {
                 return RpcTask.NotImplemented;
@@ -131,18 +134,20 @@ namespace ModularRPCs.Test.CodeGen
                 string nonNullRefType,
                 int[] valueArray,
                 DateTime[] dtArray,
-                string[] refArray
+                string[] refArray,
+                byte[] byteArray
             )
             {
                 _wasInvoked = true;
                 Assert.That(valueType, Is.EqualTo(Arg1));
                 Assert.That(nullableValueType, Is.EqualTo((decimal?)Arg2));
-                Assert.That(nullValueType, Is.EqualTo(default(decimal?)));
+                Assert.That(nullValueType, Is.EqualTo(null));
                 Assert.That(nullableRefType, Is.Null);
                 Assert.That(nonNullRefType, Is.EqualTo(Arg5));
                 Assert.That(valueArray, Is.EqualTo(Arg6));
                 Assert.That(dtArray, Is.EqualTo(Arg7));
                 Assert.That(refArray, Is.EqualTo(Arg8));
+                Assert.That(byteArray, Is.EqualTo(Arg9));
             }
         }
     }

@@ -49,7 +49,11 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
             // ignored
         }
 
-        WebSocket = new ClientWebSocket();
+        ClientWebSocket clientWebSocket = new ClientWebSocket();
+
+        Endpoint.ConfigureOptions?.Invoke(clientWebSocket.Options);
+
+        WebSocket = clientWebSocket;
 
         Task<Uri?>? rec = OnRequestingReconnect?.Invoke(this);
 
