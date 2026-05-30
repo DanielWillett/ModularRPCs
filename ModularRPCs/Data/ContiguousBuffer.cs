@@ -2,7 +2,6 @@ using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Exceptions;
 using DanielWillett.ModularRpcs.Protocol;
 using DanielWillett.ModularRpcs.Serialization;
-using DanielWillett.ReflectionTools;
 using System;
 using System.Net.Sockets;
 using System.Threading;
@@ -65,6 +64,24 @@ public sealed class ContiguousBuffer : IContiguousBufferProgressUpdateDispatcher
     {
         Buffer = buffer;
         Connection = connection;
+    }
+
+    /// <summary>
+    /// Resets the current buffer, usually after a reconnect has occurred.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException"/>
+    public void Reset()
+    {
+        if (_disposed != 0)
+            throw new ObjectDisposedException(nameof(ContiguousBuffer));
+
+        lock (Buffer)
+        {
+            _pendingData = null;
+            _pendingOverhead = null;
+            _pendingLength = 0;
+            GC.Collect();
+        }
     }
 
     /// <summary>

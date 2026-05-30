@@ -29,8 +29,15 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
 
     /// <inheritdoc cref="IModularRpcRemoteConnection.Local" />
     public TLocalConnection Local { get; internal set; } = null!;
+
+    /// <summary>
+    /// Connection lifetime managing this connection.
+    /// </summary>
     public IRpcConnectionLifetime Lifetime { get; }
 
+    /// <summary>
+    /// Initialize base functionality of a remote WebSocket connection.
+    /// </summary>
     protected internal WebSocketRemoteRpcConnection(WebSocket webSocket, WebSocketEndpoint endpoint, IRpcConnectionLifetime lifetime, int bufferSize)
     {
         _bufferSize = bufferSize;
@@ -117,23 +124,24 @@ public abstract class WebSocketRemoteRpcConnection<TLocalConnection> : IModularR
                     break;
                 }
 
-                if (byteCt == ctToRead)
-                {
-                    --byteCt;
-                    hasEndByte = true;
-                }
-                else hasEndByte = false;
+                bool saveLastByte = byteCt == ctToRead;
 
-                ArraySegment<byte> segment = new ArraySegment<byte>(_buffer, 0, byteCt + (hasEndByte ? 1 : 0));
+                ArraySegment<byte> segment = new ArraySegment<byte>(_buffer, 0, byteCt - (saveLastByte ? 1 : 0) + (hasEndByte ? 1 : 0));
 
+                bool isEnd = !saveLastByte && byteCt < ctToRead;
                 await WebSocketIntl.SendAsync(segment, WebSocketMessageType.Binary, !hasEndByte && byteCt < ctToRead, token).ConfigureAwait(false);
+
                 hasSentOnce = true;
 
-                if (hasEndByte)
+                if (saveLastByte)
                 {
                     // ReSharper disable once UseIndexFromEndExpression
                     _buffer[0] = _buffer[_buffer.Length - 1];
+                    hasEndByte = true;
                 }
+
+                if (isEnd)
+                    break;
             }
         }
         finally

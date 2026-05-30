@@ -20,15 +20,29 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     , IAsyncDisposable
 #endif
 {
+    /// <summary>
+    /// Cancellation token source used to cancel listening for incoming messages.
+    /// </summary>
     protected readonly CancellationTokenSource CancellationTokenSource;
-    protected readonly ContiguousBuffer Buffer;
+
+    /// <summary>
+    /// Buffer used to process partical messages.
+    /// </summary>
+    protected internal readonly ContiguousBuffer Buffer;
+
+    /// <summary>
+    /// Serializer used to read header information.
+    /// </summary>
     protected readonly IRpcSerializer Serializer;
+
+    private readonly ContiguousBufferCallback _bufferCallback;
+    private readonly bool _autoReconnect;
     private PlateauingDelay _delayCalc;
     private Timer? _reconnectTimer;
-    private readonly bool _autoReconnect;
     private int _taskRunning;
     private object? _logger;
     internal bool IsClosedIntl;
+    internal bool PauseAutoReconnect;
 
     /// <inheritdoc />
     public event ContiguousBufferProgressUpdate BufferProgressUpdated
@@ -43,13 +57,32 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     /// <inheritdoc cref="IModularRpcLocalConnection.Router" />
     public IRpcRouter Router { get; }
 
+    /// <summary>
+    /// Endpoint this connection was created from.
+    /// </summary>
     public WebSocketEndpoint Endpoint { get; }
+
+    /// <summary>
+    /// Underlying <see cref="System.Net.WebSockets.WebSocket"/> this connection communicates over.
+    /// </summary>
     protected internal abstract WebSocket WebSocket { get; }
+
+    /// <summary>
+    /// Whether or not this connection is allowed to reconnect automatically after disconnecting.
+    /// </summary>
     protected internal abstract bool CanReconnect { get; }
+
+    /// <summary>
+    /// Sempahore used to synchronize reads and writes.
+    /// </summary>
     protected internal abstract SemaphoreSlim Semaphore { get; }
 
     /// <inheritdoc cref="IModularRpcLocalConnection.Tags" />
     public IDictionary<string, object> Tags { get; } = new ConcurrentDictionary<string, object>();
+
+    /// <summary>
+    /// Create a new <see cref="WebSocketLocalRpcConnection"/> instance.
+    /// </summary>
     protected internal WebSocketLocalRpcConnection(IRpcRouter router, IRpcSerializer serializer, WebSocketEndpoint endpoint, int bufferSize, bool autoReconnect, PlateauingDelay delaySettings)
     {
         _autoReconnect = autoReconnect;
@@ -65,7 +98,10 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         // ReSharper disable once VirtualMemberCallInConstructor
         if (autoReconnect && CanReconnect)
             _delayCalc = new PlateauingDelay(ref delaySettings, true);
+
+        _bufferCallback = RpcBufferParseCallback;
     }
+
     internal bool TryStartListening()
     {
         if (Interlocked.CompareExchange(ref _taskRunning, 1, 0) != 0)
@@ -74,14 +110,20 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         Task.Run(ListenTask, CancellationTokenSource.Token);
         return true;
     }
+
     private async Task ListenTask()
     {
+        bool doClose = false;
         while (!CancellationTokenSource.IsCancellationRequested)
         {
             try
             {
                 if (WebSocket is not { State: WebSocketState.Open })
                 {
+                    if (PauseAutoReconnect)
+                    {
+                        break;
+                    }
                     if (CanReconnect && _autoReconnect)
                     {
                         this.LogInformation($"Reconnecting WebSocket because state is {WebSocket?.State.ToString() ?? "null"}.");
@@ -92,14 +134,14 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                             {
                                 using CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d));
                                 using CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token);
-                                await Reconnect(cmbSrc.Token);
+                                await ReconnectIntl(cmbSrc.Token);
                                 _delayCalc.Reset();
                             }
                         }
                         catch (ObjectDisposedException)
                         {
                             this.LogDebug("Closing - WebSocket disposed.");
-                            await CloseAsync(CancellationToken.None);
+                            doClose = true;
                             break;
                         }
                         catch (Exception ex)
@@ -121,7 +163,7 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                     }
                     else
                     {
-                        await CloseAsync(CancellationToken.None);
+                        doClose = true;
                         break;
                     }
                 }
@@ -135,10 +177,12 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
                     return;
                 }
 
-                Buffer.ProcessBuffer((uint)result.Count, Serializer, RpcBufferParseCallback);
+                Buffer.ProcessBuffer((uint)result.Count, Serializer, _bufferCallback);
             }
             catch (ObjectDisposedException)
             {
+                if (PauseAutoReconnect)
+                    break;
                 this.LogDebug("Closing - WebSocket disposed.");
                 await CloseAsync(CancellationToken.None);
                 break;
@@ -161,10 +205,47 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
             }
         }
 
+        // avoids Semaphore deadlock
+        if (doClose)
+        {
+            await CloseAsync(CancellationToken.None);
+        }
+
         Interlocked.CompareExchange(ref _taskRunning, 0, 1);
     }
+
+    /// <summary>
+    /// Stops the reconnection timer that gets started after disconnecting if this connection was configured to auto-reconnect.
+    /// </summary>
+    /// <remarks>Call <see cref="WebSocketClientsideLocalRpcConnection.Reconnect"/> later to reconnect manually.</remarks>
+    /// <returns>If <see langword="false"/>, the timer was already stopped before this function was invoked. If <see langword="true"/>, the timer was stopped and disposed.</returns>
+    protected bool StopReconnectTimerIntl()
+    {
+        Timer? timer = Interlocked.Exchange(ref _reconnectTimer, null);
+        if (timer == null)
+            return false;
+
+        DisposeTimer(timer);
+        return true;
+    }
+
+    private static void DisposeTimer(Timer timer)
+    {
+        try
+        {
+            timer.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        timer.Dispose();
+    }
+
     private async Task StartReconnectIntl()
     {
+        bool doClose = false;
         await Semaphore.WaitAsync();
         try
         {
@@ -172,25 +253,37 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
             double secLeft = _delayCalc.CalculateNext();
             TimeSpan timeUntilReconnect = TimeSpan.FromSeconds(secLeft);
             this.LogInformation($"Reconnecting in {timeUntilReconnect:g}...");
+            PauseAutoReconnect = false;
             Timer? timer = Interlocked.Exchange(ref _reconnectTimer, new Timer(ReconnectCallback, null, timeUntilReconnect, Timeout.InfiniteTimeSpan));
-            if (timer == null)
-                return;
-
-            timer.Change(Timeout.Infinite, Timeout.Infinite);
-            timer.Dispose();
+            if (timer != null)
+            {
+                DisposeTimer(timer);
+            }
+        }
+        catch (Exception ex)
+        {
+            this.LogError(ex, "Error setting reconnect timer, closing.");
+            doClose = true;
         }
         finally
         {
             Semaphore.Release();
         }
+
+        // avoid Semaphore deadlock
+        if (doClose)
+        {
+            await CloseAsync();
+        }
     }
+
     private void ReconnectCallback(object? state)
     {
-        Timer? timer = _reconnectTimer;
-        if (timer != null)
+        StopReconnectTimerIntl();
+        if (PauseAutoReconnect)
         {
-            timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-            timer.Dispose();
+            this.LogWarning("Auto-reconnect timer invoked while auto-reconnect was paused. This shouldn't happen.");
+            return;
         }
 
         Task.Run(async () =>
@@ -199,21 +292,19 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
             await Semaphore.WaitAsync();
             try
             {
-                CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d));
-                CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token);
-
-                await Reconnect(cmbSrc.Token);
-
-                newSrc.Dispose();
-                cmbSrc.Dispose();
+                using (CancellationTokenSource newSrc = new CancellationTokenSource(TimeSpan.FromSeconds(10d)))
+                using (CancellationTokenSource cmbSrc = CancellationTokenSource.CreateLinkedTokenSource(CancellationTokenSource.Token, newSrc.Token))
+                {
+                    await ReconnectIntl(cmbSrc.Token);
+                }
 
                 if (WebSocket.State == WebSocketState.Open)
                 {
                     this.LogInformation($"Reconnected after {_delayCalc.Trials} tries.");
                     _delayCalc.Reset();
-                    TryStartListening();
                     return;
                 }
+
                 secLeft = _delayCalc.CalculateNext();
             }
             catch (Exception ex)
@@ -229,13 +320,14 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
             TimeSpan timeUntilReconnect = TimeSpan.FromSeconds(secLeft);
             this.LogInformation($"Reconnecting in {timeUntilReconnect:g}...");
             Timer? timer = Interlocked.Exchange(ref _reconnectTimer, new Timer(ReconnectCallback, null, timeUntilReconnect, Timeout.InfiniteTimeSpan));
-            if (timer == null)
-                return;
-            
-            timer.Change(Timeout.Infinite, Timeout.Infinite);
-            timer.Dispose();
+            if (timer != null)
+            {
+                // stop old timer
+                DisposeTimer(timer);
+            }
         });
     }
+
     private void RpcBufferParseCallback(ReadOnlyMemory<byte> data, bool canTakeOwnership, in PrimitiveRpcOverhead overhead)
     {
         ValueTask vt = Router.ReceiveData(in overhead, ((IModularRpcLocalConnection)this).Remote, Serializer, data, canTakeOwnership, CancellationTokenSource.Token);
@@ -261,13 +353,15 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
     /// Force the underlying connection to reconnect.
     /// </summary>
     /// <exception cref="NotSupportedException">Not supported server-side.</exception>
-    public virtual Task Reconnect(CancellationToken token = default)
+    private protected virtual Task ReconnectIntl(CancellationToken token = default)
     {
         throw new NotSupportedException();
     }
+
     internal void DisposeIntl()
     {
         Router.CleanupConnection(this);
+        StopReconnectTimerIntl();
         IsClosedIntl = true;
         try
         {
@@ -281,7 +375,9 @@ public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, ICont
         CancellationTokenSource.Dispose();
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Dispose resources owned by this object.
+    /// </summary>
     public abstract ValueTask DisposeAsync();
 
     /// <inheritdoc />

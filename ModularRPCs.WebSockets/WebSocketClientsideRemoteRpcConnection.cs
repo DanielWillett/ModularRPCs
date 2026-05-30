@@ -1,6 +1,7 @@
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
 using System;
+using System.Linq;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,8 +20,9 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
     public override bool IsClosed => Local.IsClosed;
 
     /// <summary>
-    /// Used to customize the <see cref="Uri"/> used to reconnect with. Not compatible with multiple handlers.
+    /// Used to customize the <see cref="Uri"/> used to reconnect with.
     /// </summary>
+    /// <remarks>If multiple handlers are added, the URL of the earliest-registered handler to return a non-null value will be used.</remarks>
     public event RequestReconnectHandler? OnRequestingReconnect;
 
     /// <summary>
@@ -35,13 +37,19 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
         // ReSharper disable once VirtualMemberCallInConstructor
     }
 
-    internal async Task Reconnect(CancellationToken token = default)
+    internal async Task Disconnect(CancellationToken token = default)
     {
+        // expects semaphore locked
+        token.ThrowIfCancellationRequested();
+
+        Local.StopReconnectTimer();
+        Local.PauseAutoReconnect = true;
+
         try
         {
-            if (WebSocket.State is not WebSocketState.Closed and not WebSocketState.CloseReceived and not WebSocketState.CloseSent)
+            if (WebSocket.State <= WebSocketState.Open)
             {
-                await WebSocket.CloseAsync(WebSocketCloseStatus.InternalServerError, "Reconnecting", token).ConfigureAwait(false);
+                await WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disconnecting", token).ConfigureAwait(false);
             }
         }
         catch
@@ -49,41 +57,98 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
             // ignored
         }
 
+        Local.IsClosedIntl = true;
+
+        // reset any partial messages that got cut off during reconnect
+        Local.Buffer.Reset();
+
+        WebSocket.Dispose();
+    }
+
+    internal async Task Reconnect(CancellationToken token = default)
+    {
+        // expects semaphore locked
+        token.ThrowIfCancellationRequested();
+
+        Local.StopReconnectTimer();
+        Local.PauseAutoReconnect = true;
+
+        try
+        {
+            if (WebSocket.State <= WebSocketState.Open)
+            {
+                await WebSocket.CloseAsync(WebSocketCloseStatus.InternalServerError, "Reconnecting", token).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // ignored
+            Local.PauseAutoReconnect = false;
+        }
+
         ClientWebSocket clientWebSocket = new ClientWebSocket();
 
         Endpoint.ConfigureOptions?.Invoke(clientWebSocket.Options);
 
-        WebSocket = clientWebSocket;
-
-        Task<Uri?>? rec = OnRequestingReconnect?.Invoke(this);
-
-        Uri uri = Endpoint.Uri;
-        if (rec != null)
-        {
-            uri = await rec.ConfigureAwait(false) ?? uri;
-        }
-
-        await WebSocket.ConnectAsync(uri, token).ConfigureAwait(false);
-        WebSocketIntl = WebSocket;
-        if (WebSocket.State != WebSocketState.Open)
-        {
-            Local.IsClosedIntl = true;
-            return;
-        }
-
+        ClientWebSocket oldWebSocket = Interlocked.Exchange(ref WebSocket, clientWebSocket);
         try
         {
-            OnReconnected?.Invoke(this);
+            Uri uri = Endpoint.Uri;
+
+            // Invoke OnRequestingReconnect
+            Delegate[]? invocations = OnRequestingReconnect?.GetInvocationList();
+            if (invocations != null) switch (invocations.Length)
+            {
+                case 0: break;
+
+                case 1:
+                    uri = await ((RequestReconnectHandler)invocations[0])(this) ?? uri;
+                    break;
+
+                default:
+                    Uri?[] results = await Task.WhenAll(
+                        invocations
+                            .Cast<RequestReconnectHandler>()
+                            .Select(x => x.Invoke(this))
+                    ).ConfigureAwait(false);
+
+                    uri = results.FirstOrDefault(x => x != null) ?? uri;
+                    break;
+            }
+
+            // reset any partial messages that got cut off during reconnect
+            Local.Buffer.Reset();
+
+            await WebSocket.ConnectAsync(uri, token).ConfigureAwait(false);
+            WebSocketIntl = WebSocket;
+            if (WebSocket.State != WebSocketState.Open)
+            {
+                Local.IsClosedIntl = true;
+                return;
+            }
+
+            Local.IsClosedIntl = false;
+            Local.TryStartListening();
+
+            try
+            {
+                OnReconnected?.Invoke(this);
+            }
+            catch (Exception ex)
+            {
+                Local.LogError(ex, "Exception caught from handler for WebSocketClientsideRemoteRpcConnection.OnReconnected.");
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            Local.LogError(ex, "Exception caught from handler for WebSocketClientsideRemoteRpcConnection.OnReconnected.");
+            oldWebSocket.Dispose();
         }
     }
 
     /// <inheritdoc />
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
+        Local.PauseAutoReconnect = true;
         await Semaphore.WaitAsync(10000, token);
         bool alreadyDisposed = true;
         try
@@ -93,7 +158,7 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
             alreadyDisposed = false;
             Local.DisposeIntl();
 
-            if (WebSocket.State == WebSocketState.Open)
+            if (WebSocket.State <= WebSocketState.Open)
             {
                 try
                 {
@@ -116,11 +181,22 @@ public class WebSocketClientsideRemoteRpcConnection : WebSocketRemoteRpcConnecti
             }
         }
     }
+
     IModularRpcRemoteEndpoint IModularRpcRemoteConnection.Endpoint => Endpoint;
 
     /// <inheritdoc />
     public override string ToString() => $"WebSocket (Remote, Client): \'{Endpoint.Uri.GetComponents(UriComponents.Host, UriFormat.Unescaped)}\'";
 }
 
+/// <summary>
+/// Delegate used to handle when a reconnect is requested.
+/// </summary>
+/// <param name="connection">The connection instance.</param>
+/// <returns>A task that completes when a connection URI is ready.</returns>
 public delegate Task<Uri?> RequestReconnectHandler(WebSocketClientsideRemoteRpcConnection connection);
+
+/// <summary>
+/// Delegate used to handle when a reconnect occurs, either manually or automatically.
+/// </summary>
+/// <param name="connection">The connection instance.</param>
 public delegate void ReconnectHandler(WebSocketClientsideRemoteRpcConnection connection);

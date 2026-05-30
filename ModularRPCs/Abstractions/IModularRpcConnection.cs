@@ -9,7 +9,7 @@ namespace DanielWillett.ModularRpcs.Abstractions;
 public interface IModularRpcConnection
 {
     /// <summary>
-    /// Terminate the connection if it's open.
+    /// Terminate the connection if it's open. Not reversible.
     /// </summary>
     ValueTask CloseAsync(CancellationToken token = default);
 
