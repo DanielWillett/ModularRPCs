@@ -475,6 +475,15 @@ namespace DanielWillett.ModularRpcs.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Failed to establish a connection through a {0}..
+        /// </summary>
+        internal static string RpcConnectionFailedException_Basic {
+            get {
+                return ResourceManager.GetString("RpcConnectionFailedException_Basic", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The endpoint data from a message could not be linked to an invocation point: {0}..
         /// </summary>
         internal static string RpcEndpointNotFoundException {
@@ -1101,15 +1110,6 @@ namespace DanielWillett.ModularRpcs.Properties {
         internal static string UnexpectedMemberAccessExceptionFailedToFind {
             get {
                 return ResourceManager.GetString("UnexpectedMemberAccessExceptionFailedToFind", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Endpoint must have been created using WebSocketEndpoint.AsServer with a valid WebSocket object..
-        /// </summary>
-        internal static string WebSocketNotServerEndpoint {
-            get {
-                return ResourceManager.GetString("WebSocketNotServerEndpoint", resourceCulture);
             }
         }
         

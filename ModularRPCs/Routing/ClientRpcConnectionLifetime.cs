@@ -103,12 +103,9 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         {
             try
             {
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
-                else
-#endif
-                if (existing is IDisposable disp)
+                else if (existing is IDisposable disp)
                     disp.Dispose();
             }
             catch (Exception ex)
@@ -147,12 +144,9 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         {
             try
             {
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
-                else
-#endif
-                if (existing is IDisposable disp)
+                else if (existing is IDisposable disp)
                     disp.Dispose();
             }
             catch (Exception ex)
@@ -190,12 +184,9 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         {
             try
             {
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
-                else
-#endif
-                if (existing is IDisposable disp)
+                else if (existing is IDisposable disp)
                     disp.Dispose();
             }
             catch (Exception ex)
@@ -209,7 +200,6 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         return 1;
     }
 
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public async ValueTask DisposeAsync()
     {
         IModularRpcRemoteConnection? existing;
@@ -234,12 +224,9 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
         {
             try
             {
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (existing is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
-                else
-#endif
-                if (existing is IDisposable disp)
+                else if (existing is IDisposable disp)
                     disp.Dispose();
             }
             catch (Exception ex)
@@ -250,7 +237,7 @@ public class ClientRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
             InvokeRemove(existing);
         }
     }
-#endif
+
     public void Dispose()
     {
         IModularRpcRemoteConnection? existing;

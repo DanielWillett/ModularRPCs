@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="ModularRPCs.SourceGeneration/ModularRPCs.SourceGeneration.Common.targets" />
+    <File Path="test.runsettings_" />
+  </Folder>
+  <Project Path="ModularRPCs/ModularRPCs.csproj" />
+  <Folder Name="/Analyzers/">
+    <Project Path="ModularRPCs.SourceGeneration/ModularRPCs.SourceGeneration_Roslyn3.11.csproj" />
+    <Project Path="ModularRPCs.SourceGeneration/ModularRPCs.SourceGeneration_Roslyn4.0.csproj" />
+    <Project Path="ModularRPCs.SourceGeneration/ModularRPCs.SourceGeneration_Roslyn4.4.csproj" />
+    <Project Path="ModularRPCs.SourceGeneration/ModularRPCs.SourceGeneration_Roslyn4.8.csproj" />
+  </Folder>
+  <Folder Name="/Addons/">
+    <Project Path="ModularRPCs.Unity/ModularRPCs.Unity.csproj" />
+  </Folder>
+  <Folder Name="/Addons/Transports/">
+    <Project Path="ModularRPCs.WebSockets/ModularRPCs.WebSockets.csproj" />
+    <Project Path="ModularRPCs.NamedPipes/ModularRPCs.NamedPipes.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="ModularRPCs.Examples/ModularRPCs.Examples.csproj" />
+    <Project Path="ModularRPCs.Test.Standalone/ModularRPCs.Test.Standalone.csproj" />
+    <Project Path="ModularRPCs.Test/ModularRPCs.Test.csproj" />
+  </Folder>
+</Solution>

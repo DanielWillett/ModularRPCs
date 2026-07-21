@@ -25,7 +25,11 @@ public class RpcTimeoutException : RpcException
 #endif
     protected RpcTimeoutException(SerializationInfo info, StreamingContext context) : base(info, context)
     {
-        Timeout = new TimeSpan((long)info.GetValue("Timeout", typeof(long)));
+        object? value = info.GetValue("Timeout", typeof(long));
+        if (value is long l)
+        {
+            Timeout = new TimeSpan(l);
+        }
     }
 
 #if NET8_0_OR_GREATER
@@ -33,7 +37,7 @@ public class RpcTimeoutException : RpcException
 #endif
     public override void GetObjectData(SerializationInfo info, StreamingContext context)
     {
-        info.AddValue("Timeout", Timeout.Ticks);
         base.GetObjectData(info, context);
+        info.AddValue("Timeout", Timeout.Ticks);
     }
 }

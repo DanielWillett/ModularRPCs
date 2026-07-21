@@ -357,9 +357,6 @@
   <data name="ContiguousBufferException" xml:space="preserve">
     <value>There was an error parsing the overhead for incoming message "{0}".</value>
   </data>
-  <data name="WebSocketNotServerEndpoint" xml:space="preserve">
-    <value>Endpoint must have been created using WebSocketEndpoint.AsServer with a valid WebSocket object.</value>
-  </data>
   <data name="RpcExceptionUnableToAddConnectionToLifetime" xml:space="preserve">
     <value>Failed to add new connection to IRpcConnectionLifetime.</value>
   </data>
@@ -470,5 +467,8 @@
   </data>
   <data name="RpcInjectionExceptionNoByteData" xml:space="preserve">
     <value>There must be exactly one binary data parameter (bytes) for a raw RPC method.</value>
+  </data>
+  <data name="RpcConnectionFailedException_Basic" xml:space="preserve">
+    <value>Failed to establish a connection through a {0}.</value>
   </data>
 </root>

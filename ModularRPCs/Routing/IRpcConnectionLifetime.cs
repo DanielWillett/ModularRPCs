@@ -10,10 +10,7 @@ namespace DanielWillett.ModularRpcs.Routing;
 /// Keeps track of active <see cref="IModularRpcConnection"/> objects.
 /// </summary>
 /// <remarks>Default implementations: <see cref="ClientRpcConnectionLifetime"/> and <see cref="ServerRpcConnectionLifetime"/>.</remarks>
-public interface IRpcConnectionLifetime : IDisposable
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-    , IAsyncDisposable
-#endif
+public interface IRpcConnectionLifetime : IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Does this lifetime only support one connection (like a client)?
@@ -33,7 +30,9 @@ public interface IRpcConnectionLifetime : IDisposable
     /// <summary>
     /// Execute a callback for each remote connection, returning <see langword="false"/> to break.
     /// </summary>
+    /// <param name="callback">Action to invoke for each connection. If <see langword="false"/> is returned, the loop will break.</param>
     /// <param name="workOnCopy">Works on a copy of the list where applicable so connections can be terminated from within the callback.</param>
+    /// <param name="openOnly">Only invokes <paramref name="callback"/> for open connections.</param>
     /// <returns>The number of total connections (including connections after breaking).</returns>
     int ForEachRemoteConnection(ForEachRemoteConnectionWhile callback, bool workOnCopy = false, bool openOnly = true);
 

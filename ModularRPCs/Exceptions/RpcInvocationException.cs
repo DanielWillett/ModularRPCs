@@ -144,6 +144,7 @@ public class RpcInvocationException : Exception
 #endif
     public override void GetObjectData(SerializationInfo info, StreamingContext context)
     {
+        base.GetObjectData(info, context);
         info.AddValue("RemoteExceptionTypeName", RemoteExceptionTypeName);
         info.AddValue("RemoteExceptionType", RemoteExceptionType);
         info.AddValue("RemoteStackTrace", RemoteStackTrace);

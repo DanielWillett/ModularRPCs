@@ -13,10 +13,7 @@ namespace DanielWillett.ModularRpcs.NamedPipes;
 /// <summary>
 /// A child of <see cref="NamedPipeEndpoint"/> that also handles keeping track of active pipes.
 /// </summary>
-public sealed class NamedPipeServer : NamedPipeEndpoint, IDisposable, IRefSafeLoggable
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-    , IAsyncDisposable
-#endif
+public sealed class NamedPipeServer : NamedPipeEndpoint, IDisposable, IRefSafeLoggable, IAsyncDisposable
 {
     private IRpcConnectionLifetime? _connectionLifetime;
     private IRpcRouter? _router;
@@ -328,6 +325,7 @@ public sealed class NamedPipeServer : NamedPipeEndpoint, IDisposable, IRefSafeLo
 
     }
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _isDisposed, 1) != 0)

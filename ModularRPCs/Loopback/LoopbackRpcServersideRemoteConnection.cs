@@ -10,7 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DanielWillett.ModularRpcs.Loopback;
-public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection, IModularRpcServersideConnection, IRefSafeLoggable
+public class LoopbackRpcServersideRemoteConnection : IModularRpcRemoteConnection, IModularRpcServersideConnection, IRefSafeLoggable, IAsyncDisposable
 {
     private ContiguousBuffer? _buffer;
     private readonly ContiguousBufferCallback _callback;

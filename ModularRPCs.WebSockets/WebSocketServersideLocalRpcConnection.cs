@@ -41,10 +41,13 @@ public class WebSocketServersideLocalRpcConnection : WebSocketLocalRpcConnection
     /// </summary>
     public WebSocketServersideLocalRpcConnectionAwaiter GetAwaiter() => _awaiter;
 
+    /// <inheritdoc />
     public override ValueTask DisposeAsync()
     {
         return CloseAsync();
     }
+
+    /// <inheritdoc />
     public override async ValueTask CloseAsync(CancellationToken token = default)
     {
         try

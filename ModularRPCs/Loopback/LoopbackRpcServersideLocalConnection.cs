@@ -1,13 +1,14 @@
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using DanielWillett.ModularRpcs.Abstractions;
 using DanielWillett.ModularRpcs.Routing;
+using DanielWillett.ModularRpcs.Serialization;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using DanielWillett.ModularRpcs.Serialization;
 
 namespace DanielWillett.ModularRpcs.Loopback;
-public class LoopbackRpcServersideLocalConnection : IModularRpcAuthoritativeParentConnection, IRefSafeLoggable
+public class LoopbackRpcServersideLocalConnection : IModularRpcAuthoritativeParentConnection, IRefSafeLoggable, IAsyncDisposable
 {
     private object? _logger;
 

@@ -1354,7 +1354,7 @@ internal static class TypeUtility
 
                 case TypeCode.UInt32:
                     rtnValue = BitConverter.IsLittleEndian
-                        ? Unsafe.ReadUnaligned<int>(ref buffer[0])
+                        ? Unsafe.ReadUnaligned<uint>(ref buffer[0])
                         : (uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3];
                     bytesRead = 4;
                     break;

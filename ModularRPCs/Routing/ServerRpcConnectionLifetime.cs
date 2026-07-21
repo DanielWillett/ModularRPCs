@@ -159,12 +159,9 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
 
             try
             {
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
                 if (removed is IAsyncDisposable aDisp)
                     await aDisp.DisposeAsync().ConfigureAwait(false);
-                else
-#endif
-                if (removed is IDisposable disp)
+                else if (removed is IDisposable disp)
                     disp.Dispose();
             }
             catch (Exception ex)
@@ -211,19 +208,15 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
 
         for (int i = removed.Length - 1; i >= 0; --i)
         {
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
             if (removed[i] is IAsyncDisposable aDisp)
                 await aDisp.DisposeAsync().ConfigureAwait(false);
-            else
-#endif
-            if (removed[i] is IDisposable disposable)
+            else if (removed[i] is IDisposable disposable)
                 disposable.Dispose();
         }
 
         return removed.Length;
     }
 
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
     public async ValueTask DisposeAsync()
     {
         IModularRpcRemoteConnection[] connections;
@@ -262,7 +255,7 @@ public class ServerRpcConnectionLifetime : IRpcConnectionLifetimeWithOnlyLoopbac
                 disposable.Dispose();
         }
     }
-#endif
+
     public void Dispose()
     {
         lock (_connections)

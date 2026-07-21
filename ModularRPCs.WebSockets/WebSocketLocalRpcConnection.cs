@@ -15,10 +15,7 @@ namespace DanielWillett.ModularRpcs.WebSockets;
 /// <summary>
 /// Base class for the listening portion of a <see cref="System.Net.WebSockets.WebSocket"/> connection.
 /// </summary>
-public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, IContiguousBufferProgressUpdateDispatcher, IRefSafeLoggable
-#if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-    , IAsyncDisposable
-#endif
+public abstract class WebSocketLocalRpcConnection : IModularRpcConnection, IContiguousBufferProgressUpdateDispatcher, IRefSafeLoggable, IAsyncDisposable
 {
     /// <summary>
     /// Cancellation token source used to cancel listening for incoming messages.
