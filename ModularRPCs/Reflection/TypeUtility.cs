@@ -1374,18 +1374,18 @@ internal static class TypeUtility
                     break;
 
                 case TypeCode.Single:
-                    int i32 = BitConverter.IsLittleEndian
-                        ? Unsafe.ReadUnaligned<int>(ref buffer[0])
-                        : buffer[0] << 24 | buffer[1] << 16 | buffer[2] << 8 | buffer[3];
-                    rtnValue = *(float*)&i32;
+                    uint u32 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<uint>(ref buffer[0])
+                        : (uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3];
+                    rtnValue = *(float*)&u32;
                     bytesRead = 4;
                     break;
 
                 case TypeCode.Double:
-                    long i64 = BitConverter.IsLittleEndian
-                        ? Unsafe.ReadUnaligned<long>(ref buffer[0])
-                        : ((long)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
-                    rtnValue = *(double*)&i64;
+                    ulong u64 = BitConverter.IsLittleEndian
+                        ? Unsafe.ReadUnaligned<ulong>(ref buffer[0])
+                        : ((ulong)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
+                    rtnValue = *(double*)&u64;
                     bytesRead = 8;
                     break;
 
@@ -1467,7 +1467,7 @@ internal static class TypeUtility
                     break;
 
                 case TypeCodeUIntPtr:
-                    ulong u64 = BitConverter.IsLittleEndian
+                    u64 = BitConverter.IsLittleEndian
                         ? Unsafe.ReadUnaligned<ulong>(ref buffer[0])
                         : ((ulong)((uint)buffer[0] << 24 | (uint)buffer[1] << 16 | (uint)buffer[2] << 8 | buffer[3]) << 32) | ((uint)buffer[4] << 24 | (uint)buffer[5] << 16 | (uint)buffer[6] << 8 | buffer[7]);
 

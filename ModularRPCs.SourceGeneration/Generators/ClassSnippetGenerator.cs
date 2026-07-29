@@ -656,14 +656,16 @@ internal readonly struct ClassSnippetGenerator
                 .String("}")
                 .Out()
                 .String("};")
-                .Out();
-
-            bldr.Empty()
-                .String("/// <summary>")
-                .Build($"/// Generated receive invoker for <see cref=\"{method.Method.XmlDocs}\"/> (Overload {method.Overload + 1}).")
-                .String("/// </summary>")
-                .String("/// <remarks>This method is responsible for triggering the initial RPC invocation.</remarks>")
+                .Out()
                 .Empty();
+
+            if (method.Method.GenerateXmlDocs)
+            {
+                bldr.String("/// <summary>")
+                    .Build($"/// Generated receive invoker for <see cref=\"{method.Method.XmlDocs}\"/> (Overload {method.Overload + 1}).")
+                    .String("/// </summary>")
+                    .String("/// <remarks>This method is responsible for triggering the initial RPC invocation.</remarks>");
+            }
 
             bldr.Build($"{(method.Method.NeedsUnsafe ? "unsafe " : string.Empty)}{method.Method.Definition}")
                 .String("{").In();

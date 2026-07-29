@@ -273,9 +273,10 @@ public class ModularRPCsSourceGenerator
         List<IMethodSymbol> methods = symbol.GetMembers().OfType<IMethodSymbol>().ToList();
         foreach (IMethodSymbol method in methods)
         {
-            RpcTargetAttribute? attribute = method.GetAttributes()
-                                                  .Select(a => GetRpcTypeAttribute(compilation, a, symbol))
-                                                  .FirstOrDefault(x => x != null);
+            ImmutableArray<AttributeData> attributes = method.GetAttributes();
+            RpcTargetAttribute? attribute = attributes
+                                                .Select(a => GetRpcTypeAttribute(compilation, a, symbol))
+                                                .FirstOrDefault(x => x != null);
             if (attribute == null
                 || attribute is RpcReceiveAttribute && method.HasAttribute("global::DanielWillett.ReflectionTools.IgnoreAttribute"))
             {
@@ -287,7 +288,7 @@ public class ModularRPCsSourceGenerator
             bool isFireAndForget = false;
             if (method.ReturnType.IsEqualTo("global::DanielWillett.ModularRpcs.Async.RpcTask"))
             {
-                isFireAndForget = method.GetAttributes().Any(
+                isFireAndForget = attributes.Any(
                     x => x.AttributeClass.IsEqualTo("global::DanielWillett.ModularRpcs.Annotations.RpcFireAndForgetAttribute")
                 );
             }
@@ -349,8 +350,54 @@ public class ModularRPCsSourceGenerator
                 NeedsUnsafe = method.Parameters.Any(x => x.Type.TypeKind is TypeKind.Pointer or TypeKind.FunctionPointer),
                 DelegateType = new DelegateType(method),
                 InjectsCancellationToken = injectsCancellationToken,
-                NeedsSignatureCheck = methods.Exists(x => !ReferenceEquals(method, x) && x.Name.Equals(method.Name, StringComparison.Ordinal))
+                NeedsSignatureCheck = methods.Exists(x => !ReferenceEquals(method, x) && x.Name.Equals(method.Name, StringComparison.Ordinal)),
+                GenerateXmlDocs = GetGenerateXmlDocsBehavior(method.DeclaredAccessibility, attributes, method)
             };
+        }
+    }
+
+    private static bool GetGenerateXmlDocsBehavior(
+        Accessibility vis,
+        ImmutableArray<AttributeData> attributes,
+        IMethodSymbol method)
+    {
+        const string className = "global::DanielWillett.ModularRpcs.Annotations.RpcXmlDocsAttribute";
+
+        AttributeData? data = attributes.FirstOrDefault(x =>
+            x.AttributeClass.IsEqualTo(className)
+        );
+
+        bool defaultValue = vis is not Accessibility.Public
+            and not Accessibility.Protected
+            and not Accessibility.ProtectedOrInternal;
+
+        if (data != null)
+            return ParseData(data) ?? defaultValue;
+
+        INamedTypeSymbol type = method.ContainingType;
+        data = type?.GetAttribute(className);
+        if (data != null)
+            return ParseData(data) ?? defaultValue;
+
+        IModuleSymbol module = method.ContainingModule;
+        data = module?.GetAttribute(className);
+        if (data != null)
+            return ParseData(data) ?? defaultValue;
+
+        IAssemblySymbol assembly = method.ContainingAssembly;
+        data = assembly?.GetAttribute(className);
+        if (data != null)
+            return ParseData(data) ?? defaultValue;
+
+        return defaultValue;
+
+        static bool? ParseData(AttributeData data)
+        {
+            ImmutableArray<TypedConstant> args = data.ConstructorArguments;
+            if (args.IsDefaultOrEmpty || args[0] is not { Kind: TypedConstantKind.Primitive, Value: bool v })
+                return null;
+
+            return v;
         }
     }
 

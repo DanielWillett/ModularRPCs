@@ -29,6 +29,7 @@ public record RpcMethodDeclaration
     public required bool InjectsCancellationToken { get; init; }
     public required bool NeedsSignatureCheck { get; init; }
     public required DelegateType DelegateType { get; init; }
+    public bool GenerateXmlDocs { get; set; }
 }
 
 public sealed class DelegateType : IEquatable<DelegateType>

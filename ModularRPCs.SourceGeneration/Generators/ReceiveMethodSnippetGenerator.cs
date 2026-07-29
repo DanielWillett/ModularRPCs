@@ -1,9 +1,10 @@
 using DanielWillett.ModularRpcs.Annotations;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using ModularRPCs.Util;
 #if !ROSLYN_4_0_OR_GREATER
 using SourceProductionContext = Microsoft.CodeAnalysis.GeneratorExecutionContext;
+#else
+using Microsoft.CodeAnalysis;
 #endif
 
 namespace ModularRPCs.Generators;
@@ -899,19 +900,19 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                 case TypeHelper.PrimitiveLikeType.Char:
                                 case TypeHelper.PrimitiveLikeType.Int16:
                                 case TypeHelper.PrimitiveLikeType.UInt16:
-                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8) );")
+                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8) );")
                                         .Build($"{offsetVar} += 2u;");
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.Int32:
                                 case TypeHelper.PrimitiveLikeType.UInt32:
-                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) );")
+                                    bldr.Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) );")
                                         .Build($"{offsetVar} += 4u;");
                                     break;
 
                                 case TypeHelper.PrimitiveLikeType.Single:
 
-                                    bldr.Build($"int {valueVar}Num = bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24);")
+                                    bldr.Build($"uint {valueVar}Num = (uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24);")
                                         .Build($"{valueVar} = *(float*)&{valueVar}Num;")
                                         .Build($"{offsetVar} += 4u;");
                                     break;
@@ -919,7 +920,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                 case TypeHelper.PrimitiveLikeType.Double:
                                     
                                     bldr.Preprocessor("#pragma warning disable CS0675")
-                                        .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                        .Build($"long {valueVar}Num = unchecked ( (long)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (long)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );")
                                         .Preprocessor("#pragma warning restore CS0675")
                                         .Build($"{valueVar} = *(double*)&{valueVar}Num;")
                                         .Build($"{offsetVar} += 8u;");
@@ -930,14 +931,14 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
                                     {
                                         bldr.Preprocessor("#pragma warning disable CS0675")
-                                            .Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );")
+                                            .Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(({(idPrimType == TypeHelper.PrimitiveLikeType.UInt64 ? "ulong" : "long")})((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32) );")
                                             .Preprocessor("#pragma warning restore CS0675")
                                             .Build($"{offsetVar} += 8u;");
                                     }
                                     else
                                     {
                                         bldr.Preprocessor("#pragma warning disable CS0675")
-                                            .Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                            .Build($"{valueVar} = unchecked ( ({symbolInfo.GloballyQualifiedName})((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Preprocessor("#pragma warning restore CS0675")
                                             .Build($"{offsetVar} += 8u;");
                                     }
@@ -949,10 +950,10 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     {
                                         bldr.Preprocessor("#pragma warning disable CS0675")
                                             .String("if (global::System.IntPtr.Size == 8)").In()
-                                                .Build($"{valueVar} = unchecked ( (nint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (nint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );").Out()
+                                                .Build($"{valueVar} = unchecked ( (nint)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (nint)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );").Out()
                                             .String("else")
                                             .String("{").In()
-                                                .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                                .Build($"long {valueVar}Num = unchecked ( (long)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (long)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
                                                 .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
@@ -964,7 +965,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     else
                                     {
                                         bldr.Preprocessor("#pragma warning disable CS0675")
-                                            .Build($"long {valueVar}Num = unchecked ( (long)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (long)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                            .Build($"long {valueVar}Num = unchecked ( (long)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (long)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {int.MaxValue} || {valueVar}Num < {int.MinValue})")
                                             .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"IntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()
@@ -982,13 +983,13 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                         bldr.Preprocessor("#pragma warning disable CS0675")
                                             .String("if (global::System.IntPtr.Size == 8)").In();
                                         if ((symbolInfo.PrimitiveType & TypeHelper.PrimitiveLikeType.Enum) != 0)
-                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})((nuint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32) );").Out();
+                                            bldr.Build($"{valueVar} = unchecked ( (nuint)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | ({symbolInfo.GloballyQualifiedName})((nuint)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32) );").Out();
                                         else
-                                            bldr.Build($"{valueVar} = unchecked ( (nuint)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (nuint)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );").Out();
+                                            bldr.Build($"{valueVar} = unchecked ( (nuint)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (nuint)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );").Out();
                                         
                                         bldr.String("else")
                                             .String("{").In()
-                                                .Build($"long {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                                .Build($"long {valueVar}Num = unchecked ( (ulong)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (ulong)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );")
                                                 .Build($"if ({valueVar}Num > {uint.MaxValue})")
                                                 .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                                 .Empty()
@@ -1000,7 +1001,7 @@ internal readonly struct ReceiveMethodSnippetGenerator
                                     else
                                     {
                                         bldr.Preprocessor("#pragma warning disable CS0675")
-                                            .Build($"ulong {valueVar}Num = unchecked ( (ulong)(bytes[{offsetVar}] | bytes[{offsetVar} + 1] << 8 | bytes[{offsetVar} + 2] << 16 | bytes[{offsetVar} + 3] << 24) | (ulong)(bytes[{offsetVar} + 4] | bytes[{offsetVar} + 5] << 8 | bytes[{offsetVar} + 6] << 16 | bytes[{offsetVar} + 7] << 24) << 32 );")
+                                            .Build($"ulong {valueVar}Num = unchecked ( (ulong)((uint)bytes[{offsetVar}] | (uint)bytes[{offsetVar} + 1] << 8 | (uint)bytes[{offsetVar} + 2] << 16 | (uint)bytes[{offsetVar} + 3] << 24) | (ulong)((uint)bytes[{offsetVar} + 4] | (uint)bytes[{offsetVar} + 5] << 8 | (uint)bytes[{offsetVar} + 6] << 16 | (uint)bytes[{offsetVar} + 7] << 24) << 32 );")
                                             .Build($"if (global::System.IntPtr.Size != 8 && {valueVar}Num > {uint.MaxValue})")
                                             .In().String("throw new global::DanielWillett.ModularRpcs.Exceptions.RpcParseException(string.Format(global::DanielWillett.ModularRpcs.Reflection.SourceGenerationServices.ResxRpcParseExceptionBufferRunOutNativeIntOverflow, \"UIntPtrParser\")) { ErrorCode = 9 };").Out()
                                             .Empty()

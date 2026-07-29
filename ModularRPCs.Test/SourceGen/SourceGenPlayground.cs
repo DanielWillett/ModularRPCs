@@ -192,6 +192,25 @@ namespace ModularRPCs.Test.SourceGen
 
             Assert.That(DidInvokeMethod, Is.EqualTo(1));
         }
+
+        internal static ulong InvokedUlongValue;
+
+        [Test]
+        public async Task TestCertainDiscordIDNotWorking([Values(true, false)] bool useStreams)
+        {
+            const ulong id2 = 0b1111111111111111111111111111111110001011000001000010000001000111;
+            const ulong id1 = 0b0001000011001101111101101111000010001011000001000010000001000111;
+
+            InvokedUlongValue = 0;
+
+            await TestSetup.SetupTest<SourceGenPlaygroundTestClass>(out _, out IServiceProvider client, useStreams, out _disposable);
+
+            SourceGenPlaygroundTestClass proxy = client.GetRequiredService<SourceGenPlaygroundTestClass>();
+
+            await proxy.InvokeFromClientDiscordIdTest(0, id1, CancellationToken.None);
+
+            Assert.That(InvokedUlongValue, Is.EqualTo(id1));
+        }
     }
 
     public class Nested<T>
@@ -338,6 +357,25 @@ namespace ModularRPCs.Test.SourceGen
         {
             await Task.Delay(5);
             SourceGenPlayground.DidInvokeMethod = 1;
+        }
+
+        [RpcSend]
+        public partial RpcTask<GuildStatusResult> InvokeFromClientDiscordIdTest(byte a, ulong discordId, CancellationToken token = default);
+
+        [RpcReceive(nameof(InvokeFromClientDiscordIdTest))]
+        private async Task<GuildStatusResult> ReceiveDiscordIdTest(byte a, ulong discordId, CancellationToken token = default)
+        {
+            await Task.Yield();
+            SourceGenPlayground.InvokedUlongValue = discordId;
+            return GuildStatusResult.InGuild;
+        }
+
+        public enum GuildStatusResult : byte
+        {
+            InGuild,
+            NotInGuild,
+            NotLinked,
+            Unknown,
         }
     }
 }
